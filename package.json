@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v062",
-  "version": "0.6.2",
+  "name": "loot-goblins-v064",
+  "version": "0.6.4",
   "private": true,
-  "description": "Loot Goblins v0.6.2: one-for-one card parity automation pass.",
+  "description": "Loot Goblins v0.6.4: economy, Gear trading, attachments, and Little Helper escape support.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

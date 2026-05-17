@@ -1,36 +1,34 @@
-# Loot Goblins v0.6.2
+# Loot Goblins v0.6.4
 
-## One-for-One Card Parity + Automation Patch
+## Economy + Attachments Patch
 
-This build uses the v0.6.1 card parity ledger as the build map and moves the playable deck to a full 168-card classic-style density target:
+This build continues the v0.6 advanced mechanics track by tightening the everyday economy and Gear systems.
 
-- 95 Chamber cards
-- 73 Loot cards
-- 168 total live card copies
+## Live-card standard
 
-## Main standard
+Cards should either resolve automatically or ask a clear player choice and then resolve automatically. No live card should ask the table to resolve vague manual text.
 
-No live card should require vague manual resolution.
+## Main changes
 
-Live cards now resolve as either:
+- Adds direct **Sell Gear** access during legal own-turn, non-combat phases.
+- Selling can use Gear from hand, carried Gear, or equipped Gear.
+- Every 1000 Junk Value gives +1 Glory.
+- Selling cannot grant the final winning Glory.
+- Halfstep-style sale doubling is applied once per turn when selling Gear.
+- Adds Gear giving/trading support for Gear already in play.
+  - Gear from hand cannot be traded directly.
+  - Given Gear becomes carried by the recipient.
+  - Heavy Gear limits are checked before transfer.
+- Upgrades **Fine Print Permit** into a real attachment.
+  - The permit attaches to a chosen Gear card.
+  - That Gear becomes legal for its owner.
+  - The attached permit stays with the Gear and is discarded with it.
+- Adds Little Helper Flee support.
+  - A player with Little Helper can sacrifice it while Fleeing to escape automatically.
+- Adds basic Gear revalidation after Calling/Kin changes.
+  - Gear that is no longer legal becomes carried and inactive instead of silently continuing to count.
+- Removes remaining player-facing build/meta wording from card text.
 
-- Automated
-- Guided choice -> automated result
+## Version
 
-If a player choice is needed, the app should ask for the choice and then apply the result.
-
-## Major changes
-
-- Chamber/Loot counts aligned to 95/73.
-- Bruiser and Hexhand copy counts adjusted to better mirror source Class density.
-- Chamber-only specials such as Lunch Break, Illusion Swap, and Divine Scheduling Conflict moved into the Chamber deck.
-- Remaining manual-resolution card entries converted to automated or guided effects.
-- Added automated support for many previously parked curse/bad-news effects.
-- Added guided/automated support for change Calling / change Kin effects.
-- Added additional selectors for Gear discard effects such as Heavy Gear and highest-bonus Gear.
-- Added simplified automated handling for source-card weirdness that used to block play.
-- Updated health/version label to `0.6.2-one-for-one-automation`.
-
-## Known future polish
-
-Some effects are still simplified digital equivalents rather than perfect physical-table replicas, especially highly social or edge-case cards. They no longer stop the game with manual confirmation, but future versions should refine them individually as playtesting identifies feel issues.
+Health endpoint reports `0.6.4-economy-attachments`.

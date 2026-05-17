@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV060Session';
+const SESSION_KEY = 'lootGoblinsV063Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -341,12 +341,13 @@ function renderPhaseBanner() {
   } else if (state.phase === 'START_TURN') {
     title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn — Open Chamber`;
     copy = isMyTurn() ? 'Step 1: open a Chamber. You may also play Calling, Kin, or Gear before opening.' : `Waiting for ${active()?.name} to open a Chamber.`;
-    if (isMyTurn()) buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
+    if (isMyTurn()) { buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
   } else if (state.phase === 'NO_THREAT_CHOICE') {
     title = isMyTurn() ? 'No Foe — Choose Your Move' : `${active()?.name} chooses next`;
     copy = isMyTurn() ? 'Start Trouble with a Foe from hand, or Loot the Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Loot the Room.`;
     if (isMyTurn()) {
       buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
+      buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
       buttons.push(`<span class="micro">To Start Trouble, tap a Foe in your hand. Loot the Room draws a hidden Chamber card.</span>`);
     }
   } else if (state.phase === 'COMBAT') {
@@ -364,14 +365,21 @@ function renderPhaseBanner() {
     copy = runner?.isYou
       ? `Roll 1d6. Target: 5+. Your current Flee bonus: ${signed(bonus)}.`
       : `Waiting for ${runner?.name || 'the runner'} to roll 1d6 against ${foeName}. Target: 5+.`;
-    if (runner?.isYou) buttons.push(buttonHtml(state.escape?.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee', 'ROLL_ESCAPE', 'primary'));
+    if (runner?.isYou) {
+      if (!state.escape?.awaitingContinue && hasLittleHelper(me())) buttons.push(buttonHtml('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
+      buttons.push(buttonHtml(state.escape?.awaitingContinue ? 'Continue' : (state.escape?.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee'), state.escape?.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+    }
+  } else if (state.phase === 'POST_COMBAT') {
+    title = isMyTurn() ? 'Use Loot Before Tribute' : `${active()?.name} is using Loot`;
+    copy = isMyTurn() ? 'You may play, equip, carry, or sell legal cards you just gained. Continue when you are done.' : `Waiting for ${active()?.name} to finish using Loot.`;
+    if (isMyTurn()) { buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); buttons.push(buttonHtml('Done with Loot → Tribute', 'DONE_POST_COMBAT', 'primary')); }
   } else if (state.phase === 'TRIBUTE') {
     title = isMyTurn() ? 'Tribute Required' : `${active()?.name} must resolve Tribute`;
     copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose excess cards below.` : `Waiting for ${active()?.name} to give or discard excess cards.`;
   } else if (state.phase === 'END_TURN') {
     title = isMyTurn() ? 'End Your Turn' : `${active()?.name}'s turn is wrapping up`;
     copy = isMyTurn() ? 'Everything required is resolved. End your turn when ready.' : `Waiting for ${active()?.name} to end their turn.`;
-    if (isMyTurn()) buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary'));
+    if (isMyTurn()) { buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary')); }
   } else {
     title = `${prettyPhase(state.phase)}`;
     copy = 'Follow the table prompt.';
@@ -619,6 +627,12 @@ function renderCombat(root) {
   attachTableSeatHandlers(root);
 }
 
+
+function hasLittleHelper(p) {
+  if (!p) return false;
+  return [...(p.equippedGear || []), ...(p.carriedGear || [])].some((g) => g.id === 'GEAR_HIRELING');
+}
+
 function passPill(p, passed) {
   return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Done' : 'Can buff/nerf'}</span></div>`;
 }
@@ -664,13 +678,39 @@ function renderPrompt() {
     $('confirmSell').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] }); selectedSell.clear(); });
     return;
   }
+  if (p.type === 'DISCARD_FOR_BERSERK' || p.type === 'DISCARD_FOR_BACKSTAB') {
+    const title = p.type === 'DISCARD_FOR_BERSERK' ? 'Choose a card for Bruiser' : 'Choose a card for Cutpurse';
+    root.innerHTML = `<h3>${title}</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))}</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+
+  if (p.type === 'DISCARD_OWNED_CARDS') {
+    const need = p.meta?.count || 1;
+    const selected = selectedTribute;
+    root.innerHTML = `<h3>Choose cards to discard</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected ${selected.size}/${need}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card ${selected.has(c.instanceId) ? 'selected' : ''}" data-discard-owned-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))}</span></button>`).join('')}</div><button id="confirmOwnedDiscard" class="primary" ${selected.size !== need ? 'disabled' : ''}>Discard Selected</button>`;
+    root.querySelectorAll('[data-discard-owned-card]').forEach((btn) => btn.addEventListener('click', () => {
+      if (selected.has(btn.dataset.discardOwnedCard)) selected.delete(btn.dataset.discardOwnedCard);
+      else if (selected.size < need) selected.add(btn.dataset.discardOwnedCard);
+      renderPrompt(root);
+    }));
+    $('confirmOwnedDiscard').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selected] }); selected.clear(); });
+    return;
+  }
+
   if (p.type === 'CHOOSE_PLAYER') {
     root.innerHTML = `<h3>Choose a player</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((opt) => `<button class="primary" data-target-player-id="${opt.id}">${escapeHtml(opt.name)}</button>`).join('')}</div>`;
     root.querySelectorAll('[data-target-player-id]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { targetPlayerId: btn.dataset.targetPlayerId })));
     return;
   }
+  if (p.type === 'CHEAT_GEAR') {
+    root.innerHTML = `<h3>Attach Fine Print</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(cardGlanceSub(c))}</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+
   if (p.type === 'MANUAL') {
-    root.innerHTML = `<h3>Advanced card</h3><p>${escapeHtml(p.message)}</p><p class="micro">This card should be parked until the advanced mechanics pass. Confirm only if you intentionally resolved it out loud.</p><button class="primary" id="confirmManual">Confirm Advanced Resolution</button>`;
+    root.innerHTML = `<h3>Choice Required</h3><p>${escapeHtml(p.message)}</p><button class="primary" id="confirmManual">Continue</button>`;
     $('confirmManual').addEventListener('click', () => emitAction('RESOLVE_PROMPT'));
     return;
   }
@@ -732,12 +772,12 @@ function confirmTribute() {
 function isCardPlayable(card) {
   if (!state || !card) return false;
   if (state.pendingPrompt) return false;
-  if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase);
+  if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
     if (timing.includes('ANY_TIME')) return true;
     if (timing.includes('DURING_COMBAT')) return state.phase === 'COMBAT';
-    return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase);
+    return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
   }
   if (card.type === 'THREAT') return isMyTurn() && state.phase === 'NO_THREAT_CHOICE';
   if (card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') return state.phase === 'COMBAT';
@@ -760,6 +800,7 @@ function cardHtml(card, opts = {}) {
     <div class="art">ART</div>
     <div class="text">${escapeHtml(card.publicText || '')}</div>
     ${card.flavorText ? `<div class="flavor">${escapeHtml(card.flavorText)}</div>` : ''}
+    ${card.attachmentNames?.length ? `<div class="micro attached-line">Attached: ${escapeHtml(card.attachmentNames.join(', '))}</div>` : ''}
     <div class="stats">${escapeHtml(bottom)}</div>
   </article>`;
 }
@@ -844,6 +885,8 @@ function inspectCard(card) {
     if (a === 'PLAY_TARGET') emitAction('PLAY_CARD', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
     if (a === 'EQUIP') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' });
     if (a === 'CARRY') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' });
+    if (a === 'SELL_ONE') emitAction('SELL_GEAR', { cardIds: [card.instanceId] });
+    if (a === 'GIVE_GEAR') emitAction('GIVE_GEAR', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
     if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
   }));
   $('inspectOverlay').classList.remove('hidden');
@@ -852,10 +895,12 @@ function inspectCard(card) {
 function cardActions(card) {
   const actions = [];
   if (state.pendingPrompt) return `<p>Resolve the current prompt first.</p>`;
-  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
-  if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) {
+  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
+  if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) {
     actions.push(`<button class="primary" data-inspect-action="EQUIP">Equip</button>`);
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
+    actions.push(`<button data-inspect-action="SELL_ONE">Sell / cash in</button>`);
+    for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button data-inspect-action="GIVE_GEAR" data-target-player-id="${p.id}">Give to ${escapeHtml(p.name)}</button>`);
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
   if (card.type === 'THREAT' && state.phase === 'COMBAT' && (card.tags || []).includes('RESTLESS') && (state.combat?.threats || []).some((t) => (t.tags || []).includes('RESTLESS'))) actions.push(`<button class="primary" data-inspect-action="PLAY">Join Restless Combat</button>`);
@@ -876,7 +921,7 @@ function cardActions(card) {
   }
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
-    const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase));
+    const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase));
     if (canSpecial && card.id === 'SPECIAL_STEAL_LEVEL') {
       for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Steal from ${escapeHtml(p.name)}</button>`);
     } else if (canSpecial) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
@@ -901,6 +946,12 @@ function inspectPlayer(p) {
   root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Glory ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
     <p>Calling/Kin: ${escapeHtml(identityLine(p))}</p>
     <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
+  root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
+    cardEl.addEventListener('click', () => {
+      const gear = gearCards.find((g) => g.instanceId === cardEl.dataset.cardId);
+      if (gear) inspectCard(gear);
+    });
+  });
   $('inspectOverlay').classList.remove('hidden');
 }
 
@@ -929,7 +980,7 @@ function prettyTiming(t) {
 }
 
 function prettyPhase(phase) {
-  const map = { LOBBY: 'Lobby', START_TURN: 'Open Chamber', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', ESCAPE: 'Flee', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over' };
+  const map = { LOBBY: 'Lobby', START_TURN: 'Open Chamber', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', ESCAPE: 'Flee', POST_COMBAT: 'Use Loot', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over' };
   return map[phase] || phase;
 }
 function playerName(id) { return state.players.find((p) => p.id === id)?.name || 'Unknown'; }

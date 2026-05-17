@@ -1067,3 +1067,5 @@ button.selected-action,
   .moving-card-back span { font-size: .36rem; }
   .movement-path-label { font-size: .40rem; max-width: 118px; padding: 2px 5px; }
 }
+
+.attached-line{margin-top:.35rem;color:var(--muted);font-style:italic}.selectable-card.selected{outline:2px solid var(--gold);box-shadow:0 0 0 2px rgba(255,207,82,.25)}
