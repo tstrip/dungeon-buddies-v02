@@ -1,8 +1,8 @@
 {
-  "name": "dungeon-buddies-v03",
-  "version": "0.3.0",
+  "name": "loot-goblins-v04",
+  "version": "0.4.0",
   "private": true,
-  "description": "Dungeon Buddies v0.3: a private three-player browser card-table prototype.",
+  "description": "Loot Goblins v0.4: a private three-player browser card-table prototype with card database and flavor text.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

@@ -1,7 +1,8 @@
 const socket = io();
-const SESSION_KEY = 'dungeonBuddiesV03Session';
+const SESSION_KEY = 'lootGoblinsV04Session';
 let state = null;
 let selectedTribute = new Set();
+let selectedSell = new Set();
 let currentTab = 'log';
 
 const $ = (id) => document.getElementById(id);
@@ -152,31 +153,31 @@ function renderPhaseBanner() {
   if (state.phase === 'GAME_OVER') {
     const winner = state.players.find((p) => p.id === state.winnerId);
     title = `${winner?.name || 'Someone'} wins!`;
-    copy = 'The final Renown came from a combat victory.';
+    copy = 'The final Glory came from a combat victory.';
   } else if (state.pendingPrompt) {
     title = state.pendingPrompt.requiresYou ? 'Your decision required' : 'Table prompt pending';
     copy = state.pendingPrompt.message;
   } else if (state.phase === 'START_TURN') {
     title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn — Open Chamber`;
-    copy = isMyTurn() ? 'Step 1: open a Chamber. You may also play Role, Origin, or Gear before opening.' : `Waiting for ${active()?.name} to open a Chamber.`;
+    copy = isMyTurn() ? 'Step 1: open a Chamber. You may also play Calling, Kin, or Gear before opening.' : `Waiting for ${active()?.name} to open a Chamber.`;
     if (isMyTurn()) buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
   } else if (state.phase === 'NO_THREAT_CHOICE') {
-    title = isMyTurn() ? 'No Threat — Choose Your Move' : `${active()?.name} chooses next`;
-    copy = isMyTurn() ? 'Start Trouble with a Threat from hand, or Search Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Search Room.`;
+    title = isMyTurn() ? 'No Foe — Choose Your Move' : `${active()?.name} chooses next`;
+    copy = isMyTurn() ? 'Start Trouble with a Foe from hand, or Search Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Search Room.`;
     if (isMyTurn()) {
       buttons.push(buttonHtml('Search Room', 'SEARCH_ROOM', 'primary'));
-      buttons.push(`<span class="micro">To Start Trouble, tap a Threat in your hand.</span>`);
+      buttons.push(`<span class="micro">To Start Trouble, tap a Foe in your hand.</span>`);
     }
   } else if (state.phase === 'COMBAT') {
     const totals = state.combat?.totals;
     const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
-    title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Threat'}`;
+    title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
     copy = `${marginText}. Reaction window open.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.combat?.activePlayerId) || state.players.find((p) => p.id === state?.escape?.currentPlayerId);
-    title = 'Escape';
-    copy = 'A losing fighter must roll to avoid the Consequence.';
+    title = 'Flee';
+    copy = 'A losing fighter must roll to avoid the Bad News.';
   } else if (state.phase === 'TRIBUTE') {
     title = isMyTurn() ? 'Tribute Required' : `${active()?.name} must resolve Tribute`;
     copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose excess cards below.` : `Waiting for ${active()?.name} to give or discard excess cards.`;
@@ -230,8 +231,8 @@ function renderPlayers() {
     div.innerHTML = `
       <div class="player-head"><div class="player-name">${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</div><div class="renown">${p.renown}/10</div></div>
       ${leader}
-      <div class="player-stats">Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Escape +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
-      <div class="player-stats">Role: ${p.role ? escapeHtml(p.role.publicName) : 'none'} · Origin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</div>
+      <div class="player-stats">Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Flee +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
+      <div class="player-stats">Calling: ${p.role ? escapeHtml(p.role.publicName) : 'none'} · Kin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</div>
       <div class="slot-line">${slotChips(p)}</div>
     `;
     div.addEventListener('click', () => inspectPlayer(p));
@@ -269,12 +270,12 @@ function renderCombat(root) {
         <h3>Player Side</h3>
         <div>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
         <div class="total-big">${totals.playerTotal}</div>
-        <div class="micro">Renown + equipped Gear + Role/Origin + Tricks</div>
+        <div class="micro">Glory + equipped Gear + Calling/Kin + Tricks</div>
         <div class="modifier-list">${combat.playedTricks.filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('')}</div>
       </div>
       <div class="vs">VS</div>
       <div class="combat-side">
-        <h3>Threat Side</h3>
+        <h3>Foe Side</h3>
         <div class="card-row">${cardHtml(threat, { small: true })}</div>
         <div class="total-big">${totals.threatTotal}</div>
         <div class="micro">Loot if defeated: ${threat.finalLoot}</div>
@@ -300,6 +301,17 @@ function renderPrompt() {
   if (p.type === 'DISCARD_GEAR') {
     root.innerHTML = `<h3>Choose Gear to discard</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)}</button>`).join('')}</div>`;
     root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+  if (p.type === 'SELL_GEAR') {
+    const total = p.options.filter((c) => selectedSell.has(c.instanceId)).reduce((sum, c) => sum + Number(c.junkValue || c.scrapValue || 0), 0);
+    root.innerHTML = `<h3>Sell Gear</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected Junk Value: ${total}. Every 1000 Junk Value = +1 Glory. Selling cannot grant final Glory.</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card ${selectedSell.has(c.instanceId) ? 'selected' : ''}" data-sell-card="${c.instanceId}">${escapeHtml(c.publicName)} · ${Number(c.junkValue || c.scrapValue || 0)} Junk</button>`).join('')}</div><button class="primary" id="confirmSell" ${selectedSell.size ? '' : 'disabled'}>Sell Selected Gear</button>`;
+    root.querySelectorAll('[data-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
+      if (selectedSell.has(btn.dataset.sellCard)) selectedSell.delete(btn.dataset.sellCard);
+      else selectedSell.add(btn.dataset.sellCard);
+      renderPrompt();
+    }));
+    $('confirmSell').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] }); selectedSell.clear(); });
     return;
   }
   if (p.type === 'MANUAL') {
@@ -337,11 +349,11 @@ function renderHand() {
 
 function tributeControls(need) {
   const selectedCount = selectedTribute.size;
-  const minRenown = Math.min(...state.players.map((p) => p.renown));
+  const minGlory = Math.min(...state.players.map((p) => p.renown));
   const you = me();
-  const recipients = state.players.filter((p) => p.id !== you.id && p.renown === minRenown);
+  const recipients = state.players.filter((p) => p.id !== you.id && p.renown === minGlory);
   let html = `<div class="primary-action"><span class="micro">Selected ${selectedCount}/${need}</span>`;
-  if (you.renown !== minRenown && recipients.length > 1) {
+  if (you.renown !== minGlory && recipients.length > 1) {
     html += `<select id="tributeTarget">${recipients.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>`;
   }
   html += `<button id="confirmTribute" class="primary" ${selectedCount !== need ? 'disabled' : ''}>Confirm Tribute</button></div>`;
@@ -383,23 +395,24 @@ function cardHtml(card, opts = {}) {
     <div class="title">${escapeHtml(card.publicName)}</div>
     <div class="art">ART</div>
     <div class="text">${escapeHtml(card.publicText || '')}</div>
+    ${card.flavorText ? `<div class="flavor">${escapeHtml(card.flavorText)}</div>` : ''}
     <div class="stats">${escapeHtml(bottom)}</div>
   </article>`;
 }
 
 function cardBottom(card) {
-  if (card.type === 'THREAT') return `STR ${card.strength} · ${card.renownReward} Renown · ${card.lootReward} Loot`;
-  if (card.type === 'GEAR') return `${card.slot || 'Gear'} · +${card.combatBonus || 0}${card.escapeBonus ? ` · Escape +${card.escapeBonus}` : ''} · ${card.scrapValue || 0} Scrap${card.isHeavy ? ' · Heavy' : ''}`;
-  if (card.type === 'THREAT_MODIFIER') return `Threat ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
-  if (card.type === 'TRICK') return `${card.timing?.join(', ') || 'Trick'} · ${card.scrapValue || 0} Scrap`;
-  if (card.type === 'ROLE') return 'Role';
-  if (card.type === 'ORIGIN') return 'Origin';
+  if (card.type === 'THREAT') return `STR ${card.strength} · ${card.renownReward} Glory · ${card.lootReward} Loot`;
+  if (card.type === 'GEAR') return `${card.slot || 'Gear'} · +${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Foe ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
+  if (card.type === 'TRICK') return `${card.timing?.join(', ') || 'Trick'} · ${card.junkValue ?? card.scrapValue ?? 0} Junk`;
+  if (card.type === 'ROLE') return 'Calling';
+  if (card.type === 'ORIGIN') return 'Kin';
   if (card.type === 'HEX') return card.timing?.join(', ') || 'Hex';
   return card.type || 'Card';
 }
 
 function typeLabel(card) {
-  const map = { THREAT: 'Threat', HEX: 'Hex', ROLE: 'Role', ORIGIN: 'Origin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Threat Modifier' };
+  const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Foe Modifier' };
   return map[card.type] || card.type;
 }
 
@@ -407,7 +420,7 @@ function inspectCard(card) {
   if (!card) return;
   const root = $('inspectContent');
   const actions = cardActions(card);
-  root.innerHTML = `<div class="inspect-layout"><div>${cardHtml(card)}</div><div><h2>${escapeHtml(card.publicName)}</h2><p>${escapeHtml(card.publicText || '')}</p><div class="action-list">${actions}</div></div></div>`;
+  root.innerHTML = `<div class="inspect-layout"><div>${cardHtml(card)}</div><div><h2>${escapeHtml(card.publicName)}</h2><p>${escapeHtml(card.publicText || '')}</p>${card.flavorText ? `<p class="inspect-flavor">${escapeHtml(card.flavorText)}</p>` : ''}<div class="action-list">${actions}</div></div></div>`;
   root.querySelectorAll('[data-inspect-action]').forEach((btn) => btn.addEventListener('click', () => {
     const a = btn.dataset.inspectAction;
     closeInspect();
@@ -436,9 +449,9 @@ function cardActions(card) {
 
 function whyNotPlayable(card) {
   if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase.';
-  if (card.type === 'THREAT_MODIFIER') return 'Threat Modifiers can only be played during combat.';
+  if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
   if (card.type === 'TRICK') return 'This Trick is only available during its timing window.';
-  if (card.type === 'THREAT') return 'Threats are played with Start Trouble after no Threat appears.';
+  if (card.type === 'THREAT') return 'Foes are played with Start Trouble after no Foe appears.';
   return 'The current phase does not allow this card.';
 }
 
@@ -447,8 +460,8 @@ function closeInspect() { $('inspectOverlay').classList.add('hidden'); }
 function inspectPlayer(p) {
   const root = $('inspectContent');
   const gearCards = [...(p.equippedGear || []), ...(p.carriedGear || [])];
-  root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Renown ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
-    <p>Role: ${p.role ? escapeHtml(p.role.publicName) : 'none'}<br>Origin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</p>
+  root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Glory ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
+    <p>Calling: ${p.role ? escapeHtml(p.role.publicName) : 'none'}<br>Kin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</p>
     <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { small: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
   $('inspectOverlay').classList.remove('hidden');
 }
@@ -461,7 +474,7 @@ function renderLogAndChat() {
 }
 
 function prettyPhase(phase) {
-  const map = { LOBBY: 'Lobby', START_TURN: 'Open Chamber', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', ESCAPE: 'Escape', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over' };
+  const map = { LOBBY: 'Lobby', START_TURN: 'Open Chamber', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', ESCAPE: 'Flee', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over' };
   return map[phase] || phase;
 }
 function playerName(id) { return state.players.find((p) => p.id === id)?.name || 'Unknown'; }

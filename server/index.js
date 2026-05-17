@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.3.0' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.4.0' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -95,6 +95,7 @@ function publicCard(card) {
     type: card.type,
     publicName: card.publicName,
     publicText: card.publicText,
+    flavorText: card.flavorText,
     strength: card.strength,
     renownReward: card.renownReward,
     lootReward: card.lootReward,
@@ -103,14 +104,16 @@ function publicCard(card) {
     handsUsed: card.handsUsed,
     combatBonus: card.combatBonus,
     escapeBonus: card.escapeBonus,
-    scrapValue: card.scrapValue,
+    scrapValue: card.scrapValue ?? card.junkValue,
+    junkValue: card.junkValue ?? card.scrapValue,
     isHeavy: Boolean(card.isHeavy),
     mechanicalSlot: card.mechanicalSlot,
     timing: card.timing || [],
     target: card.target,
     strengthDelta: card.strengthDelta,
     lootDelta: card.lootDelta,
-    enforcement: card.enforcement
+    enforcement: card.enforcement,
+    effect: card.effect ? { ...card.effect } : undefined
   };
 }
 
@@ -128,7 +131,7 @@ function publicPlayer(room, p, viewerId) {
     carriedGear: p.carriedGear.map(publicCard),
     equippedGear: p.equippedGear.map(publicCard),
     combatBonus: gearCombatBonus(p) + roleStaticCombatBonus(room, p),
-    escapeBonus: gearEscapeBonus(p) + originEscapeBonus(p) + temporaryEscapeBonus(p),
+    escapeBonus: gearFleeBonus(p) + originFleeBonus(p) + temporaryFleeBonus(p),
     heavyCount: heavyCount(p),
     heavyLimit: heavyLimit(p)
   };
@@ -138,7 +141,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.3.0',
+    version: '0.4.0',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -170,7 +173,7 @@ function serializeCombat(room) {
     activePlayerId: room.combat.activePlayerId,
     helperPlayerId: room.combat.helperPlayerId,
     backupRequest: room.combat.backupRequest,
-    threats: room.combat.threats.map((t) => ({ ...publicCard(t), modifiers: (t.modifiers || []).map(publicCard), finalStrength: finalThreatStrength(room, t), finalLoot: finalThreatLoot(t) })),
+    threats: room.combat.threats.map((t) => ({ ...publicCard(t), modifiers: (t.modifiers || []).map(publicCard), finalStrength: finalFoeStrength(room, t), finalLoot: finalFoeLoot(t) })),
     playerDelta: room.combat.playerDelta || 0,
     threatDelta: room.combat.threatDelta || 0,
     playedTricks: (room.combat.playedTricks || []).map(publicCard),
@@ -186,7 +189,7 @@ function serializePrompt(prompt, viewerId) {
     type: prompt.type,
     playerId: prompt.playerId,
     message: prompt.message,
-    options: (prompt.options || []).map(publicCard),
+    options: prompt.playerId === viewerId ? (prompt.options || []).map(publicCard) : [],
     requiresYou: prompt.playerId === viewerId,
     meta: prompt.meta || {}
   };
@@ -228,13 +231,13 @@ function heavyCount(player) {
 function gearCombatBonus(player) {
   return player.equippedGear.reduce((sum, g) => sum + (Number(g.combatBonus) || 0), 0);
 }
-function gearEscapeBonus(player) {
+function gearFleeBonus(player) {
   return player.equippedGear.reduce((sum, g) => sum + (Number(g.escapeBonus) || 0), 0);
 }
-function originEscapeBonus(player) {
+function originFleeBonus(player) {
   return player.origin?.mechanicalSlot === 'ELF_EQUIV' ? 1 : 0;
 }
-function temporaryEscapeBonus(player) {
+function temporaryFleeBonus(player) {
   return player.temporaryEffects.filter((e) => e.type === 'MODIFY_ESCAPE_ROLL').reduce((sum, e) => sum + (e.amount || 0), 0);
 }
 function roleStaticCombatBonus(room, player) {
@@ -244,6 +247,9 @@ function roleStaticCombatBonus(room, player) {
 }
 function handsUsed(player) {
   return player.equippedGear.filter((g) => g.slot === 'HAND').reduce((sum, g) => sum + (Number(g.handsUsed) || 1), 0);
+}
+function handCapacity(player) {
+  return 2 + player.equippedGear.reduce((sum, g) => sum + (Number(g.extraHands) || 0), 0);
 }
 function activeHasTieWin(room) {
   return getActive(room)?.role?.mechanicalSlot === 'WARRIOR_EQUIV';
@@ -257,13 +263,14 @@ function threatSpecialBonus(room, threat) {
   const active = getActive(room);
   for (const rule of threat.specialRules || []) {
     if (rule.type === 'BONUS_AGAINST_ROLE' && active?.role?.mechanicalSlot === rule.roleMechanicalSlot) total += rule.amount || 0;
+    if (rule.type === 'BONUS_IF_ACTIVE_RENOWN_AT_LEAST' && active?.renown >= (rule.value || 0)) total += rule.amount || 0;
   }
   return total;
 }
-function finalThreatStrength(room, threat) {
+function finalFoeStrength(room, threat) {
   return Math.max(0, (threat.strength || 0) + threatSpecialBonus(room, threat) + (threat.modifiers || []).reduce((s, m) => s + (m.strengthDelta || 0), 0));
 }
-function finalThreatLoot(threat) {
+function finalFoeLoot(threat) {
   return Math.max(1, (threat.lootReward || 0) + (threat.modifiers || []).reduce((s, m) => s + (m.lootDelta || 0), 0));
 }
 function combatTotals(room) {
@@ -271,7 +278,7 @@ function combatTotals(room) {
   const active = getPlayer(room, room.combat.activePlayerId);
   const helper = room.combat.helperPlayerId ? getPlayer(room, room.combat.helperPlayerId) : null;
   const playerTotal = playerCombatTotal(room, active) + playerCombatTotal(room, helper) + (room.combat.playerDelta || 0);
-  const threatTotal = room.combat.threats.reduce((sum, t) => sum + finalThreatStrength(room, t), 0) + (room.combat.threatDelta || 0);
+  const threatTotal = room.combat.threats.reduce((sum, t) => sum + finalFoeStrength(room, t), 0) + (room.combat.threatDelta || 0);
   const wins = activeHasTieWin(room) ? playerTotal >= threatTotal : playerTotal > threatTotal;
   return { playerTotal, threatTotal, wins, margin: playerTotal - threatTotal, tieWin: activeHasTieWin(room) };
 }
@@ -321,7 +328,7 @@ function validateGearEquip(player, card) {
   if (card.slot === 'HEAD' && player.equippedGear.some((g) => g.slot === 'HEAD')) return 'Your Head slot is already full.';
   if (card.slot === 'BODY' && player.equippedGear.some((g) => g.slot === 'BODY')) return 'Your Body slot is already full.';
   if (card.slot === 'FEET' && player.equippedGear.some((g) => g.slot === 'FEET')) return 'Your Feet slot is already full.';
-  if (card.slot === 'HAND' && handsUsed(player) + (card.handsUsed || 1) > 2) return 'You do not have enough free hands.';
+  if (card.slot === 'HAND' && handsUsed(player) + (card.handsUsed || 1) > handCapacity(player)) return 'You do not have enough free hands.';
   return null;
 }
 
@@ -337,25 +344,25 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
   if (!player || !effect) return true;
   switch (effect.type) {
     case 'GAIN_RENOWN': {
-      gainRenown(room, player, effect.amount || 1, Boolean(effect.canWin), false);
+      gainGlory(room, player, effect.amount || 1, Boolean(effect.canWin), false);
       return true;
     }
     case 'LOSE_RENOWN': {
       const amount = effect.amount || 1;
       const min = effect.minimum ?? 1;
       player.renown = Math.max(min, player.renown - amount);
-      log(room, `${player.name} lost ${amount} Renown.`);
+      log(room, `${player.name} lost ${amount} Glory.`);
       return true;
     }
     case 'LOSE_ROLE': {
       if (player.role) { discardCard(room, player.role); log(room, `${player.name} lost ${player.role.publicName}.`); }
-      else log(room, `${player.name} had no Role to lose.`);
+      else log(room, `${player.name} had no Calling to lose.`);
       player.role = null;
       return true;
     }
     case 'LOSE_ORIGIN': {
       if (player.origin) { discardCard(room, player.origin); log(room, `${player.name} lost ${player.origin.publicName}.`); }
-      else log(room, `${player.name} had no Origin to lose.`);
+      else log(room, `${player.name} had no Kin to lose.`);
       player.origin = null;
       return true;
     }
@@ -400,18 +407,33 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       const amount = effect.amount || 0;
       if (effect.side === 'THREAT') room.combat.threatDelta += amount;
       else room.combat.playerDelta += amount;
-      log(room, `${sourceCard?.publicName || 'A card'} changed ${effect.side === 'THREAT' ? 'Threat' : 'Player'} side by ${amount > 0 ? '+' : ''}${amount}.`);
+      log(room, `${sourceCard?.publicName || 'A card'} changed ${effect.side === 'THREAT' ? 'Foe' : 'Player'} side by ${amount > 0 ? '+' : ''}${amount}.`);
       return true;
     }
     case 'MODIFY_ESCAPE_ROLL': {
       player.temporaryEffects.push({ type: 'MODIFY_ESCAPE_ROLL', amount: effect.amount || 0, duration: effect.duration || 'NEXT_ESCAPE' });
-      log(room, `${player.name} has ${effect.amount > 0 ? '+' : ''}${effect.amount || 0} to their next Escape roll.`);
+      log(room, `${player.name} has ${effect.amount > 0 ? '+' : ''}${effect.amount || 0} to their next Flee roll.`);
       return true;
     }
     case 'AUTO_ESCAPE': {
       player.temporaryEffects.push({ type: 'AUTO_ESCAPE', duration: 'NEXT_ESCAPE' });
-      log(room, `${player.name} has an automatic Escape ready.`);
+      log(room, `${player.name} has an automatic Flee ready.`);
       return true;
+    }
+    case 'KNOCKOUT': {
+      const lostGear = player.carriedGear.length + player.equippedGear.length;
+      const lostHand = player.hand.length;
+      while (player.hand.length) discardCard(room, player.hand.pop());
+      while (player.carriedGear.length) discardCard(room, player.carriedGear.pop());
+      while (player.equippedGear.length) discardCard(room, player.equippedGear.pop());
+      log(room, `${player.name} was Knocked Out and discarded ${lostHand} hand card${lostHand === 1 ? '' : 's'} and ${lostGear} Gear.`);
+      return true;
+    }
+    case 'SELL_GEAR_FOR_RENOWN': {
+      const options = [...player.hand.filter((c) => c.type === 'GEAR'), ...player.carriedGear, ...player.equippedGear];
+      if (!options.length) { log(room, `${player.name} had no Gear to sell.`); return true; }
+      createPrompt(room, { type: 'SELL_GEAR', playerId: player.id, message: `${player.name} may sell Gear for Glory.`, options, meta: { effect, after: context.after || 'TO_TRIBUTE_OR_END' } });
+      return false;
     }
     case 'MANUAL_PROMPT': {
       createPrompt(room, { type: 'MANUAL', playerId: context.playerId || player.id, message: `${sourceCard?.publicName || 'This card'} needs table resolution.`, options: [], meta: { after: context.after || 'CONTINUE' } });
@@ -433,14 +455,14 @@ function drawMany(room, player, deck, count) {
   return drawn;
 }
 
-function gainRenown(room, player, amount, canWin, fromCombat) {
+function gainGlory(room, player, amount, canWin, fromCombat) {
   const before = player.renown;
   let next = before + amount;
   if (!fromCombat && !canWin && next >= 10) next = 9;
   player.renown = Math.max(1, Math.min(10, next));
   const gained = player.renown - before;
-  if (gained > 0) log(room, `${player.name} gained ${gained} Renown.`);
-  else if (!fromCombat && !canWin && before >= 9) log(room, `${player.name} cannot gain the final Renown outside combat.`);
+  if (gained > 0) log(room, `${player.name} gained ${gained} Glory.`);
+  else if (!fromCombat && !canWin && before >= 9) log(room, `${player.name} cannot gain the final Glory outside combat.`);
 }
 
 function selectableGear(player, effect) {
@@ -479,7 +501,7 @@ function createPrompt(room, prompt) {
 function continueAfterPrompt(room, after) {
   room.pendingPrompt = null;
   if (after === 'TO_NO_THREAT_CHOICE') room.phase = 'NO_THREAT_CHOICE';
-  else if (after === 'CONTINUE_ESCAPE') continueEscape(room);
+  else if (after === 'CONTINUE_ESCAPE') continueFlee(room);
   else if (after === 'TO_TRIBUTE_OR_END') moveToTributeOrEnd(room);
 }
 
@@ -558,17 +580,24 @@ function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
   if (complete) room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
 }
 
+function canFoePursuePlayer(threat, player) {
+  for (const rule of threat.willNotPursue || []) {
+    if (rule.type === 'RENOWN_BELOW' && player.renown < rule.value) return false;
+  }
+  return true;
+}
+
 function resolveCombat(room) {
   const totals = combatTotals(room);
   const active = getPlayer(room, room.combat.activePlayerId);
   const helper = room.combat.helperPlayerId ? getPlayer(room, room.combat.helperPlayerId) : null;
   if (totals.wins) {
     const renown = room.combat.threats.reduce((s, t) => s + (t.renownReward || 0), 0);
-    const loot = room.combat.threats.reduce((s, t) => s + finalThreatLoot(t), 0);
-    gainRenown(room, active, renown, true, true);
+    const loot = room.combat.threats.reduce((s, t) => s + finalFoeLoot(t), 0);
+    gainGlory(room, active, renown, true, true);
     drawMany(room, active, 'LOOT', loot);
-    log(room, `${active.name} defeated the Threat side and drew ${loot} Loot.`);
-    if (helper?.origin?.mechanicalSlot === 'ELF_EQUIV') gainRenown(room, helper, 1, false, false);
+    log(room, `${active.name} defeated the Foe side and drew ${loot} Loot.`);
+    if (helper?.origin?.mechanicalSlot === 'ELF_EQUIV') gainGlory(room, helper, 1, false, false);
     cleanupCombatToDiscard(room);
     if (active.renown >= 10) {
       room.phase = 'GAME_OVER';
@@ -577,11 +606,20 @@ function resolveCombat(room) {
       log(room, `${active.name} wins by combat!`);
     } else moveToTributeOrEnd(room);
   } else {
-    log(room, `${active.name} failed to defeat the Threat side. Escape begins.`);
-    room.phase = 'ESCAPE';
-    const runners = [active.id];
-    if (helper) runners.push(helper.id);
-    room.escape = { runners, index: 0, currentPlayerId: runners[0], threat: room.combat.threats[0], lastRoll: null };
+    log(room, `${active.name} failed to defeat the Foe side. Flee begins.`);
+    const threat = room.combat.threats[0];
+    const possibleRunners = [active, helper].filter(Boolean);
+    const runners = possibleRunners.filter((p) => canFoePursuePlayer(threat, p)).map((p) => p.id);
+    for (const p of possibleRunners) {
+      if (!canFoePursuePlayer(threat, p)) log(room, `${threat.publicName} will not pursue ${p.name}.`);
+    }
+    if (runners.length === 0) {
+      cleanupCombatToDiscard(room);
+      moveToTributeOrEnd(room);
+    } else {
+      room.phase = 'ESCAPE';
+      room.escape = { runners, index: 0, currentPlayerId: runners[0], threat, lastRoll: null };
+    }
   }
 }
 
@@ -596,7 +634,7 @@ function cleanupCombatToDiscard(room) {
   room.escape = null;
 }
 
-function continueEscape(room) {
+function continueFlee(room) {
   if (!room.escape) return;
   room.escape.index += 1;
   if (room.escape.index >= room.escape.runners.length) {
@@ -608,27 +646,27 @@ function continueEscape(room) {
   }
 }
 
-function rollEscape(room, player) {
+function rollFlee(room, player) {
   if (player.temporaryEffects.some((e) => e.type === 'AUTO_ESCAPE')) {
     player.temporaryEffects = player.temporaryEffects.filter((e) => e.type !== 'AUTO_ESCAPE');
     log(room, `${player.name} automatically escaped.`);
-    continueEscape(room);
+    continueFlee(room);
     return;
   }
   const raw = Math.ceil(Math.random() * 6);
-  const bonus = gearEscapeBonus(player) + originEscapeBonus(player) + temporaryEscapeBonus(player);
+  const bonus = gearFleeBonus(player) + originFleeBonus(player) + temporaryFleeBonus(player);
   const total = raw + bonus;
   player.temporaryEffects = player.temporaryEffects.filter((e) => e.duration !== 'NEXT_ESCAPE');
   room.escape.lastRoll = { raw, bonus, total };
-  log(room, `${player.name} rolled Escape: ${raw}${bonus ? ` ${bonus > 0 ? '+' : ''}${bonus}` : ''} = ${total}.`);
+  log(room, `${player.name} rolled Flee: ${raw}${bonus ? ` ${bonus > 0 ? '+' : ''}${bonus}` : ''} = ${total}.`);
   if (total >= 5) {
     log(room, `${player.name} escaped.`);
-    continueEscape(room);
+    continueFlee(room);
   } else {
     const threat = room.escape.threat;
     log(room, `${player.name} failed to escape ${threat.publicName}.`);
     const ok = applyEffect(room, player, threat.consequence, threat, { after: 'CONTINUE_ESCAPE' });
-    if (ok) continueEscape(room);
+    if (ok) continueFlee(room);
   }
 }
 
@@ -675,7 +713,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.3.0' });
+  socket.emit('ready', { version: '0.4.0' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -685,7 +723,7 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', ({ name, code }) => {
     const room = rooms.get(String(code || '').trim().toUpperCase());
     if (!room) return emitError(socket, 'Room not found.');
-    if (room.players.length >= 3) return emitError(socket, 'This v0.3 table is limited to 3 players.');
+    if (room.players.length >= 3) return emitError(socket, 'This v0.4 table is limited to 3 players.');
     const player = createPlayer(name, socket);
     room.players.push(player);
     attachSocketToPlayer(room, player, socket);
@@ -777,9 +815,9 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'START_TROUBLE') {
-    if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'You can only Start Trouble after a non-Threat Chamber reveal on your turn.');
+    if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'You can only Start Trouble after a non-Foe Chamber reveal on your turn.');
     const card = findAndRemoveFromHand(player, payload.cardId);
-    if (!card || card.type !== 'THREAT') return emitError(socket, 'Choose a Threat from your hand to Start Trouble.');
+    if (!card || card.type !== 'THREAT') return emitError(socket, 'Choose a Foe from your hand to Start Trouble.');
     startCombat(room, card);
     return;
   }
@@ -829,8 +867,8 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'ROLL_ESCAPE') {
-    if (room.phase !== 'ESCAPE' || room.escape?.currentPlayerId !== player.id) return emitError(socket, 'It is not your Escape roll.');
-    rollEscape(room, player);
+    if (room.phase !== 'ESCAPE' || room.escape?.currentPlayerId !== player.id) return emitError(socket, 'It is not your Flee roll.');
+    rollFlee(room, player);
     return;
   }
 
@@ -860,7 +898,7 @@ function findCardInPlayerZones(player, cardId) {
 
 function playCard(socket, room, player, card, payload) {
   if (card.type === 'ROLE') {
-    if (!canActOutsideCombat(room) || activeId(room) !== player.id) return emitError(socket, 'Roles can only be played on your own turn outside combat.');
+    if (!canActOutsideCombat(room) || activeId(room) !== player.id) return emitError(socket, 'Callings can only be played on your own turn outside combat.');
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (player.role) discardCard(room, player.role);
     player.role = real;
@@ -869,7 +907,7 @@ function playCard(socket, room, player, card, payload) {
   }
 
   if (card.type === 'ORIGIN') {
-    if (!canActOutsideCombat(room) || activeId(room) !== player.id) return emitError(socket, 'Origins can only be played on your own turn outside combat.');
+    if (!canActOutsideCombat(room) || activeId(room) !== player.id) return emitError(socket, 'Kins can only be played on your own turn outside combat.');
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (player.origin) discardCard(room, player.origin);
     player.origin = real;
@@ -920,7 +958,7 @@ function playCard(socket, room, player, card, payload) {
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Special must be in your hand.');
     const ok = applyEffect(room, player, real.effect, real, { after: 'TO_TRIBUTE_OR_END' });
-    if (ok) discardCard(room, real);
+    discardCard(room, real);
     log(room, `${player.name} played ${real.publicName}.`);
     return;
   }
@@ -938,7 +976,7 @@ function playCard(socket, room, player, card, payload) {
   }
 
   if (card.type === 'THREAT_MODIFIER') {
-    if (!room.combat || room.phase !== 'COMBAT') return emitError(socket, 'Threat Modifiers can only be played during combat.');
+    if (!room.combat || room.phase !== 'COMBAT') return emitError(socket, 'Foe Modifiers can only be played during combat.');
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Modifier must be in your hand.');
     const threat = room.combat.threats[0];
@@ -958,10 +996,10 @@ function playCard(socket, room, player, card, payload) {
       log(room, `${player.name} played Hex: ${real.publicName}. Passes reset.`);
       return;
     }
-    return emitError(socket, 'This Hex is not playable right now in v0.3.');
+    return emitError(socket, 'This Hex is not playable right now in v0.4.');
   }
 
-  if (card.type === 'THREAT') return emitError(socket, 'Threats are played with Start Trouble after a non-Threat Chamber reveal.');
+  if (card.type === 'THREAT') return emitError(socket, 'Foes are played with Start Trouble after a non-Foe Chamber reveal.');
   return emitError(socket, 'That card has no legal action right now.');
 }
 
@@ -972,13 +1010,13 @@ function resolveTribute(socket, room, player, payload) {
   if (cardIds.length !== over) return emitError(socket, `Choose exactly ${over} card${over === 1 ? '' : 's'} for Tribute.`);
   const unique = [...new Set(cardIds)];
   if (unique.length !== cardIds.length) return emitError(socket, 'Choose different cards.');
-  const minRenown = Math.min(...room.players.map((p) => p.renown));
-  const activeIsLowest = player.renown === minRenown;
+  const minGlory = Math.min(...room.players.map((p) => p.renown));
+  const activeIsLowest = player.renown === minGlory;
   let recipient = null;
   if (!activeIsLowest) {
-    const legalRecipients = room.players.filter((p) => p.id !== player.id && p.renown === minRenown);
+    const legalRecipients = room.players.filter((p) => p.id !== player.id && p.renown === minGlory);
     recipient = getPlayer(room, payload.targetPlayerId) || legalRecipients[0];
-    if (!recipient || !legalRecipients.some((p) => p.id === recipient.id)) return emitError(socket, 'Choose a lowest-Renown player as recipient.');
+    if (!recipient || !legalRecipients.some((p) => p.id === recipient.id)) return emitError(socket, 'Choose a lowest-Glory player as recipient.');
   }
   const moved = [];
   for (const id of unique) {
@@ -991,9 +1029,23 @@ function resolveTribute(socket, room, player, payload) {
     log(room, `${player.name} gave ${moved.length} Tribute card${moved.length === 1 ? '' : 's'} to ${recipient.name}.`);
   } else {
     for (const card of moved) discardCard(room, card);
-    log(room, `${player.name} discarded ${moved.length} excess card${moved.length === 1 ? '' : 's'} because they were tied for lowest Renown.`);
+    log(room, `${player.name} discarded ${moved.length} excess card${moved.length === 1 ? '' : 's'} because they were tied for lowest Glory.`);
   }
   room.phase = 'END_TURN';
+}
+
+
+function removeOwnedGearOrHandCard(player, cardId) {
+  let idx = player.hand.findIndex((c) => c.instanceId === cardId && c.type === 'GEAR');
+  if (idx >= 0) return player.hand.splice(idx, 1)[0];
+  idx = player.carriedGear.findIndex((c) => c.instanceId === cardId);
+  if (idx >= 0) return player.carriedGear.splice(idx, 1)[0];
+  idx = player.equippedGear.findIndex((c) => c.instanceId === cardId);
+  if (idx >= 0) return player.equippedGear.splice(idx, 1)[0];
+  return null;
+}
+function gearJunkValue(card) {
+  return Number(card?.junkValue ?? card?.scrapValue ?? 0) || 0;
 }
 
 function resolvePrompt(socket, room, player, payload) {
@@ -1013,9 +1065,40 @@ function resolvePrompt(socket, room, player, payload) {
     continueAfterPrompt(room, after);
     return;
   }
+  if (prompt.type === 'SELL_GEAR') {
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
+    if (!ids.length) return emitError(socket, 'Choose at least one Gear card to sell.');
+    const valid = new Set((prompt.options || []).map((c) => c.instanceId));
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid Gear to sell.');
+    const sold = [];
+    for (const id of ids) {
+      const card = removeOwnedGearOrHandCard(player, id);
+      if (!card) return emitError(socket, 'One selected Gear card was no longer available.');
+      sold.push(card);
+    }
+    let values = sold.map(gearJunkValue);
+    let total = values.reduce((a, b) => a + b, 0);
+    let doubled = false;
+    if (prompt.meta?.effect?.doubleHighest && values.length) {
+      total += Math.max(...values);
+      doubled = true;
+    } else if (player.origin?.mechanicalSlot === 'HALFLING_EQUIV' && !player.usedHalfstepSale && values.length) {
+      total += Math.max(...values);
+      player.usedHalfstepSale = true;
+      doubled = true;
+    }
+    for (const card of sold) discardCard(room, card);
+    const threshold = prompt.meta?.effect?.threshold || 1000;
+    const glory = Math.floor(total / threshold);
+    log(room, `${player.name} sold ${sold.length} Gear for ${total} Junk Value${doubled ? ' with a double-value bonus' : ''}.`);
+    if (glory > 0) gainGlory(room, player, glory, Boolean(prompt.meta?.effect?.canWin), false);
+    else log(room, `Not enough Junk Value for Glory.`);
+    continueAfterPrompt(room, after);
+    return;
+  }
   emitError(socket, 'Unknown prompt type.');
 }
 
 server.listen(PORT, () => {
-  console.log(`Dungeon Buddies v0.3 listening on ${PORT}`);
+  console.log(`Loot Goblins v0.4 listening on ${PORT}`);
 });

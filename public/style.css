@@ -177,3 +177,24 @@ label { display: block; color: var(--muted); font-size: .9rem; margin: .8rem 0 .
   .button-row, .primary-action { flex-direction: column; }
   button { width: 100%; }
 }
+.card .flavor {
+  color: #7b5f5d;
+  font-size: .68rem;
+  line-height: 1.1;
+  font-style: italic;
+  border-top: 1px dashed rgba(34,25,35,.14);
+  padding-top: 4px;
+  max-height: 2.6em;
+  overflow: hidden;
+}
+.inspect-flavor {
+  color: var(--accent-2);
+  font-style: italic;
+  border-left: 3px solid var(--accent-2);
+  padding-left: .75rem;
+}
+.selectable-card.selected {
+  border-color: var(--accent);
+  background: rgba(240,185,90,.22);
+  color: var(--ink);
+}
