@@ -1,4 +1,4 @@
-# Loot Goblins v0.5.7
+# Loot Goblins v0.6.0
 
 Backup deal and table compression pass.
 
@@ -18,6 +18,6 @@ Build command: `npm install --package-lock=false`
 Start command: `npm start`
 
 
-## v0.5.7 note
+## v0.6.0 note
 
 Adds clearer directional, face-down card-shaped movement cues from decks/hand/discards toward the table center and back to hand/discard zones.

@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV057Session';
+const SESSION_KEY = 'lootGoblinsV060Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -90,6 +90,13 @@ function me() { return state?.players.find((p) => p.isYou); }
 function active() { return state?.players.find((p) => p.id === state.activePlayerId); }
 function isMyTurn() { return me()?.id === state?.activePlayerId; }
 function myHand() { return state?.you?.hand || []; }
+function hasPublicRole(player, name) { return player?.role?.publicName === name || (player?.extraRoles || []).some((r) => r.publicName === name); }
+function hasPublicOrigin(player, name) { return player?.origin?.publicName === name || (player?.extraOrigins || []).some((r) => r.publicName === name); }
+function identityLine(p) {
+  const roles = [p.role, ...(p.extraRoles || [])].filter(Boolean).map((c) => c.publicName);
+  const origins = [p.origin, ...(p.extraOrigins || [])].filter(Boolean).map((c) => c.publicName);
+  return `${roles.join('+') || 'No Calling'} · ${origins.join('+') || 'No Kin'}`;
+}
 
 function render() {
   if (!state) return;
@@ -261,7 +268,7 @@ function tableSeatsHtml() {
   return state.players.map((p, i) => `<button class="table-seat ${positions[i] || ''} ${p.id === state.activePlayerId ? 'active' : ''} ${p.isYou ? 'you' : ''} ${p.connected ? '' : 'offline'}" data-player-seat="${p.id}">
     <span class="seat-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
     <span class="seat-glory">${p.renown}/10 Glory</span>
-    <span class="seat-identity">${escapeHtml(p.role?.publicName || 'No Calling')} · ${escapeHtml(p.origin?.publicName || 'No Kin')}</span>
+    <span class="seat-identity">${escapeHtml(identityLine(p))}</span>
     <span class="seat-sub">Hand ${p.handCount} · Gear +${p.combatBonus} · Flee +${p.escapeBonus}</span>
   </button>`).join('');
 }
@@ -411,6 +418,11 @@ function combatButtons() {
     }
   }
   const youAreDone = Boolean(combat.passes?.[you.id]);
+  if (!youAreDone) {
+    if (hasPublicRole(you, 'Bruiser')) buttons.push(`<button data-combat-action="BRUISER_BERSERK">Bruiser: discard for +3</button>`);
+    if (hasPublicRole(you, 'Cutpurse') && combat.activePlayerId !== you.id) buttons.push(`<button data-combat-action="CUTPURSE_BACKSTAB">Cutpurse: backstab -2</button>`);
+    if (hasPublicRole(you, 'Hexhand') && combat.activePlayerId === you.id) buttons.push(`<button data-combat-action="HEXHAND_CHARM">Hexhand: charm Foe</button>`);
+  }
   if (youAreDone) buttons.push(`<button class="selected-action" disabled>✓ Done — Waiting on Others</button>`);
   else buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No Buffs/Nerfs</button>`);
   return buttons;
@@ -419,6 +431,9 @@ function combatButtons() {
 function handleCombatButton(action, target, lootCount, allLoot) {
   if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target });
   else if (action === 'SET_BACKUP_DEAL') emitAction('SET_BACKUP_DEAL', { lootCount: Number(lootCount || 0), allLoot: Boolean(allLoot) });
+  else if (action === 'BRUISER_BERSERK') emitAction('BRUISER_BERSERK');
+  else if (action === 'CUTPURSE_BACKSTAB') emitAction('CUTPURSE_BACKSTAB');
+  else if (action === 'HEXHAND_CHARM') emitAction('HEXHAND_CHARM');
   else emitAction(action);
 }
 
@@ -433,7 +448,7 @@ function renderPlayers() {
       <div class="player-head"><div class="player-name">${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</div><div class="renown">${p.renown}/10</div></div>
       ${leader}
       <div class="player-stats">Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Flee +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
-      <div class="player-stats">Calling: ${p.role ? escapeHtml(p.role.publicName) : 'none'} · Kin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</div>
+      <div class="player-stats">${escapeHtml(identityLine(p))}</div>
       <div class="slot-line">${slotChips(p)}</div>
     `;
     div.addEventListener('click', () => inspectPlayer(p));
@@ -843,6 +858,7 @@ function cardActions(card) {
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
+  if (card.type === 'THREAT' && state.phase === 'COMBAT' && (card.tags || []).includes('RESTLESS') && (state.combat?.threats || []).some((t) => (t.tags || []).includes('RESTLESS'))) actions.push(`<button class="primary" data-inspect-action="PLAY">Join Restless Combat</button>`);
   if (card.type === 'TRICK' && state.phase === 'COMBAT' && card.effect?.type === 'MODIFY_COMBAT_TOTAL') {
     const amt = Number(card.effect.amount || 0);
     if (amt >= 0) {
@@ -870,7 +886,7 @@ function cardActions(card) {
 }
 
 function whyNotPlayable(card) {
-  if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase.';
+  if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase, unless the card says combat/any time.';
   if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
   if (card.type === 'TRICK') return 'This Trick is only available during its timing window, such as combat or before a Flee roll.';
   if (card.type === 'THREAT') return 'Foes are played with Start Trouble after no Foe appears.';
@@ -883,7 +899,7 @@ function inspectPlayer(p) {
   const root = $('inspectContent');
   const gearCards = [...(p.equippedGear || []), ...(p.carriedGear || [])];
   root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Glory ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
-    <p>Calling: ${p.role ? escapeHtml(p.role.publicName) : 'none'}<br>Kin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</p>
+    <p>Calling/Kin: ${escapeHtml(identityLine(p))}</p>
     <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
   $('inspectOverlay').classList.remove('hidden');
 }
