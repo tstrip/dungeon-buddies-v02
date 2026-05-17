@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV063Session';
+const SESSION_KEY = 'lootGoblinsV065Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -324,7 +324,12 @@ function renderPhaseBanner() {
   let copy = '';
   let buttons = [];
 
-  if (state.phase === 'GAME_OVER') {
+  if (state.reaction) {
+    const r = state.reaction;
+    title = r.title || 'Reaction Window';
+    copy = r.message || 'A player may respond before the game continues.';
+    buttons = reactionButtons(r);
+  } else if (state.phase === 'GAME_OVER') {
     const winner = state.players.find((p) => p.id === state.winnerId);
     title = `${winner?.name || 'Someone'} wins!`;
     copy = 'The final Glory came from a combat victory.';
@@ -388,6 +393,38 @@ function renderPhaseBanner() {
   root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p><div class="primary-action">${buttons.join('')}</div>`;
   root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
   root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot)));
+  root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
+}
+
+
+function reactionButtons(r) {
+  if (!r?.requiresYou) return [`<span class="micro">Waiting on ${escapeHtml((r.eligiblePlayerIds || []).map(playerName).join(', ') || 'the table')}.</span>`];
+  const buttons = [];
+  if (r.type === 'HEX_CANCEL_REACTION') {
+    if (hasHandCardId('SPECIAL_WISHING_RING_A')) buttons.push(`<button class="primary" data-reaction-action="USE_WISH_RING">Use Wish Ring</button>`);
+    buttons.push(`<button data-reaction-action="PASS_REACTION">Let Hex Resolve</button>`);
+  } else if (r.type === 'DIE_ROLL_REACTION') {
+    if (hasHandCardId('SPECIAL_LOADED_DIE')) {
+      buttons.push(`<span class="micro">Loaded Die: choose the new die face.</span>`);
+      for (let i = 1; i <= 6; i++) buttons.push(`<button class="die-choice" data-reaction-action="USE_LOADED_DIE" data-value="${i}">${i}</button>`);
+    }
+    buttons.push(`<button data-reaction-action="PASS_REACTION">Keep Roll</button>`);
+  } else if (r.type === 'FLEE_FAILURE_REACTION') {
+    if (hasHandCardId('TRICK_INVISIBILITY')) buttons.push(`<button class="primary" data-reaction-action="USE_INVISIBILITY_ESCAPE">Use Invisibility Potion</button>`);
+    buttons.push(`<button data-reaction-action="PASS_REACTION">Take Bad News</button>`);
+  } else if (r.type === 'FLEE_SUCCESS_REACTION') {
+    if (hasHandCardId('TRICK_FLASK_GLUE')) buttons.push(`<button class="primary" data-reaction-action="USE_FLASK_GLUE">Use Flask of Glue</button>`);
+    buttons.push(`<button data-reaction-action="PASS_REACTION">No Reaction</button>`);
+  }
+  return buttons;
+}
+function hasHandCardId(id) { return Boolean((state?.you?.hand || []).some((c) => c.id === id)); }
+function handleReactionButton(action, value) {
+  if (action === 'PASS_REACTION') emitAction('PASS_REACTION');
+  if (action === 'USE_WISH_RING') emitAction('USE_WISH_RING');
+  if (action === 'USE_LOADED_DIE') emitAction('USE_LOADED_DIE', { value: Number(value) });
+  if (action === 'USE_INVISIBILITY_ESCAPE') emitAction('USE_INVISIBILITY_ESCAPE');
+  if (action === 'USE_FLASK_GLUE') emitAction('USE_FLASK_GLUE');
 }
 
 function buttonHtml(label, action, cls = '') { return `<button class="${cls}" data-action="${action}">${escapeHtml(label)}</button>`; }
@@ -769,9 +806,22 @@ function confirmTribute() {
   selectedTribute.clear();
 }
 
+
+function isReactionCardPlayable(card) {
+  const r = state?.reaction;
+  if (!r || !card) return false;
+  if (!r.requiresYou) return false;
+  if (r.type === 'HEX_CANCEL_REACTION') return card.id === 'SPECIAL_WISHING_RING_A';
+  if (r.type === 'DIE_ROLL_REACTION') return card.id === 'SPECIAL_LOADED_DIE';
+  if (r.type === 'FLEE_FAILURE_REACTION') return card.id === 'TRICK_INVISIBILITY';
+  if (r.type === 'FLEE_SUCCESS_REACTION') return card.id === 'TRICK_FLASK_GLUE';
+  return false;
+}
+
 function isCardPlayable(card) {
   if (!state || !card) return false;
   if (state.pendingPrompt) return false;
+  if (state.reaction) return isReactionCardPlayable(card);
   if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
@@ -888,13 +938,29 @@ function inspectCard(card) {
     if (a === 'SELL_ONE') emitAction('SELL_GEAR', { cardIds: [card.instanceId] });
     if (a === 'GIVE_GEAR') emitAction('GIVE_GEAR', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
     if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
+    if (a === 'USE_WISH_RING') emitAction('USE_WISH_RING');
+    if (a === 'USE_LOADED_DIE') emitAction('USE_LOADED_DIE', { value: Number(btn.dataset.value) });
+    if (a === 'USE_INVISIBILITY_ESCAPE') emitAction('USE_INVISIBILITY_ESCAPE');
+    if (a === 'USE_FLASK_GLUE') emitAction('USE_FLASK_GLUE');
   }));
   $('inspectOverlay').classList.remove('hidden');
+}
+
+
+function reactionCardActions(card) {
+  const r = state.reaction;
+  if (!isReactionCardPlayable(card)) return `<p>No legal reaction for this card right now.</p>`;
+  if (r.type === 'HEX_CANCEL_REACTION' && card.id === 'SPECIAL_WISHING_RING_A') return `<button class="primary" data-inspect-action="USE_WISH_RING">Cancel Hex</button>`;
+  if (r.type === 'DIE_ROLL_REACTION' && card.id === 'SPECIAL_LOADED_DIE') return `<p>Choose the new die face:</p>${[1,2,3,4,5,6].map((n)=>`<button class="die-choice" data-inspect-action="USE_LOADED_DIE" data-value="${n}">${n}</button>`).join('')}`;
+  if (r.type === 'FLEE_FAILURE_REACTION' && card.id === 'TRICK_INVISIBILITY') return `<button class="primary" data-inspect-action="USE_INVISIBILITY_ESCAPE">Escape Automatically</button>`;
+  if (r.type === 'FLEE_SUCCESS_REACTION' && card.id === 'TRICK_FLASK_GLUE') return `<button class="primary" data-inspect-action="USE_FLASK_GLUE">Force Reroll</button>`;
+  return `<p>No legal reaction right now.</p>`;
 }
 
 function cardActions(card) {
   const actions = [];
   if (state.pendingPrompt) return `<p>Resolve the current prompt first.</p>`;
+  if (state.reaction) return reactionCardActions(card);
   if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
   if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) {
     actions.push(`<button class="primary" data-inspect-action="EQUIP">Equip</button>`);
@@ -974,7 +1040,9 @@ function prettyTiming(t) {
     ON_REVEAL: 'On reveal',
     OWN_TURN_OUTSIDE_COMBAT: 'Own turn',
     REACTION_TO_HEX: 'React Hex',
-    REACTION_TO_BAD_NEWS: 'Bad News'
+    REACTION_TO_BAD_NEWS: 'Bad News',
+    REACTION_TO_DIE_ROLL: 'After Roll',
+    AFTER_FAILED_ESCAPE: 'After Failed Flee'
   };
   return map[t] || String(t || '').replaceAll('_', ' ').toLowerCase();
 }

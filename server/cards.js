@@ -1,4 +1,4 @@
-// Loot Goblins v0.6.4 — Economy + Attachments Patch
+// Loot Goblins v0.6.5 — Reaction + Dice System
 // Mechanical baseline: classic Munchkin-style rules and the clearer English source card sheets provided by the user.
 // Names, rules wording, and flavor are original Loot Goblins presentation.
 
@@ -188,7 +188,7 @@ const lootCards = [
   trick('TRICK_YUPPIE_WATER', 'Fancy Sparkling Water', 'Use during combat. Usable only by and to help Brightkin. +2 to each Brightkin in the battle.', 'Bubbly, expensive, and somehow tactical.', { type: 'YUPPIE_WATER' }, { junkValue: 100, enforcement: 'AUTO' }),
   trick('TRICK_COTION_PONFUSION', 'Potion of Confusion', 'Use during any combat. +3 to either side. One-use.', 'Everyone agrees something happened. Accounts differ on whether it helped.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, { junkValue: 100, enforcement: 'AUTO' }),
   trick('TRICK_DOPPELGANGER', 'Doppelgoblin', 'Use during your combat if you have no helper. Add your current combat strength again to the player side.', 'Finally, someone who understands the plan and is also the problem.', { type: 'DOPPELGANGER' }, { junkValue: 300, enforcement: 'AUTO' }),
-  trick('TRICK_INVISIBILITY', 'Invisibility Potion', 'Use after your Flee roll fails. You automatically escape. One-use.', 'For when the bravest thing to be is unavailable.', { type: 'AUTO_ESCAPE' }, { timing: ['BEFORE_ESCAPE_ROLL'], junkValue: 200 }),
+  trick('TRICK_INVISIBILITY', 'Invisibility Potion', 'Use after your Flee roll fails. You automatically escape. One-use.', 'For when the bravest thing to be is unavailable.', { type: 'AUTO_ESCAPE' }, { timing: ['AFTER_FAILED_ESCAPE'], junkValue: 200 }),
   trick('TRICK_FLASK_GLUE', 'Flask of Glue', 'Use after someone successfully Flees. That player must reroll that Flee attempt.', 'A small administrative pause in someone else’s exit.', { type: 'FORCE_REROLL_FLEE' }, { timing: ['AFTER_ESCAPE_ROLL'], junkValue: 100, enforcement: 'AUTO' }),
   trick('TRICK_INSTANT_WALL', 'Instant Wall', 'Play before a Flee roll. The current runner automatically escapes this Foe.', 'A door would have been polite. This is faster.', { type: 'AUTO_ESCAPE' }, { timing: ['BEFORE_ESCAPE_ROLL'], junkValue: 300, enforcement: 'AUTO' }),
 
@@ -202,6 +202,7 @@ const lootCards = [
   special('SPECIAL_WHINE_GM', 'Complain to the Walls', 'Use only if you are tied for or have the highest Glory. Gain 1 Glory.', 'The walls are listening, unfortunately.', { type: 'GAIN_IF_HIGHEST_OR_TIED', amount: 1 }, { timing: ['ANY_TIME'], enforcement: 'AUTO' }),
   special('SPECIAL_GOLD_1000', '1000 Junk Voucher', 'Gain 1 Glory by cashing this in, unless it would be the final winning Glory.', 'Not money, but money’s weird cousin.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['OWN_TURN_OUTSIDE_COMBAT'] }),
   special('SPECIAL_ADDITION_ERROR', 'Convenient Addition Error', 'Gain 1 Glory. Cannot give the final winning Glory.', 'Everyone remembers the math differently.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_LOADED_DIE', 'Loaded Die', 'Play after you roll a die. Choose the die result instead.', 'A tiny cube with very flexible ethics.', { type: 'SET_DIE_ROLL' }, { timing: ['REACTION_TO_DIE_ROLL'], junkValue: 300, enforcement: 'GUIDED' }),
   special('SPECIAL_WISHING_RING_A', 'Wish Ring', 'Cancel the last revealed or played Hex affecting you, if one is pending. Otherwise keep it as a reaction card.', 'The wish is small, legal, and very smug.', { type: 'CANCEL_ACTIVE_HEX' }, { timing: ['REACTION_TO_HEX','ANY_TIME'], junkValue: 500, enforcement: 'AUTO', copies: 2 }),
   special('SPECIAL_MAGIC_LAMP', 'Magic Lamp', 'Play during combat or Flee. One Foe vanishes. You gain no Glory, but take that Foe’s Loot.', 'The genie prefers clear requests and low expectations.', { type: 'REMOVE_FOE_LOOT_ONLY' }, { timing: ['DURING_COMBAT', 'BEFORE_ESCAPE_ROLL'], junkValue: 500, enforcement: 'AUTO' }),
   special('SPECIAL_POLYMORPH', 'Polymorph Potion', 'Use during combat. One Foe flies away, leaving its Loot. No Glory.', 'A monster became a scheduling issue with wings.', { type: 'REMOVE_FOE_LOOT_ONLY' }, { timing: ['DURING_COMBAT'], junkValue: 1300, enforcement: 'AUTO' }),

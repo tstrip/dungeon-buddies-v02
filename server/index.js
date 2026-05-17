@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.6.4-economy-attachments' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.6.5-reaction-dice-system' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -234,7 +234,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.6.4-economy-attachments',
+    version: '0.6.5-reaction-dice-system',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -254,6 +254,7 @@ function serializeRoom(room, viewerId) {
     tableNotice: room.tableNotice || null,
     announcement: room.announcement || null,
     movement: room.movement || null,
+    reaction: serializeReaction(room, viewerId),
     combat: serializeCombat(room),
     escape: serializeEscape(room),
     firstRoll: serializeFirstRoll(room, viewerId),
@@ -264,6 +265,26 @@ function serializeRoom(room, viewerId) {
   };
 }
 
+
+function serializeReaction(room, viewerId) {
+  const r = room.reaction;
+  if (!r) return null;
+  const eligible = r.eligiblePlayerIds || (r.playerId ? [r.playerId] : []);
+  return {
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    message: r.message,
+    playerId: r.playerId || null,
+    runnerId: r.runnerId || null,
+    eligiblePlayerIds: eligible,
+    passes: r.passes || {},
+    requiresYou: eligible.includes(viewerId) && !r.passes?.[viewerId],
+    card: publicCard(r.card || r.hexCard || r.threat),
+    roll: r.roll || null,
+    meta: r.meta || {}
+  };
+}
 
 function serializeFirstRoll(room, viewerId) {
   if (!room.firstRoll) return null;
@@ -1121,6 +1142,70 @@ function createPrompt(room, prompt) {
   room.pendingPrompt = { ...prompt, id: instanceId() };
 }
 
+function hasHandCard(player, cardId) {
+  return Boolean(player?.hand?.some((c) => c.id === cardId));
+}
+function removeHandCardById(player, cardId) {
+  const idx = player.hand.findIndex((c) => c.id === cardId);
+  if (idx < 0) return null;
+  return player.hand.splice(idx, 1)[0];
+}
+function reactionEligibleNames(room, reaction) {
+  return (reaction.eligiblePlayerIds || []).map((id) => getPlayer(room, id)?.name || 'Player').join(', ');
+}
+function startReaction(room, reaction) {
+  room.reaction = { id: instanceId(), passes: {}, ...reaction };
+  announce(room, 'prompt', reaction.title || 'Reaction Window', reaction.message || `${reactionEligibleNames(room, room.reaction)} may respond.`, reaction.card || reaction.hexCard || reaction.threat || null, { importance: 'major' });
+}
+function clearReaction(room) { room.reaction = null; }
+function allReactionEligiblePassed(room) {
+  const r = room.reaction;
+  if (!r) return true;
+  return (r.eligiblePlayerIds || []).every((id) => r.passes?.[id]);
+}
+function setPostFleeRollReaction(room, runner) {
+  if (!room.escape?.lastRoll || !runner) return;
+  const roll = room.escape.lastRoll;
+  if (roll.total >= 5) {
+    const eligible = room.players.filter((p) => p.id !== runner.id && hasHandCard(p, 'TRICK_FLASK_GLUE')).map((p) => p.id);
+    if (eligible.length) startReaction(room, { type: 'FLEE_SUCCESS_REACTION', runnerId: runner.id, eligiblePlayerIds: eligible, roll, threat: currentEscapeEntry(room)?.threat || room.escape.threat, title: 'Flee Reaction', message: `${runner.name} escaped. ${reactionEligibleNames(room, { eligiblePlayerIds: eligible })} may use a Glue-style card to force a reroll.` });
+  } else {
+    if (hasHandCard(runner, 'TRICK_INVISIBILITY')) startReaction(room, { type: 'FLEE_FAILURE_REACTION', runnerId: runner.id, playerId: runner.id, eligiblePlayerIds: [runner.id], roll, threat: currentEscapeEntry(room)?.threat || room.escape.threat, title: 'Flee Failed — Reaction?', message: `${runner.name} failed to Flee. Use an automatic escape card or take the Bad News.` });
+  }
+}
+function maybeStartDieReaction(room, roller) {
+  if (!room.escape?.lastRoll || !roller) return false;
+  if (!hasHandCard(roller, 'SPECIAL_LOADED_DIE')) return false;
+  startReaction(room, { type: 'DIE_ROLL_REACTION', runnerId: roller.id, playerId: roller.id, eligiblePlayerIds: [roller.id], roll: room.escape.lastRoll, threat: currentEscapeEntry(room)?.threat || room.escape.threat, title: 'Die Roll Reaction', message: `${roller.name} rolled a die. Use Loaded Die to change the result, or keep the roll.` });
+  return true;
+}
+function finishDieReaction(room, runner) {
+  clearReaction(room);
+  setPostFleeRollReaction(room, runner);
+}
+function completeHexResolution(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
+  let complete = true;
+  for (const effect of card.effects || []) {
+    const ok = applyEffect(room, targetPlayer, effect, card, { after, revealedHex: true });
+    if (!ok) complete = false;
+  }
+  discardCard(room, card);
+  if (complete) {
+    if (!room.tableNotice || room.tableNotice.kind === 'hex') announce(room, 'hex', 'Hex Resolved', `${card.publicName} finished resolving for ${targetPlayer.name}.`, card, { importance: 'normal' });
+    room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
+  } else {
+    announce(room, 'prompt', 'Hex Needs a Choice', `${targetPlayer.name} must choose how ${card.publicName} resolves.`, card, { importance: 'major' });
+  }
+}
+function startHexCancelReactionIfAvailable(room, card, targetPlayer, after, source) {
+  if (hasHandCard(targetPlayer, 'SPECIAL_WISHING_RING_A')) {
+    startReaction(room, { type: 'HEX_CANCEL_REACTION', playerId: targetPlayer.id, eligiblePlayerIds: [targetPlayer.id], hexCard: card, card, meta: { targetPlayerId: targetPlayer.id, after, source }, title: 'Hex Reaction', message: `${card.publicName} is about to affect ${targetPlayer.name}. ${targetPlayer.name} may use a Wish Ring to cancel it.` });
+    return true;
+  }
+  return false;
+}
+
+
 function continueAfterPrompt(room, after) {
   room.pendingPrompt = null;
   if (after === 'TO_NO_THREAT_CHOICE') room.phase = 'NO_THREAT_CHOICE';
@@ -1214,6 +1299,7 @@ function endTurn(room) {
   room.revealCard = null;
   room.combat = null;
   room.escape = null;
+  room.reaction = null;
   room.pendingPrompt = null;
   room.tableNotice = null;
   room.activePlayerIndex = (room.activePlayerIndex + 1) % room.players.length;
@@ -1236,6 +1322,7 @@ function setupGame(room) {
   room.revealCard = null;
   room.combat = null;
   room.escape = null;
+  room.reaction = null;
   room.pendingPrompt = null;
   room.tableNotice = null;
   room.announcement = null;
@@ -1271,20 +1358,8 @@ function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
     room.phase = 'NO_THREAT_CHOICE';
     return;
   }
-  let complete = true;
-  for (const effect of card.effects || []) {
-    const ok = applyEffect(room, targetPlayer, effect, card, { after, revealedHex: true });
-    if (!ok) complete = false;
-  }
-  discardCard(room, card);
-  if (complete) {
-    if (!room.tableNotice || room.tableNotice.kind === 'hex') {
-      announce(room, 'hex', 'Hex Resolved', `${card.publicName} finished resolving for ${targetPlayer.name}.`, card, { importance: 'normal' });
-    }
-    room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
-  } else {
-    announce(room, 'prompt', 'Hex Needs a Choice', `${targetPlayer.name} must choose how ${card.publicName} resolves.`, card, { importance: 'major' });
-  }
+  if (startHexCancelReactionIfAvailable(room, card, targetPlayer, after, 'REVEAL')) return;
+  completeHexResolution(room, card, targetPlayer, after);
 }
 
 function canFoePursuePlayer(threat, player) {
@@ -1405,6 +1480,7 @@ function continueFlee(room) {
 }
 
 function resolveFleeOutcome(room, player) {
+  if (room.reaction) return;
   if (!room.escape?.awaitingContinue || !room.escape?.lastRoll) return;
   const entry = currentEscapeEntry(room);
   const threat = entry?.threat || room.escape?.threat;
@@ -1436,10 +1512,11 @@ function rollFlee(room, player) {
   const bonus = gearFleeBonus(player) + originFleeBonus(player) + temporaryFleeBonus(player);
   const total = raw + bonus;
   player.temporaryEffects = player.temporaryEffects.filter((e) => e.duration !== 'NEXT_ESCAPE');
-  room.escape.lastRoll = { raw, bonus, total, success: total >= 5, at: Date.now() };
+  room.escape.lastRoll = { raw, originalRaw: raw, bonus, total, success: total >= 5, at: Date.now(), changedBy: null };
   room.escape.awaitingContinue = true;
   announce(room, 'roll', 'Flee Roll', `${player.name} rolled ${raw}${bonus ? ` ${bonus > 0 ? '+' : ''}${bonus}` : ''} = ${total}. ${total >= 5 ? 'Success.' : 'Failure.'}`, currentThreat, { importance: 'major' });
   log(room, `${player.name} rolled Flee: ${raw}${bonus ? ` ${bonus > 0 ? '+' : ''}${bonus}` : ''} = ${total}.`);
+  if (!maybeStartDieReaction(room, player)) setPostFleeRollReaction(room, player);
 }
 
 function allCombatPlayersPassed(room) {
@@ -1461,6 +1538,7 @@ function makeRoom(hostName, socket) {
     revealCard: null,
     combat: null,
     escape: null,
+    reaction: null,
     pendingPrompt: null,
     winnerId: null,
     announcement: null,
@@ -1486,7 +1564,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.6.4-economy-attachments' });
+  socket.emit('ready', { version: '0.6.5-reaction-dice-system' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1559,6 +1637,112 @@ function handleAction(socket, room, player, payload) {
     return;
   }
   if (room.pendingPrompt && type !== 'RESOLVE_PROMPT') return emitError(socket, 'A prompt must be resolved before anything else can happen.');
+
+  if (room.reaction && !['PASS_REACTION','USE_WISH_RING','USE_LOADED_DIE','USE_INVISIBILITY_ESCAPE','USE_FLASK_GLUE','MARK_CARD_SEEN'].includes(type)) {
+    return emitError(socket, 'A reaction window is open. Respond to it before continuing.');
+  }
+
+  if (type === 'PASS_REACTION') {
+    if (!room.reaction) return emitError(socket, 'No reaction is pending.');
+    const r = room.reaction;
+    if (!(r.eligiblePlayerIds || []).includes(player.id)) return emitError(socket, 'This reaction is not for you.');
+    r.passes = r.passes || {};
+    r.passes[player.id] = true;
+    if (r.type === 'HEX_CANCEL_REACTION') {
+      const target = getPlayer(room, r.meta?.targetPlayerId);
+      const hex = r.hexCard;
+      const after = r.meta?.after || 'TO_NO_THREAT_CHOICE';
+      clearReaction(room);
+      announce(room, 'hex', 'Hex Continues', `${player.name} did not cancel ${hex.publicName}.`, hex, { importance: 'normal' });
+      completeHexResolution(room, hex, target, after);
+      return;
+    }
+    if (r.type === 'DIE_ROLL_REACTION') {
+      const runner = getPlayer(room, r.runnerId);
+      finishDieReaction(room, runner);
+      return;
+    }
+    if (r.type === 'FLEE_FAILURE_REACTION') {
+      clearReaction(room);
+      announce(room, 'roll', 'Bad News Pending', `${player.name} accepts the failed Flee result. Continue to resolve Bad News.`, r.threat, { importance: 'normal' });
+      return;
+    }
+    if (r.type === 'FLEE_SUCCESS_REACTION') {
+      announce(room, 'roll', 'No Flee Reaction', `${player.name} does not interfere with the escape.`, r.threat, { importance: 'normal' });
+      if (allReactionEligiblePassed(room)) clearReaction(room);
+      return;
+    }
+    return;
+  }
+
+  if (type === 'USE_WISH_RING') {
+    const r = room.reaction;
+    if (!r || r.type !== 'HEX_CANCEL_REACTION' || r.playerId !== player.id) return emitError(socket, 'No Hex cancellation is available for you.');
+    const ring = removeHandCardById(player, 'SPECIAL_WISHING_RING_A');
+    if (!ring) return emitError(socket, 'You do not have a Wish Ring.');
+    const hex = r.hexCard;
+    discardCard(room, ring);
+    discardCard(room, hex);
+    const after = r.meta?.after || 'TO_NO_THREAT_CHOICE';
+    clearReaction(room);
+    announce(room, 'hex', 'Hex Canceled', `${player.name} used Wish Ring to cancel ${hex.publicName}.`, ring, { importance: 'major' });
+    log(room, `${player.name} canceled ${hex.publicName} with Wish Ring.`);
+    if (after === 'TO_NO_THREAT_CHOICE') room.phase = 'NO_THREAT_CHOICE';
+    return;
+  }
+
+  if (type === 'USE_LOADED_DIE') {
+    const r = room.reaction;
+    if (!r || r.type !== 'DIE_ROLL_REACTION' || r.playerId !== player.id) return emitError(socket, 'No die-change reaction is available for you.');
+    const chosen = Math.max(1, Math.min(6, Number(payload.value || 0)));
+    if (!chosen) return emitError(socket, 'Choose a die value from 1 to 6.');
+    const die = removeHandCardById(player, 'SPECIAL_LOADED_DIE');
+    if (!die) return emitError(socket, 'You do not have Loaded Die.');
+    const roll = room.escape?.lastRoll;
+    if (!roll) return emitError(socket, 'No roll is waiting.');
+    const before = roll.raw;
+    roll.raw = chosen;
+    roll.total = chosen + (roll.bonus || 0);
+    roll.success = roll.total >= 5;
+    roll.changedBy = player.name;
+    discardCard(room, die);
+    announce(room, 'roll', 'Loaded Die Used', `${player.name} changed the roll ${before} → ${chosen}. Final result: ${roll.total}. ${roll.success ? 'Success.' : 'Failure.'}`, die, { importance: 'major' });
+    log(room, `${player.name} changed a die roll from ${before} to ${chosen}.`);
+    finishDieReaction(room, player);
+    return;
+  }
+
+  if (type === 'USE_INVISIBILITY_ESCAPE') {
+    const r = room.reaction;
+    if (!r || r.type !== 'FLEE_FAILURE_REACTION' || r.runnerId !== player.id) return emitError(socket, 'No failed-Flee escape reaction is available for you.');
+    const potion = removeHandCardById(player, 'TRICK_INVISIBILITY');
+    if (!potion) return emitError(socket, 'You do not have Invisibility Potion.');
+    if (room.escape?.lastRoll) {
+      room.escape.lastRoll.total = 5;
+      room.escape.lastRoll.success = true;
+      room.escape.lastRoll.changedBy = potion.publicName;
+    }
+    discardCard(room, potion);
+    clearReaction(room);
+    announce(room, 'roll', 'Automatic Escape', `${player.name} used ${potion.publicName} after failing. The Flee result is now a success.`, potion, { importance: 'major' });
+    log(room, `${player.name} used ${potion.publicName} to escape after failing a Flee roll.`);
+    return;
+  }
+
+  if (type === 'USE_FLASK_GLUE') {
+    const r = room.reaction;
+    if (!r || r.type !== 'FLEE_SUCCESS_REACTION' || !(r.eligiblePlayerIds || []).includes(player.id)) return emitError(socket, 'No successful-Flee reaction is available for you.');
+    const glue = removeHandCardById(player, 'TRICK_FLASK_GLUE');
+    if (!glue) return emitError(socket, 'You do not have Flask of Glue.');
+    discardCard(room, glue);
+    const runner = getPlayer(room, r.runnerId);
+    room.escape.lastRoll = null;
+    room.escape.awaitingContinue = false;
+    clearReaction(room);
+    announce(room, 'roll', 'Reroll Required', `${player.name} used ${glue.publicName}. ${runner?.name || 'The runner'} must roll to Flee again.`, glue, { importance: 'major' });
+    log(room, `${player.name} used ${glue.publicName}; ${runner?.name || 'runner'} must reroll Flee.`);
+    return;
+  }
 
   if (type === 'START_GAME') {
     if (room.status !== 'LOBBY') return emitError(socket, 'Game already started.');
@@ -1722,6 +1906,7 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'CONTINUE_FLEE') {
+    if (room.reaction) return emitError(socket, 'A reaction window is open. Resolve it before continuing.');
     if (room.phase !== 'ESCAPE' || room.escape?.currentPlayerId !== player.id || !room.escape.awaitingContinue) return emitError(socket, 'There is no Flee result waiting to continue.');
     resolveFleeOutcome(room, player);
     return;
@@ -1928,15 +2113,12 @@ function playCard(socket, room, player, card, payload) {
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Hex must be in your hand.');
     const target = getPlayer(room, payload.targetPlayerId) || getActive(room) || player;
-    let complete = true;
-    for (const effect of real.effects || []) {
-      const ok = applyEffect(room, target, effect, real, { after: room.phase === 'ESCAPE' ? 'CONTINUE_ESCAPE' : 'CONTINUE' });
-      if (!ok) complete = false;
-    }
-    discardCard(room, real);
-    if (room.phase === 'COMBAT') resetCombatPasses(room);
+    const after = room.phase === 'ESCAPE' ? 'CONTINUE_ESCAPE' : 'CONTINUE';
     announce(room, 'hex', 'Hex Played', `${player.name} played ${real.publicName} on ${target.name}.`, real, { importance: 'major' });
     log(room, `${player.name} played Hex: ${real.publicName} on ${target.name}.${room.phase === 'COMBAT' ? ' Everyone must confirm again.' : ''}`);
+    if (startHexCancelReactionIfAvailable(room, real, target, after, 'PLAYED')) return;
+    completeHexResolution(room, real, target, after);
+    if (room.phase === 'COMBAT') resetCombatPasses(room);
     return;
   }
 
@@ -2260,5 +2442,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.6.4 economy and attachments listening on ${PORT}`);
+  console.log(`Loot Goblins v0.6.5 reaction and dice system listening on ${PORT}`);
 });
