@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV043Session';
+const SESSION_KEY = 'lootGoblinsV050Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -535,7 +535,13 @@ function confirmTribute() {
 function isCardPlayable(card) {
   if (!state || !card) return false;
   if (state.pendingPrompt) return false;
-  if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR' || card.type === 'SPECIAL') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase);
+  if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase);
+  if (card.type === 'SPECIAL') {
+    const timing = card.timing || [];
+    if (timing.includes('ANY_TIME')) return true;
+    if (timing.includes('DURING_COMBAT')) return state.phase === 'COMBAT';
+    return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase);
+  }
   if (card.type === 'THREAT') return isMyTurn() && state.phase === 'NO_THREAT_CHOICE';
   if (card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') return state.phase === 'COMBAT';
   if (card.type === 'HEX') return state.phase === 'COMBAT' && (card.timing || []).includes('DURING_COMBAT');
@@ -652,7 +658,11 @@ function cardActions(card) {
   if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
   if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
   if (card.type === 'HEX') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Hex</button>`);
-  if (card.type === 'SPECIAL' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
+  if (card.type === 'SPECIAL') {
+    const timing = card.timing || [];
+    const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase));
+    if (canSpecial) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
+  }
   if (!actions.length) actions.push(`<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`);
   return actions.join('');
 }

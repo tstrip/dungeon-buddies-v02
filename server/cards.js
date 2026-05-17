@@ -1,197 +1,208 @@
+// Loot Goblins v0.5 — Classic Card Database Rework
+// Mechanical baseline: classic Munchkin-style rules and the clearer English source card sheets provided by the user.
+// Names, rules wording, and flavor are original Loot Goblins presentation.
+
+const role = (id, publicName, publicText, flavorText, mechanicalSlot, copies = 1) => ({ id, deck: 'CHAMBER', type: 'ROLE', publicName, publicText, flavorText, mechanicalSlot, enforcement: 'GUIDED', copies });
+const origin = (id, publicName, publicText, flavorText, mechanicalSlot, copies = 1) => ({ id, deck: 'CHAMBER', type: 'ORIGIN', publicName, publicText, flavorText, mechanicalSlot, enforcement: 'GUIDED', copies });
+const foe = (id, publicName, strength, lootReward, consequence, opts = {}) => ({
+  id, deck: 'CHAMBER', type: 'THREAT', publicName, strength,
+  renownReward: opts.renownReward || 1, lootReward,
+  publicText: opts.publicText || `Defeat this Foe to gain ${opts.renownReward || 1} Glory and draw ${lootReward} Loot.${opts.badNewsText ? ` Bad News: ${opts.badNewsText}` : ''}`,
+  flavorText: opts.flavorText || 'The dungeon insists this is normal.',
+  tags: opts.tags || [], specialRules: opts.specialRules || [], willNotPursue: opts.willNotPursue || [],
+  consequence: consequence || { type: 'MANUAL_PROMPT' }, enforcement: opts.enforcement || 'AUTO', copies: opts.copies || 1
+});
+const hex = (id, publicName, publicText, flavorText, effects, copies = 1, enforcement = 'AUTO') => ({
+  id, deck: 'CHAMBER', type: 'HEX', publicName, publicText, flavorText,
+  timing: ['ON_REVEAL', 'ANY_TIME'], target: 'ANY_PLAYER', effects, enforcement, copies
+});
+const mod = (id, publicName, strengthDelta, lootDelta, flavorText, copies = 1) => ({
+  id, deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName,
+  publicText: `Play during combat. Attach to a Foe. That Foe gets ${strengthDelta > 0 ? '+' : ''}${strengthDelta} strength and is worth ${lootDelta > 0 ? '+' : ''}${lootDelta} Loot.`,
+  flavorText, timing: ['DURING_COMBAT'], target: 'ACTIVE_FOE', strengthDelta, lootDelta,
+  discardAfterCombat: true, enforcement: 'AUTO', copies
+});
+const gear = (id, publicName, publicText, flavorText, stats = {}) => ({
+  id, deck: 'LOOT', type: 'GEAR', publicName, publicText, flavorText,
+  slot: stats.slot || 'NO_SLOT', handsUsed: stats.handsUsed || 0, combatBonus: stats.combatBonus || 0,
+  escapeBonus: stats.escapeBonus || 0, scrapValue: stats.junkValue ?? 0, junkValue: stats.junkValue ?? 0,
+  isHeavy: Boolean(stats.isHeavy), extraHands: stats.extraHands || 0,
+  usableByCallings: stats.usableByCallings || [], notUsableByCallings: stats.notUsableByCallings || [],
+  usableByOrigins: stats.usableByOrigins || [], notUsableByOrigins: stats.notUsableByOrigins || [],
+  manualRestriction: Boolean(stats.manualRestriction), enforcement: stats.enforcement || 'AUTO', copies: stats.copies || 1
+});
+const trick = (id, publicName, publicText, flavorText, effect, stats = {}) => ({
+  id, deck: 'LOOT', type: 'TRICK', publicName, publicText, flavorText,
+  timing: stats.timing || ['DURING_COMBAT'], target: stats.target || 'COMBAT_SIDE', effect,
+  scrapValue: stats.junkValue ?? 0, junkValue: stats.junkValue ?? 0, enforcement: stats.enforcement || 'AUTO', copies: stats.copies || 1
+});
+const special = (id, publicName, publicText, flavorText, effect, stats = {}) => ({
+  id, deck: stats.deck || 'LOOT', type: 'SPECIAL', publicName, publicText, flavorText,
+  timing: stats.timing || ['OWN_TURN_OUTSIDE_COMBAT'], target: stats.target || 'SELF', effect,
+  scrapValue: stats.junkValue ?? 0, junkValue: stats.junkValue ?? 0, enforcement: stats.enforcement || 'AUTO', copies: stats.copies || 1
+});
+
 const chamberCards = [
-  // Callings
-  {
-    id: 'CALLING_BRUISER', deck: 'CHAMBER', type: 'ROLE', publicName: 'Bruiser', mechanicalSlot: 'WARRIOR_EQUIV',
-    publicText: 'In combat, you may discard up to 3 cards for +1 combat bonus each. You win tied combats.',
-    flavorText: 'A practical Calling for anyone who believes every puzzle has a door-shaped solution.',
-    enforcement: 'GUIDED'
-  },
-  {
-    id: 'CALLING_HEXHAND', deck: 'CHAMBER', type: 'ROLE', publicName: 'Hexhand', mechanicalSlot: 'WIZARD_EQUIV',
-    publicText: 'During combat, if you have at least 3 cards in hand, you may discard your whole hand to remove one Foe. Gain its Loot, but no Glory. After failing to Flee, you may discard cards for +1 to the roll each.',
-    flavorText: 'Magic is mostly confidence, hand gestures, and cleaning up later.',
-    enforcement: 'GUIDED'
-  },
-  {
-    id: 'CALLING_CUTPURSE', deck: 'CHAMBER', type: 'ROLE', publicName: 'Cutpurse', mechanicalSlot: 'THIEF_EQUIV',
-    publicText: 'During another player’s combat, discard 1 card to give that player -2. On your own turn outside combat, discard 1 card to attempt to steal non-Heavy Gear from another player. Succeed on 4+. On failure, lose 1 Glory.',
-    flavorText: 'Believes sharing is important, especially when other people start.',
-    enforcement: 'GUIDED'
-  },
-  {
-    id: 'CALLING_GRAVEFRIEND', deck: 'CHAMBER', type: 'ROLE', publicName: 'Gravefriend', mechanicalSlot: 'CLERIC_EQUIV',
-    publicText: 'When drawing face-up, you may discard cards to draw from the matching discard pile instead. Against Restless Foes, you may discard up to 3 cards for +3 combat bonus each.',
-    flavorText: 'Keeps in touch with old friends, even the very old ones.',
-    enforcement: 'GUIDED'
-  },
+  // Callings / Classes
+  role('CALLING_BRUISER', 'Bruiser', 'You win tied combats. Berserking: during combat, you may discard up to 3 cards; each gives you +3 for that combat. In this build, resolve discards manually.', 'A practical Calling for anyone who believes every puzzle has a door-shaped solution.', 'WARRIOR_EQUIV', 2),
+  role('CALLING_HEXHAND', 'Hexhand', 'Flight: you may discard up to 3 cards after failing to Flee; each gives +1 to one retry. Charm: discard your whole hand, minimum 3 cards, to remove one Foe and take its Loot but no Glory. Manual in this build.', 'Magic is mostly confidence, hand gestures, and cleaning up later.', 'WIZARD_EQUIV', 2),
+  role('CALLING_CUTPURSE', 'Cutpurse', 'Backstab: discard 1 card during combat to give a player -2. Theft: outside combat, discard 1 card and roll; 4+ steals one small Gear, failure loses 1 Glory. Manual in this build.', 'Believes sharing is important, especially when other people start.', 'THIEF_EQUIV', 3),
+  role('CALLING_GRAVEFRIEND', 'Gravefriend', 'Resurrection: when drawing face-up, you may take from the matching discard instead, then pay the cost. Turning: discard up to 3 cards against a Restless Foe for +3 each. Manual in this build.', 'Keeps in touch with old friends, even the very old ones.', 'CLERIC_EQUIV', 3),
 
-  // Kin
-  {
-    id: 'KIN_BRIGHTKIN', deck: 'CHAMBER', type: 'ORIGIN', publicName: 'Brightkin', mechanicalSlot: 'ELF_EQUIV',
-    publicText: 'You get +1 to Flee. When you help another player defeat a Foe, gain 1 Glory. This cannot give you the final winning Glory.',
-    flavorText: 'Graceful, helpful, and only a little pleased that everyone noticed.',
-    enforcement: 'AUTO'
-  },
-  {
-    id: 'KIN_DEEPBORN', deck: 'CHAMBER', type: 'ORIGIN', publicName: 'Deepborn', mechanicalSlot: 'DWARF_EQUIV',
-    publicText: 'Your hand limit is 6. You may carry one extra Heavy Gear.',
-    flavorText: 'Packs like every errand might become an expedition.',
-    enforcement: 'AUTO'
-  },
-  {
-    id: 'KIN_HALFSTEP', deck: 'CHAMBER', type: 'ORIGIN', publicName: 'Halfstep', mechanicalSlot: 'HALFLING_EQUIV',
-    publicText: 'Once per turn, one Gear card you sell counts for double Junk Value. Selling cannot give you the final winning Glory.',
-    flavorText: 'Small pockets, excellent receipts.',
-    enforcement: 'GUIDED'
-  },
+  // Kin / Races
+  origin('KIN_BRIGHTKIN', 'Brightkin', '+1 to Flee. When you help kill a Foe, gain 1 Glory for each Foe killed, but this cannot force the final winning Glory.', 'Graceful, helpful, and only a little pleased that everyone noticed.', 'ELF_EQUIV', 3),
+  origin('KIN_DEEPBORN', 'Deepborn', 'You may carry any number of Heavy Gear. Your hand limit is 6.', 'Packs like every errand might become an expedition.', 'DWARF_EQUIV', 3),
+  origin('KIN_HALFSTEP', 'Halfstep', 'Once each turn, you may sell one Gear for double Junk Value. If your first Flee roll fails, you may discard 1 card and try once more. Manual reroll in this build.', 'Small pockets, excellent receipts.', 'HALFLING_EQUIV', 3),
 
-  // Foes
-  {
-    id: 'FOE_LOW_001', deck: 'CHAMBER', type: 'THREAT', publicName: 'Basement Goblin', strength: 1, renownReward: 1, lootReward: 1,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 1 Loot. Bad News: Lose 1 Glory, to a minimum of 1.',
-    flavorText: 'Lives under the stairs and considers that a leadership position.',
-    tags: [], consequence: { type: 'LOSE_RENOWN', amount: 1, minimum: 1 }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_LOW_002', deck: 'CHAMBER', type: 'THREAT', publicName: 'Candle Slime', strength: 2, renownReward: 1, lootReward: 1,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 1 Loot. Bad News: Discard 1 random card.',
-    flavorText: 'Warm, wobbly, and gently ruining the carpet.',
-    tags: [], consequence: { type: 'DISCARD_FROM_HAND', count: 1, method: 'RANDOM' }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_LOW_003', deck: 'CHAMBER', type: 'THREAT', publicName: 'Rust Bat', strength: 3, renownReward: 1, lootReward: 1,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 1 Loot. Bad News: Discard one equipped Hand Gear, if you have any.',
-    flavorText: 'Mostly wings, teeth, and opinions about metal.',
-    tags: [], consequence: { type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'HAND', choice: 'PLAYER' }, enforcement: 'GUIDED'
-  },
-  {
-    id: 'FOE_LOW_RESTLESS_001', deck: 'CHAMBER', type: 'THREAT', publicName: 'Little Bone Guy', strength: 4, renownReward: 1, lootReward: 1,
-    publicText: 'Restless. Defeat this Foe to gain 1 Glory and draw 1 Loot. Bad News: Lose your Calling.',
-    flavorText: 'Small skeleton. Big schedule.',
-    tags: ['RESTLESS'], consequence: { type: 'LOSE_ROLE' }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_LOW_004', deck: 'CHAMBER', type: 'THREAT', publicName: 'Hallway Gremlin', strength: 4, renownReward: 1, lootReward: 2,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 2 Loot. Bad News: Discard 2 cards from your hand.',
-    flavorText: 'Not dangerous alone, but extremely committed to making the hallway worse.',
-    tags: [], consequence: { type: 'DISCARD_FROM_HAND', count: 2, method: 'PLAYER_CHOICE' }, enforcement: 'GUIDED'
-  },
-  {
-    id: 'FOE_MIDLOW_001', deck: 'CHAMBER', type: 'THREAT', publicName: 'Moss Troll', strength: 6, renownReward: 1, lootReward: 2,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 2 Loot. This Foe will not pursue players below 3 Glory. Bad News: Lose 1 Glory.',
-    flavorText: 'Patient, mossy, and somehow already disappointed in you.',
-    tags: [], willNotPursue: [{ type: 'RENOWN_BELOW', value: 3 }], consequence: { type: 'LOSE_RENOWN', amount: 1, minimum: 1 }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_MIDLOW_002', deck: 'CHAMBER', type: 'THREAT', publicName: 'Chest With Opinions', strength: 7, renownReward: 1, lootReward: 2,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 2 Loot. Bad News: Discard one Gear you have in play.',
-    flavorText: 'It was pretending to be treasure, but only because it had notes.',
-    tags: [], consequence: { type: 'DISCARD_GEAR', target: 'PUBLIC_GEAR', slot: 'ANY', choice: 'PLAYER' }, enforcement: 'GUIDED'
-  },
-  {
-    id: 'FOE_MIDLOW_004', deck: 'CHAMBER', type: 'THREAT', publicName: 'Hallway Ogre', strength: 10, renownReward: 1, lootReward: 3,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 3 Loot. Bad News: Lose 2 Glory, to a minimum of 1.',
-    flavorText: 'Too big for the hallway, too proud to turn sideways.',
-    tags: [], consequence: { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_MIDLOW_RESTLESS_002', deck: 'CHAMBER', type: 'THREAT', publicName: 'Restless Knight', strength: 10, renownReward: 1, lootReward: 3,
-    publicText: 'Restless. Defeat this Foe to gain 1 Glory and draw 3 Loot. Bad News: Discard one equipped Gear.',
-    flavorText: 'Still defending the realm, though no one is quite sure which realm.',
-    tags: ['RESTLESS'], consequence: { type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'ANY', choice: 'PLAYER' }, enforcement: 'GUIDED'
-  },
-  {
-    id: 'FOE_MID_001', deck: 'CHAMBER', type: 'THREAT', publicName: 'Mirror Knight', strength: 12, renownReward: 1, lootReward: 3,
-    publicText: 'This Foe gets +4 strength against Bruisers. Defeat it to gain 1 Glory and draw 3 Loot. Bad News: Discard one equipped Hand Gear.',
-    flavorText: 'Very brave, especially when you are.',
-    tags: [], specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'WARRIOR_EQUIV', amount: 4 }], consequence: { type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'HAND', choice: 'PLAYER' }, enforcement: 'GUIDED'
-  },
-  {
-    id: 'FOE_MID_002', deck: 'CHAMBER', type: 'THREAT', publicName: 'The Hungry Door', strength: 13, renownReward: 1, lootReward: 3,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 3 Loot. Bad News: Discard your hand.',
-    flavorText: 'Technically a door. Practically a mouth with hinges.',
-    tags: [], consequence: { type: 'DISCARD_HAND', count: 'ALL' }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_MID_003', deck: 'CHAMBER', type: 'THREAT', publicName: 'Bog Hydra', strength: 14, renownReward: 1, lootReward: 4,
-    publicText: 'Defeat this Foe to gain 1 Glory and draw 4 Loot. Bad News: Lose 2 Glory, to a minimum of 1.',
-    flavorText: 'Every head has a plan. None of them checked with the others.',
-    tags: [], consequence: { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, enforcement: 'AUTO'
-  },
-  {
-    id: 'FOE_HIGH_002', deck: 'CHAMBER', type: 'THREAT', publicName: 'Paper Crown Dragon', strength: 18, renownReward: 2, lootReward: 5,
-    publicText: 'If the active player has 8 or more Glory, this Foe gets +5 strength. Defeat it to gain 2 Glory and draw 5 Loot. Bad News: You are Knocked Out.',
-    flavorText: 'The crown is paper. The fire is not.',
-    tags: [], specialRules: [{ type: 'BONUS_IF_ACTIVE_RENOWN_AT_LEAST', value: 8, amount: 5 }], consequence: { type: 'KNOCKOUT' }, enforcement: 'GUIDED'
-  },
-  {
-    id: 'FOE_BOSS_001', deck: 'CHAMBER', type: 'THREAT', publicName: 'The Very Large Problem', strength: 20, renownReward: 2, lootReward: 5,
-    publicText: 'Defeat this Foe to gain 2 Glory and draw 5 Loot. Bad News: You are Knocked Out.',
-    flavorText: 'It is less a monster and more an event with teeth.',
-    tags: [], consequence: { type: 'KNOCKOUT' }, enforcement: 'GUIDED'
-  },
+  // Role expanders and rule cards
+  special('SPECIAL_MIXED_KIN', 'Mixed Kin Permit', 'Attach to a Kin. You may have an extra Kin. With one Kin, keep its advantages and ignore its drawbacks. With two or more, all normal advantages and drawbacks apply. Manual in this build.', 'Every branch of the family tree brought paperwork.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'MANUAL', copies: 2 }),
+  special('SPECIAL_OVERQUALIFIED', 'Overqualified', 'Attach to a Calling. You may have an extra Calling. With one Calling, keep its advantages and ignore its drawbacks. With two or more, all normal advantages and drawbacks apply. Manual in this build.', 'Twice the training. Half the schedule discipline.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'MANUAL', copies: 2 }),
+  special('SPECIAL_FINE_PRINT_PERMIT', 'Fine Print Permit', 'Attach this to one Gear. That Gear is legal for you even if it normally would not be. If you lose the Gear, lose this card too. Manual in this build.', 'It says “approved” in a font too small to challenge.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'MANUAL' }),
+  special('SPECIAL_UNEXPECTED_COMPANY_A', 'Unexpected Company', 'Play during combat with a Foe from your hand. That Foe joins the combat. Defeat the combined Foe side or Flee from each Foe. Manual in this build.', 'The room was already full, but apparently had standards to lower.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['DURING_COMBAT'], enforcement: 'MANUAL', copies: 3 }),
+  special('SPECIAL_MATCHING_PROBLEM', 'Matching Problem', 'A second copy of the current Foe appears. It has the same modifiers and rewards. Manual in this build.', 'One problem became two and looked proud of itself.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['DURING_COMBAT'], enforcement: 'MANUAL' }),
 
-  // Hexes
-  { id: 'HEX_LOSE_GLORY_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Reputation Leak', publicText: 'Lose 1 Glory, to a minimum of 1.', flavorText: 'The dungeon heard your story and made some edits.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'LOSE_RENOWN', amount: 1, minimum: 1 }], enforcement: 'AUTO' },
-  { id: 'HEX_LOSE_CALLING_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Career Crisis', publicText: 'Lose your Calling. If you do not have a Calling, nothing happens.', flavorText: 'The dungeon appreciates your service and has accepted your resignation.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'LOSE_ROLE' }], enforcement: 'AUTO' },
-  { id: 'HEX_LOSE_KIN_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Identity Audit', publicText: 'Lose your Kin. If you do not have Kin, nothing happens.', flavorText: 'Please provide three forms of ancestry and one small apology.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'LOSE_ORIGIN' }], enforcement: 'AUTO' },
-  { id: 'HEX_LOSE_HEAD_GEAR_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Hat Problem', publicText: 'Discard one equipped Head Gear. If you have none, nothing happens.', flavorText: 'Your head remains. The situation around it has changed.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'HEAD', choice: 'PLAYER' }], enforcement: 'GUIDED' },
-  { id: 'HEX_LOSE_BODY_GEAR_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Wardrobe Malfunction', publicText: 'Discard one equipped Body Gear. If you have none, nothing happens.', flavorText: 'The armor did its best and would like that noted.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'BODY', choice: 'PLAYER' }], enforcement: 'GUIDED' },
-  { id: 'HEX_LOSE_FOOT_GEAR_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Floor Disagreement', publicText: 'Discard one equipped Foot Gear. If you have none, nothing happens.', flavorText: 'The floor has filed a formal complaint about your footwear.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'FEET', choice: 'PLAYER' }], enforcement: 'GUIDED' },
-  { id: 'HEX_DISCARD_RANDOM_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Butterfingers', publicText: 'Discard 1 random card from your hand.', flavorText: 'You briefly owned that card. That was nice.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'DISCARD_FROM_HAND', count: 1, method: 'RANDOM' }], enforcement: 'AUTO' },
-  { id: 'HEX_LOSE_ANY_GEAR_001', deck: 'CHAMBER', type: 'HEX', publicName: 'Inventory Incident', publicText: 'Discard one Gear you have in play.', flavorText: 'Something fell out of somewhere. Nobody is proud of the investigation.', timing: ['ON_REVEAL'], target: 'ACTIVE_PLAYER', effects: [{ type: 'DISCARD_GEAR', target: 'PUBLIC_GEAR', slot: 'ANY', choice: 'PLAYER' }], enforcement: 'GUIDED' },
+  // Foe modifiers / monster enhancers
+  mod('FOE_MOD_PLUS_005_LOOT_001', 'Annoyingly Prepared', 5, 1, 'It brought snacks, maps, and a backup plan with tiny labels.', 2),
+  mod('FOE_MOD_PLUS_005_LOOT_002', 'Suspiciously Clever', 5, 1, 'It read one book and immediately became everyone’s problem.'),
+  mod('FOE_MOD_PLUS_010_LOOT_002', 'Unreasonably Ancient', 10, 2, 'The dungeon insists it has always been this old.', 1),
+  mod('FOE_MOD_PLUS_010_LOOT_003', 'Humongous', 10, 2, 'A size upgrade no one ordered and everyone noticed.'),
+  mod('FOE_MOD_MINUS_005_LOOT_MINUS_001', 'Baby Version', -5, -1, 'Smaller, wobblier, and still somehow scheduled for combat.'),
 
-  // Foe Modifiers
-  { id: 'FOE_MOD_PLUS_005_LOOT_001', deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName: 'Annoyingly Prepared', publicText: 'Play during combat. Attach to a Foe. That Foe gets +5 strength and is worth +1 Loot.', flavorText: 'It brought snacks, maps, and a backup plan with tiny labels.', timing: ['DURING_COMBAT'], target: 'ACTIVE_THREAT', strengthDelta: 5, lootDelta: 1, enforcement: 'AUTO' },
-  { id: 'FOE_MOD_PLUS_005_LOOT_002', deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName: 'Recently Promoted', publicText: 'Play during combat. Attach to a Foe. That Foe gets +5 strength and is worth +1 Loot.', flavorText: 'Nobody knows what the new title means, but it came with a bigger badge.', timing: ['DURING_COMBAT'], target: 'ACTIVE_THREAT', strengthDelta: 5, lootDelta: 1, enforcement: 'AUTO' },
-  { id: 'FOE_MOD_PLUS_010_LOOT_002', deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName: 'Unreasonably Huge', publicText: 'Play during combat. Attach to a Foe. That Foe gets +10 strength and is worth +2 Loot.', flavorText: 'The dungeon insists it was always this size.', timing: ['DURING_COMBAT'], target: 'ACTIVE_THREAT', strengthDelta: 10, lootDelta: 2, enforcement: 'AUTO' },
-  { id: 'FOE_MOD_PLUS_010_LOOT_004', deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName: 'Wearing the Good Armor', publicText: 'Play during combat. Attach to a Foe. That Foe gets +10 strength and is worth +2 Loot.', flavorText: 'Usually saved for weddings, sieges, and difficult Tuesdays.', timing: ['DURING_COMBAT'], target: 'ACTIVE_THREAT', strengthDelta: 10, lootDelta: 2, enforcement: 'AUTO' },
-  { id: 'FOE_MOD_MINUS_005_LOOT_MINUS_001', deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName: 'Very Tired', publicText: 'Play during combat. Attach to a Foe. That Foe gets -5 strength and is worth -1 Loot, to a minimum of 1 Loot.', flavorText: 'It still wants to fight. It would just prefer a chair.', timing: ['DURING_COMBAT'], target: 'ACTIVE_THREAT', strengthDelta: -5, lootDelta: -1, minimumLoot: 1, enforcement: 'AUTO' },
-  { id: 'FOE_MOD_PLUS_020_LOOT_004', deck: 'CHAMBER', type: 'THREAT_MODIFIER', publicName: 'Absolutely Too Much', publicText: 'Play during combat. Attach to a Foe. That Foe gets +20 strength and is worth +4 Loot.', flavorText: 'At some point, the dungeon stopped balancing encounters and started expressing itself.', timing: ['DURING_COMBAT'], target: 'ACTIVE_THREAT', strengthDelta: 20, lootDelta: 4, enforcement: 'AUTO' },
+  // Hexes / Curses
+  hex('HEX_LOSE_LEVEL', 'Reputation Leak', 'Lose 1 Glory, to a minimum of 1.', 'The dungeon heard your story and made some edits.', [{ type: 'LOSE_RENOWN', amount: 1, minimum: 1 }], 2),
+  hex('HEX_LOSE_TWO_CARDS', 'Loose Pockets', 'Discard 2 cards from your hand.', 'Everything important chose the same moment to become slippery.', [{ type: 'DISCARD_FROM_HAND', count: 2, method: 'PLAYER_CHOICE' }], 1, 'GUIDED'),
+  hex('HEX_LOSE_CLASS', 'Career Crisis', 'Lose your Calling. If you have no Calling, lose 1 Glory instead.', 'The dungeon appreciates your service and has accepted your resignation.', [{ type: 'LOSE_ROLE' }], 2),
+  hex('HEX_LOSE_RACE', 'Identity Audit', 'Lose your Kin. If you have no Kin, nothing happens.', 'Please provide three forms of ancestry and one small apology.', [{ type: 'LOSE_ORIGIN' }], 1),
+  hex('HEX_CHANGE_CLASS', 'Career Rerouting', 'If you have no Calling, this has no effect. Otherwise, discard your Calling and reveal Chamber cards until you find a Calling to replace it. Manual in this build.', 'A new opportunity appeared with suspicious urgency.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_CHANGE_RACE', 'Kin Shuffle', 'If you have no Kin, this has no effect. Otherwise, discard your Kin and reveal Chamber cards until you find a Kin to replace it. Manual in this build.', 'Your family tree was reorganized without a meeting.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_CHANGE_STYLE', 'Mirror Mix-Up', '-5 to your next combat due to distraction, then no further penalty. This identity change is permanent for table flavor only.', 'The mirror did not ask permission before making notes.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_LOSE_HEADGEAR', 'Hat Problem', 'Discard the Head Gear you are wearing. If none, nothing happens.', 'Your head remains. The situation around it has changed.', [{ type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'HEAD', choice: 'PLAYER' }], 1, 'GUIDED'),
+  hex('HEX_LOSE_FOOTGEAR', 'Floor Disagreement', 'Discard the Foot Gear you are wearing. If none, nothing happens.', 'The floor has filed a formal complaint about your footwear.', [{ type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'FEET', choice: 'PLAYER' }], 1, 'GUIDED'),
+  hex('HEX_LOSE_ARMOR', 'Armor Incident', 'Discard the Body Gear you are wearing. If none, nothing happens.', 'The armor did its best and would like that noted.', [{ type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'BODY', choice: 'PLAYER' }], 1, 'GUIDED'),
+  hex('HEX_LOSE_SMALL_ITEM_A', 'Lose One Small Thing', 'Choose one non-Heavy Gear to discard.', 'A tiny tragedy with excellent timing.', [{ type: 'DISCARD_GEAR', target: 'PUBLIC_GEAR', slot: 'ANY', choice: 'PLAYER' }], 2, 'GUIDED'),
+  hex('HEX_LOSE_BIG_ITEM', 'Lose One Heavy Thing', 'Choose one Heavy Gear to discard. If none, nothing happens. Manual if needed.', 'Something large has chosen independence.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_LOSE_BEST_ITEM', 'Lose the Favorite', 'Discard the Gear giving you the biggest bonus. Manual in this build.', 'The dungeon has excellent taste and terrible boundaries.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_INCOME_TAX', 'Dungeon Tax Day', 'Each player discards one Gear of their choice. If someone has none, they lose 1 Glory. Manual in this build.', 'The forms are in triplicate. The rage is not.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_CHICKEN_ON_HEAD', 'Bird on Your Head', '-1 to all die rolls until a Hex or Bad News removes your Head Gear. Manual in this build.', 'It is not helpful, but it is committed.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_MALIGN_MIRROR', 'Unfriendly Mirror', 'In your next combat only, you may not count Gear bonuses except Body Gear. Manual in this build.', 'The reflection has feedback and none of it is useful.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
+  hex('HEX_DUCK_OF_DOOM', 'Doom Duck', 'Lose 2 Glory, to a minimum of 1.', 'You knew better than to pick it up. It knew that too.', [{ type: 'LOSE_RENOWN', amount: 2, minimum: 1 }], 1),
+  hex('HEX_LOCAL_RULES', 'Local Ordinance', 'Resolve this strange table-wide Hex manually.', 'Posted clearly in a hallway nobody survived reading.', [{ type: 'MANUAL_PROMPT' }], 1, 'MANUAL'),
 
-  // Chamber Specials
-  { id: 'SPECIAL_GAIN_GLORY_001', deck: 'CHAMBER', type: 'SPECIAL', publicName: 'Publicity Stunt', publicText: 'Play on your turn outside combat. Gain 1 Glory. This cannot give you the final winning Glory.', flavorText: 'Not heroic exactly, but everyone did look.', timing: ['OWN_TURN_OUTSIDE_COMBAT'], target: 'SELF', effect: { type: 'GAIN_RENOWN', amount: 1, canWin: false }, enforcement: 'AUTO' },
-  { id: 'SPECIAL_EXTRA_CALLING_SLOT_001', deck: 'CHAMBER', type: 'SPECIAL', publicName: 'Double Major', publicText: 'You may have one extra Calling. In this build, resolve the extra Calling slot manually.', flavorText: 'Twice the training. Half the schedule discipline.', timing: ['OWN_TURN_OUTSIDE_COMBAT'], target: 'SELF', effect: { type: 'MANUAL_PROMPT' }, enforcement: 'MANUAL' },
-  { id: 'SPECIAL_MANUAL_TABLE_001', deck: 'CHAMBER', type: 'SPECIAL', publicName: 'Local Rule', publicText: 'Resolve this card with the table, then confirm.', flavorText: 'Posted clearly in a room nobody admits entering.', timing: ['MANUAL'], target: 'TABLE', effect: { type: 'MANUAL_PROMPT' }, enforcement: 'MANUAL' }
+  // Foes / Monsters
+  foe('FOE_CRABS', 'Pinch Crabs', 1, 1, { type: 'MANUAL_PROMPT' }, { badNewsText: 'Discard Body Gear and all Gear worn below the waist.', publicText: 'Cannot be Fled from. Defeat this Foe to gain 1 Glory and draw 1 Loot. Bad News: discard Body Gear and all Gear worn below the waist. Manual in this build.', flavorText: 'Small, sideways, and completely uninterested in negotiation.', enforcement: 'MANUAL' }),
+  foe('FOE_LAME_GOBLIN', 'Limping Goblin', 1, 1, { type: 'LOSE_RENOWN', amount: 1, minimum: 1 }, { badNewsText: 'Lose 1 Glory.', publicText: '+1 to Flee. Defeat this Foe to gain 1 Glory and draw 1 Loot. Bad News: lose 1 Glory.', flavorText: 'Not fast, but deeply committed to making it weird.' }),
+  foe('FOE_POTTED_PLANT', 'Potted Plant', 1, 1, null, { badNewsText: 'None. Flee is automatic.', publicText: 'Brightkin draw +1 Loot after defeating it. Bad News: none. Flee is automatic.', flavorText: 'Technically hostile, but only in tone.', enforcement: 'MANUAL' }),
+  foe('FOE_MAUL_RAT', 'Maul Mouse', 1, 1, { type: 'LOSE_RENOWN', amount: 1, minimum: 1 }, { specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'CLERIC_EQUIV', amount: 3 }], badNewsText: 'Lose 1 Glory.', publicText: 'A little beast from below. +3 against Gravefriends. Defeat it for 1 Glory and 1 Loot. Bad News: lose 1 Glory.', flavorText: 'Tiny paws. Large agenda.' }),
+  foe('FOE_GELATINOUS', 'Gelatinous Eight-Sider', 2, 1, { type: 'MANUAL_PROMPT' }, { publicText: '+1 to Flee. Defeat it for 1 Glory and 1 Loot. Bad News: drop all Heavy Gear. Manual in this build.', flavorText: 'A cube would have been too predictable.', enforcement: 'MANUAL' }),
+  foe('FOE_FLYING_FROGS', 'Flying Frogs', 2, 1, { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, { publicText: '-1 to Flee. Defeat this Foe for 1 Glory and 1 Loot. Bad News: lose 2 Glory.', flavorText: 'They arrive loudly and leave damply.' }),
+  foe('FOE_MR_BONES', 'Dapper Bones', 2, 1, { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, { tags: ['RESTLESS'], publicText: 'Restless. If you must Flee, lose 1 Glory even if you escape. Bad News: lose 2 more Glory. Manual reminder in this build.', flavorText: 'Polite, skeletal, and late for something.', enforcement: 'MANUAL' }),
+  foe('FOE_LARGE_CHICKEN', 'Large Angry Chicken', 2, 1, { type: 'LOSE_RENOWN', amount: 1, minimum: 1 }, { publicText: 'Gain +1 extra Glory if you defeat it with fire or flame. Bad News: lose 1 Glory. Manual bonus in this build.', flavorText: 'Dinner has organized.', enforcement: 'MANUAL' }),
+  foe('FOE_PIT_BULL', 'Pit Beast', 2, 1, { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, { publicText: 'You may distract it by discarding Foot Gear, a wand, pole, or staff. Bad News: lose 2 Glory. Manual in this build.', flavorText: 'Less a guard dog, more a doorbell with teeth.', enforcement: 'MANUAL' }),
+  foe('FOE_LEPRECHAUN', 'Pocket Spriggan', 4, 2, { type: 'MANUAL_PROMPT' }, { specialRules: [{ type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'ELF_EQUIV', amount: 5 }], publicText: '+5 against Brightkin. Bad News: players on either side each take one Gear from you. Manual in this build.', flavorText: 'Cheerful in exactly the wrong way.', enforcement: 'MANUAL' }),
+  foe('FOE_HARPIES', 'Harpies', 4, 2, { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, { specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'WIZARD_EQUIV', amount: 5 }], publicText: 'Resists magic: +5 against Hexhands. Bad News: lose 2 Glory.', flavorText: 'Their music is real, really bad.' }),
+  foe('FOE_UNDEAD_HORSE', 'Restless Horse', 4, 2, { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, { tags: ['RESTLESS'], specialRules: [{ type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'DWARF_EQUIV', amount: 5 }], publicText: 'Restless. +5 against Deepborn. Bad News: lose 2 Glory.', flavorText: 'Kicks, bites, and smells like unfinished business.' }),
+  foe('FOE_SNAILS', 'Snails on Speed', 4, 2, { type: 'MANUAL_PROMPT' }, { publicText: '-2 to Flee. Bad News: roll a die and lose that many Gear or hand cards, your choice. Manual in this build.', flavorText: 'Slow reputation. Fast paperwork.', enforcement: 'MANUAL' }),
+  foe('FOE_SHRIEKING_GEEK', 'Shrieking Geek', 6, 2, { type: 'MANUAL_PROMPT' }, { specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'WARRIOR_EQUIV', amount: 6 }], publicText: '+6 against Bruisers. Bad News: become ordinary — discard any Calling and Kin. Manual in this build.', flavorText: 'Knows one fact and is willing to weaponize it.', enforcement: 'MANUAL' }),
+  foe('FOE_PLATYCORE', 'Platycore', 6, 2, { type: 'MANUAL_PROMPT' }, { specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'WIZARD_EQUIV', amount: 6 }], publicText: 'Resists magic: +6 against Hexhands. Bad News: discard your hand or lose 2 Glory. Manual in this build.', flavorText: 'A beak, wings, and several unanswered questions.', enforcement: 'MANUAL' }),
+  foe('FOE_LAWYERS', 'Contract Imps', 6, 2, { type: 'MANUAL_PROMPT' }, { publicText: 'Will not attack Cutpurses. A Cutpurse may discard 2 Loot cards to draw 2 new ones. Bad News: each other player draws a card from your hand. Manual in this build.', flavorText: 'Professional courtesy, weaponized.', enforcement: 'MANUAL' }),
+  foe('FOE_GHOULFIENDS', 'Ghoulfriends', 8, 2, { type: 'MANUAL_PROMPT' }, { publicText: 'No Gear bonuses help against them; fight with Glory only. Bad News: your Glory becomes equal to the lowest Glory in play. Manual in this build.', flavorText: 'They came as a group and brought matching energy.', enforcement: 'MANUAL' }),
+  foe('FOE_AMAZON', 'Blade Captain', 8, 2, { type: 'MANUAL_PROMPT' }, { publicText: 'May refuse to fight some players and give them 1 Loot instead. Bad News: lose your Calling(s); if none, lose 3 Glory. Manual in this build.', flavorText: 'A duel, a lecture, or a gift. Hard to predict.', enforcement: 'MANUAL' }),
+  foe('FOE_FACE_SUCKER', 'Face Sucker', 8, 2, { type: 'MANUAL_PROMPT' }, { specialRules: [{ type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'ELF_EQUIV', amount: 6 }], publicText: '+6 against Brightkin. Bad News: lose Head Gear, or lose 1 Glory if you have none. Manual in this build.', flavorText: 'A scarf with ambitions.' }),
+  foe('FOE_GAZEBO', 'Lonely Gazebo', 8, 2, { type: 'LOSE_RENOWN', amount: 3, minimum: 1 }, { publicText: 'No one can help you. You must face it alone. Bad News: lose 3 Glory.', flavorText: 'Architectural confidence at its worst.' }),
+  foe('FOE_FLOATING_NOSE', 'Hovering Nose', 10, 3, { type: 'LOSE_RENOWN', amount: 3, minimum: 1 }, { publicText: 'You may bribe it with Gear worth at least 200 Junk to leave. If you lose, you cannot Flee. Bad News: lose 3 Glory. Manual bribe in this build.', flavorText: 'It arrived before the rest of the monster and never apologized.', enforcement: 'MANUAL' }),
+  foe('FOE_NET_TROLL', 'Net Troll', 10, 3, { type: 'MANUAL_PROMPT' }, { publicText: 'No special powers, and very mad about it. Bad News: highest-Glory players each take one Gear from you. Manual in this build.', flavorText: 'A simple monster with complicated follow-up.' }),
+  foe('FOE_ORCS', 'A Lot of Orcs', 10, 3, { type: 'MANUAL_PROMPT' }, { specialRules: [{ type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'DWARF_EQUIV', amount: 6 }], publicText: '+6 against Deepborn. Bad News: roll a die; on 1-2, lose that many Glory; otherwise lose as many Glory as the die shows. Manual in this build.', flavorText: 'Nobody counted correctly, which is part of the problem.', enforcement: 'MANUAL' }),
+  foe('FOE_WANNABE_VAMPIRE', 'Wannabe Vampire', 12, 3, { type: 'LOSE_RENOWN', amount: 3, minimum: 1 }, { publicText: 'A Gravefriend may chase it away without gaining Glory, but draw its Loot. Bad News: lose 3 Glory.', flavorText: 'Very dramatic. Not quite certified.' }),
+  foe('FOE_BIGFOOT', 'Hugefoot', 12, 3, { type: 'DISCARD_GEAR', target: 'EQUIPPED_GEAR', slot: 'HEAD', choice: 'PLAYER' }, { specialRules: [{ type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'DWARF_EQUIV', amount: 3 }, { type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'HALFLING_EQUIV', amount: 3 }], publicText: '+3 against Deepborn and Halfsteps. Bad News: lose equipped Head Gear.', flavorText: 'The foot arrives before the explanation.' }),
+  foe('FOE_TONGUE_DEMON', 'Tongue Demon', 12, 3, { type: 'LOSE_RENOWN', amount: 2, minimum: 1 }, { specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'CLERIC_EQUIV', amount: 4 }], publicText: '+4 against Gravefriends. Bad News: lose 2 Glory; Brightkin lose 3. Manual Brightkin penalty in this build.', flavorText: 'A mouth with career goals.', enforcement: 'MANUAL' }),
+  foe('FOE_STONED_GOLEM', 'Mossy Golem', 14, 4, { type: 'KNOCKOUT' }, { publicText: 'You may choose not to fight and walk past it. Halfsteps must fight. Bad News: Knockout. Manual choice in this build.', flavorText: 'Patient enough to be mistaken for scenery.', enforcement: 'MANUAL' }),
+  foe('FOE_INSURANCE', 'Insurance Salesman', 14, 4, { type: 'MANUAL_PROMPT' }, { publicText: 'Fight him only with your Gear bonuses, not Glory. Bad News: lose 1000 Junk worth of Gear, or all you have. Manual in this build.', flavorText: 'Coverage begins after the screaming stops.', enforcement: 'MANUAL' }),
+  foe('FOE_HORROR', 'Unspeakable Hallway Horror', 14, 4, { type: 'KNOCKOUT' }, { specialRules: [{ type: 'BONUS_AGAINST_ROLE', roleMechanicalSlot: 'WARRIOR_EQUIV', amount: 4 }], publicText: '+4 against Bruisers. Bad News: Knockout unless you are a Hexhand and discard that Calling. Manual in this build.', flavorText: 'It has too many adjectives and most of them are teeth.', enforcement: 'MANUAL' }),
+  foe('FOE_HIPPOGRIFF', 'Hippogriff', 16, 4, { type: 'KNOCKOUT' }, { renownReward: 2, willNotPursue: [{ type: 'RENOWN_BELOW', value: 4 }], publicText: 'Will not pursue anyone below 4 Glory. Defeat it to gain 2 Glory and 4 Loot. Bad News: Knockout.', flavorText: 'Majestic from a distance. Administrative up close.' }),
+  foe('FOE_KING_TUT', 'Restless King', 16, 4, { type: 'MANUAL_PROMPT' }, { renownReward: 2, tags: ['RESTLESS'], willNotPursue: [{ type: 'RENOWN_BELOW', value: 4 }], publicText: 'Restless. Will not pursue anyone below 4 Glory. Higher-Glory players lose 2 Glory even if they escape. Bad News: lose all Gear and hand cards. Manual in this build.', flavorText: 'The crown is real. The patience is not.', enforcement: 'MANUAL' }),
+  foe('FOE_WIGHT_BROTHERS', 'Restless Brothers', 16, 4, { type: 'LOSE_RENOWN', amount: 99, minimum: 1 }, { renownReward: 2, tags: ['RESTLESS'], willNotPursue: [{ type: 'RENOWN_BELOW', value: 4 }], publicText: 'Restless. Will not pursue anyone below 4 Glory. Higher-Glory players lose 2 Glory even if they escape. Bad News: reduced to Glory 1.', flavorText: 'Family business. Terrible hours.' }),
+  foe('FOE_BULLROG', 'Bullrog', 18, 5, { type: 'KNOCKOUT' }, { renownReward: 2, willNotPursue: [{ type: 'RENOWN_BELOW', value: 5 }], publicText: 'Will not pursue anyone below 5 Glory. Defeat it to gain 2 Glory and 5 Loot. Bad News: Knockout.', flavorText: 'It is mostly fire and poor hallway planning.' }),
+  foe('FOE_SQUIDZILLA', 'Squidzilla', 18, 4, { type: 'KNOCKOUT' }, { renownReward: 2, specialRules: [{ type: 'BONUS_AGAINST_ORIGIN', originMechanicalSlot: 'ELF_EQUIV', amount: 4 }], willNotPursue: [{ type: 'RENOWN_BELOW', value: 5 }], publicText: '+4 against Brightkin. Will not pursue anyone below 5 Glory except Brightkin. Bad News: Knockout. Manual exception in this build.', flavorText: 'Slimy, dramatic, and weirdly selective.', enforcement: 'MANUAL' }),
+  foe('FOE_PLUTONIUM_DRAGON', 'Glowing Dragon', 20, 5, { type: 'KNOCKOUT' }, { renownReward: 2, willNotPursue: [{ type: 'RENOWN_BELOW', value: 6 }], publicText: 'Will not pursue anyone below 6 Glory. Defeat it to gain 2 Glory and 5 Loot. Bad News: Knockout.', flavorText: 'The treasure glows too, which seems relevant.' }),
 ];
 
 const lootCards = [
-  // Gear
-  { id: 'GEAR_HEAD_BASIC_001', deck: 'LOOT', type: 'GEAR', publicName: 'Bucket Helm', publicText: '+1 combat bonus. Head Gear.', flavorText: 'Originally a bucket. Promoted during an emergency.', slot: 'HEAD', handsUsed: 0, combatBonus: 1, escapeBonus: 0, scrapValue: 400, junkValue: 400, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HEAD_BASIC_002', deck: 'LOOT', type: 'GEAR', publicName: 'Bravery Hat', publicText: '+1 combat bonus. Head Gear.', flavorText: 'Doesn’t make you brave, but it does make hesitation look formal.', slot: 'HEAD', handsUsed: 0, combatBonus: 1, escapeBonus: 0, scrapValue: 400, junkValue: 400, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_BODY_BASIC_001', deck: 'LOOT', type: 'GEAR', publicName: 'Questionable Armor', publicText: '+2 combat bonus. Body Gear.', flavorText: 'Inspected, approved, and then quietly avoided by the inspector.', slot: 'BODY', handsUsed: 0, combatBonus: 2, escapeBonus: 0, scrapValue: 600, junkValue: 600, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_BODY_HEAVY_002', deck: 'LOOT', type: 'GEAR', publicName: 'The Big Coat', publicText: '+3 combat bonus. Body Gear. Heavy.', flavorText: 'Has more pockets than answers.', slot: 'BODY', handsUsed: 0, combatBonus: 3, escapeBonus: 0, scrapValue: 800, junkValue: 800, isHeavy: true, enforcement: 'AUTO' },
-  { id: 'GEAR_FEET_FLEE_001', deck: 'LOOT', type: 'GEAR', publicName: 'Boots of Leaving', publicText: 'Foot Gear. +1 combat bonus and +1 when you Flee.', flavorText: 'They know the way out and would love to discuss it.', slot: 'FEET', handsUsed: 0, combatBonus: 1, escapeBonus: 1, scrapValue: 400, junkValue: 400, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_FEET_COMBAT_001', deck: 'LOOT', type: 'GEAR', publicName: 'Boots of Bad Decisions', publicText: '+2 combat bonus. Foot Gear.', flavorText: 'Comfortable, durable, and rarely pointed in the correct direction.', slot: 'FEET', handsUsed: 0, combatBonus: 2, escapeBonus: 0, scrapValue: 500, junkValue: 500, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HAND_BASIC_001', deck: 'LOOT', type: 'GEAR', publicName: 'Pointy Stick', publicText: '+2 combat bonus. Uses 1 Hand.', flavorText: 'A classic for a reason, and the reason is “sharp end.”', slot: 'HAND', handsUsed: 1, combatBonus: 2, escapeBonus: 0, scrapValue: 400, junkValue: 400, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HAND_BASIC_002', deck: 'LOOT', type: 'GEAR', publicName: 'Management Sword', publicText: '+3 combat bonus. Uses 1 Hand.', flavorText: 'Excellent at cutting through red tape, provided the red tape has a health bar.', slot: 'HAND', handsUsed: 1, combatBonus: 3, escapeBonus: 0, scrapValue: 600, junkValue: 600, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HAND_TWO_HAND_001', deck: 'LOOT', type: 'GEAR', publicName: 'Bigger Pointy Stick', publicText: '+4 combat bonus. Uses 2 Hands.', flavorText: 'For when the first pointy stick made some good arguments.', slot: 'HAND', handsUsed: 2, combatBonus: 4, escapeBonus: 0, scrapValue: 800, junkValue: 800, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HAND_CUTPURSE_001', deck: 'LOOT', type: 'GEAR', publicName: 'Sneaky Little Knife', publicText: '+3 combat bonus. Uses 1 Hand. Usable only by Cutpurses.', flavorText: 'Small enough to misplace. Sharp enough to become everyone’s business.', slot: 'HAND', handsUsed: 1, combatBonus: 3, escapeBonus: 0, scrapValue: 400, junkValue: 400, usableByCallings: ['CALLING_CUTPURSE'], isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HAND_GRAVEFRIEND_001', deck: 'LOOT', type: 'GEAR', publicName: 'Holy Bonker', publicText: '+4 combat bonus. Uses 1 Hand. Usable only by Gravefriends.', flavorText: 'Ceremonial, technically. Very persuasive, practically.', slot: 'HAND', handsUsed: 1, combatBonus: 4, escapeBonus: 0, scrapValue: 600, junkValue: 600, usableByCallings: ['CALLING_GRAVEFRIEND'], isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_NO_SLOT_BASIC_001', deck: 'LOOT', type: 'GEAR', publicName: 'Suspicious Cape', publicText: '+1 combat bonus. No slot.', flavorText: 'Billows indoors, which everyone agrees is worth something.', slot: 'NO_SLOT', handsUsed: 0, combatBonus: 1, escapeBonus: 0, scrapValue: 300, junkValue: 300, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_STATUS_BONUS_001', deck: 'LOOT', type: 'GEAR', publicName: 'Tiny Crown', publicText: '+3 combat bonus. No slot.', flavorText: 'Not official, but surprisingly persuasive.', slot: 'NO_SLOT', handsUsed: 0, combatBonus: 3, escapeBonus: 0, scrapValue: 0, junkValue: 0, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_EXTRA_HAND_001', deck: 'LOOT', type: 'GEAR', publicName: 'Borrowed Third Hand', publicText: 'You have one extra Hand for equipping Hand Gear.', flavorText: 'Helpful, punctual, and not interested in discussing its past.', slot: 'NO_SLOT', handsUsed: 0, combatBonus: 0, escapeBonus: 0, extraHands: 1, scrapValue: 400, junkValue: 400, isHeavy: false, enforcement: 'AUTO' },
-  { id: 'GEAR_HEAVY_ODD_001', deck: 'LOOT', type: 'GEAR', publicName: 'Huge Useless Rock', publicText: '+3 combat bonus. Uses 2 Hands. Heavy.', flavorText: 'Too important to leave behind, for reasons no one has successfully explained.', slot: 'HAND', handsUsed: 2, combatBonus: 3, escapeBonus: 0, scrapValue: 0, junkValue: 0, isHeavy: true, enforcement: 'AUTO' },
-  { id: 'GEAR_NO_SLOT_TITLE_001', deck: 'LOOT', type: 'GEAR', publicName: 'Fancy Title', publicText: '+3 combat bonus. No slot.', flavorText: 'The title is ceremonial. The confidence is real.', slot: 'NO_SLOT', handsUsed: 0, combatBonus: 3, escapeBonus: 0, scrapValue: 0, junkValue: 0, isHeavy: false, enforcement: 'AUTO' },
+  // Persistent Gear / Items
+  gear('GEAR_HELM_COURAGE', 'Bucket Helm', '+1 combat bonus. Head Gear.', 'Originally a bucket. Promoted during an emergency.', { slot: 'HEAD', combatBonus: 1, junkValue: 200, copies: 1 }),
+  gear('GEAR_BADASS_BANDANA', 'Bravery Bandana', '+3 combat bonus. Head Gear. Table restriction from source card; resolve manually.', 'A serious cloth for unserious confidence.', { slot: 'HEAD', combatBonus: 3, junkValue: 400, manualRestriction: true }),
+  gear('GEAR_POINTY_HAT', 'Pointy Thinking Hat', '+3 combat bonus. Head Gear. Usable only by Hexhands.', 'The point helps ideas leave faster, which is not always ideal.', { slot: 'HEAD', combatBonus: 3, junkValue: 400, usableByCallings: ['CALLING_HEXHAND'] }),
+  gear('GEAR_HORNY_HELMET', 'Horned Panic Helm', '+1 combat bonus, or +3 if you are Brightkin. Head Gear. In this build, it gives +1; apply Brightkin bonus manually.', 'Elegant, dramatic, and best used in rooms with wide doorways.', { slot: 'HEAD', combatBonus: 1, junkValue: 600, enforcement: 'MANUAL' }),
+  gear('GEAR_LEATHER_ARMOR', 'Questionable Armor', '+1 combat bonus. Body Gear.', 'Inspected, approved, and then quietly avoided by the inspector.', { slot: 'BODY', combatBonus: 1, junkValue: 200 }),
+  gear('GEAR_SLIMY_ARMOR', 'Slimy Armor', '+1 combat bonus. Body Gear.', 'Hard to grab, easy to regret.', { slot: 'BODY', combatBonus: 1, junkValue: 200 }),
+  gear('GEAR_FLAMING_ARMOR', 'Flaming Armor', '+2 combat bonus. Body Gear.', 'Keeps enemies back and conversations short.', { slot: 'BODY', combatBonus: 2, junkValue: 400 }),
+  gear('GEAR_SHORT_WIDE_ARMOR', 'Short Wide Armor', '+3 combat bonus. Body Gear. Usable only by Deepborn.', 'Tailored for compact confidence.', { slot: 'BODY', combatBonus: 3, junkValue: 400, usableByOrigins: ['KIN_DEEPBORN'] }),
+  gear('GEAR_MITHRIL_ARMOR', 'Mirrorbright Armor', '+3 combat bonus. Body Gear. Heavy. Not usable by Hexhands.', 'So polished that enemies can see the exact moment they reconsider.', { slot: 'BODY', combatBonus: 3, junkValue: 600, isHeavy: true, notUsableByCallings: ['CALLING_HEXHAND'] }),
+  gear('GEAR_SANDALS_PROTECTION', 'Sandals of Protection', 'Foot Gear. Hexes drawn when opening a Chamber do not affect you, but Hexes played by other players still do. Manual in this build.', 'They know which floorboards are legally cursed.', { slot: 'FEET', combatBonus: 0, junkValue: 700, enforcement: 'MANUAL' }),
+  gear('GEAR_BOOTS_FAST', 'Boots of Leaving', '+2 to Flee. Foot Gear.', 'They know the way out and would love to discuss it.', { slot: 'FEET', escapeBonus: 2, junkValue: 400 }),
+  gear('GEAR_BOOTS_KICKING', 'Boots of Bad Decisions', '+2 combat bonus. Foot Gear.', 'Comfortable, durable, and rarely pointed in the correct direction.', { slot: 'FEET', combatBonus: 2, junkValue: 400 }),
+  gear('GEAR_SNEAKY_SWORD', 'Sneaky Little Sword', '+2 combat bonus. Uses 1 Hand.', 'Small enough to misplace. Sharp enough to become everyone’s business.', { slot: 'HAND', handsUsed: 1, combatBonus: 2, junkValue: 400 }),
+  gear('GEAR_BROAD_SWORD', 'Broad Sword', '+3 combat bonus. Uses 1 Hand. Table restriction from source card; resolve manually.', 'A classic shape with a lot of opinions.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, manualRestriction: true }),
+  gear('GEAR_RAT_STICK', 'Rat on a Stick', '+1 combat bonus. Uses 1 Hand. May be discarded for automatic escape from very low Foes. Manual in this build.', 'Better than nothing, in the way stairs are better than falling.', { slot: 'HAND', handsUsed: 1, combatBonus: 1, junkValue: 0, enforcement: 'MANUAL' }),
+  gear('GEAR_TUBA_CHARM', 'Tuba of Charm', '+3 to Flee. Uses 1 Hand. Heavy. If you escape, gain one hidden Loot on the way out. Manual treasure in this build.', 'Loud enough to count as a plan.', { slot: 'HAND', handsUsed: 1, escapeBonus: 3, junkValue: 300, isHeavy: true, enforcement: 'MANUAL' }),
+  gear('GEAR_STAFF_NAPALM', 'Boomstick Wand', '+5 combat bonus. Uses 1 Hand. Usable only by Hexhands.', 'For spells that prefer making an entrance.', { slot: 'HAND', handsUsed: 1, combatBonus: 5, junkValue: 800, usableByCallings: ['CALLING_HEXHAND'] }),
+  gear('GEAR_BOW_RIBBONS', 'Bow With Too Many Ribbons', '+4 combat bonus. Uses 2 Hands. Usable only by Brightkin.', 'Decorative until it is not.', { slot: 'HAND', handsUsed: 2, combatBonus: 4, junkValue: 800, usableByOrigins: ['KIN_BRIGHTKIN'] }),
+  gear('GEAR_ELEVEN_FOOT_POLE', 'Bigger Pointy Stick', '+1 combat bonus. Uses 2 Hands.', 'For when the first pointy stick made some good arguments.', { slot: 'HAND', handsUsed: 2, combatBonus: 1, junkValue: 200 }),
+  gear('GEAR_CHAINSAW', 'Saw of Dramatic Outcomes', '+3 combat bonus. Uses 2 Hands. Heavy.', 'Excellent at cutting through red tape, provided the red tape has a health bar.', { slot: 'HAND', handsUsed: 2, combatBonus: 3, junkValue: 600, isHeavy: true }),
+  gear('GEAR_BUCKLER', 'Buckler of Swashing', '+2 combat bonus. Uses 1 Hand.', 'Looks defensive. Behaves theatrical.', { slot: 'HAND', handsUsed: 1, combatBonus: 2, junkValue: 400 }),
+  gear('GEAR_SINGING_SWORD', 'Singing and Dancing Sword', '+2 combat bonus. Uses 1 Hand. Not usable by Cutpurses.', 'It knows choreography and no boundaries.', { slot: 'HAND', handsUsed: 1, combatBonus: 2, junkValue: 400, notUsableByCallings: ['CALLING_CUTPURSE'] }),
+  gear('GEAR_CHEESE_GRATER', 'Cheese Grater of Peace', '+3 combat bonus. Uses 1 Hand. Usable only by Gravefriends.', 'Ceremonial, technically. Very persuasive, practically.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, usableByCallings: ['CALLING_GRAVEFRIEND'] }),
+  gear('GEAR_DAGGER_TREACHERY', 'Dagger of Treachery', '+3 combat bonus. Uses 1 Hand. Usable only by Cutpurses.', 'Small enough to hide. Petty enough to remember.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, usableByCallings: ['CALLING_CUTPURSE'] }),
+  gear('GEAR_RAPIER_UNFAIRNESS', 'Rapier of Unfairness', '+3 combat bonus. Uses 1 Hand. Usable only by Brightkin.', 'Elegant enough to make everyone suspicious.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 600, usableByOrigins: ['KIN_BRIGHTKIN'] }),
+  gear('GEAR_SWISS_ARMY_POLEARM', 'Overprepared Polearm', '+4 combat bonus. Uses 2 Hands. Heavy. Table restriction from source card; resolve manually.', 'Keeps danger at a respectful distance.', { slot: 'HAND', handsUsed: 2, combatBonus: 4, junkValue: 600, isHeavy: true, manualRestriction: true }),
+  gear('GEAR_SHIELD_UBIQUITY', 'Shield of Ubiquity', '+4 combat bonus. Uses 1 Hand. Heavy. Usable only by Bruisers.', 'Always in the way, which is sometimes the point.', { slot: 'HAND', handsUsed: 1, combatBonus: 4, junkValue: 600, isHeavy: true, usableByCallings: ['CALLING_BRUISER'] }),
+  gear('GEAR_HAMMER_KNEECAP', 'Hammer of Kneecapping', '+4 combat bonus. Uses 1 Hand. Usable only by Deepborn.', 'Short handle. Long consequences.', { slot: 'HAND', handsUsed: 1, combatBonus: 4, junkValue: 600, usableByOrigins: ['KIN_DEEPBORN'] }),
+  gear('GEAR_GENTLEMENS_CLUB', 'Gentleperson’s Club', '+3 combat bonus. Uses 1 Hand. Table restriction from source card; resolve manually.', 'Polite name. Blunt application.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, manualRestriction: true }),
+  gear('GEAR_MACE_SHARPNESS', 'Mace of Sharpness', '+4 combat bonus. Uses 1 Hand. Usable only by Gravefriends.', 'Blessed by tradition. Applied with enthusiasm.', { slot: 'HAND', handsUsed: 1, combatBonus: 4, junkValue: 600, usableByCallings: ['CALLING_GRAVEFRIEND'] }),
+  gear('GEAR_HUGE_ROCK', 'Huge Useless Rock', '+3 combat bonus. Uses 2 Hands. Heavy. No Junk Value.', 'Too important to leave behind, for reasons no one has successfully explained.', { slot: 'HAND', handsUsed: 2, combatBonus: 3, junkValue: 0, isHeavy: true }),
+  gear('GEAR_STEPLADDER', 'Stepladder', '+3 combat bonus. Heavy. Usable only by Halfsteps.', 'A bold answer to a vertical problem.', { slot: 'NO_SLOT', combatBonus: 3, junkValue: 400, isHeavy: true, usableByOrigins: ['KIN_HALFSTEP'] }),
+  gear('GEAR_SPIKY_KNEES', 'Spiky Knees', '+1 combat bonus. No slot.', 'A time-honored negotiation stance.', { slot: 'NO_SLOT', combatBonus: 1, junkValue: 200 }),
+  gear('GEAR_PANTYHOSE', 'Potion-Belt of Giant Strength', '+3 combat bonus. No slot. Not usable by Bruisers.', 'Stretchy, supportive, and hard to explain.', { slot: 'NO_SLOT', combatBonus: 3, junkValue: 600, notUsableByCallings: ['CALLING_BRUISER'] }),
+  gear('GEAR_KNEEPADS', 'Knees of Persuasion', 'No player with higher Glory can refuse your request for Backup or ask for a reward. You cannot win with compelled Backup. Manual in this build.', 'Not begging. Vertical diplomacy.', { slot: 'NO_SLOT', junkValue: 600, enforcement: 'MANUAL' }),
+  gear('GEAR_TITLE', 'Fancy Title', '+3 combat bonus. No slot.', 'The title is ceremonial. The confidence is real.', { slot: 'NO_SLOT', combatBonus: 3, junkValue: 0 }),
+  gear('GEAR_HIRELING', 'Little Helper', '+1 combat bonus. May carry/use one extra Gear for you. You may discard it for automatic Flee. Manual in this build.', 'Helpful, punctual, and not interested in discussing its past.', { slot: 'NO_SLOT', combatBonus: 1, junkValue: 0, enforcement: 'MANUAL' }),
 
-  // Tricks
-  { id: 'TRICK_COMBAT_PLAYER_PLUS_003', deck: 'LOOT', type: 'TRICK', publicName: 'Pocket Miracle', publicText: 'Play during combat. The player side gets +3 for this combat.', flavorText: 'Small enough to fit in a pocket. Important enough to pretend you planned it.', timing: ['DURING_COMBAT'], target: 'PLAYER_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_PLAYER_PLUS_005', deck: 'LOOT', type: 'TRICK', publicName: 'Helpful Sandwich', publicText: 'Play during combat. The player side gets +5 for this combat.', flavorText: 'Morale improves dramatically when lunch has structural integrity.', timing: ['DURING_COMBAT'], target: 'PLAYER_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_FOE_PLUS_003', deck: 'LOOT', type: 'TRICK', publicName: 'Unfortunately Prepared', publicText: 'Play during combat. The Foe side gets +3 for this combat.', flavorText: 'It brought a checklist. Nobody likes that.', timing: ['DURING_COMBAT'], target: 'FOE_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'THREAT', amount: 3 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_FOE_PLUS_005', deck: 'LOOT', type: 'TRICK', publicName: 'Second Health Bar', publicText: 'Play during combat. The Foe side gets +5 for this combat.', flavorText: 'The first health bar was mostly for introductions.', timing: ['DURING_COMBAT'], target: 'FOE_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'THREAT', amount: 5 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_PLAYER_MINUS_003', deck: 'LOOT', type: 'TRICK', publicName: 'Sudden Confidence Problem', publicText: 'Play during combat. The player side gets -3 for this combat.', flavorText: 'A brief reminder that bravery and math are different skills.', timing: ['DURING_COMBAT'], target: 'PLAYER_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: -3 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_FOE_MINUS_003', deck: 'LOOT', type: 'TRICK', publicName: 'Distracting Puddle', publicText: 'Play during combat. The Foe side gets -3 for this combat.', flavorText: 'Not a trap, technically. Just a very persuasive floor.', timing: ['DURING_COMBAT'], target: 'FOE_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'THREAT', amount: -3 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_FOE_MINUS_005', deck: 'LOOT', type: 'TRICK', publicName: 'Loose Stair', publicText: 'Play during combat. The Foe side gets -5 for this combat.', flavorText: 'The dungeon apologizes for the maintenance issue and accepts no responsibility.', timing: ['DURING_COMBAT'], target: 'FOE_SIDE', effect: { type: 'MODIFY_COMBAT_TOTAL', side: 'THREAT', amount: -5 }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_COMBAT_EITHER_PLUS_005', deck: 'LOOT', type: 'TRICK', publicName: 'Suspiciously Useful Object', publicText: 'Play during combat. Choose the player side or the Foe side. That side gets +5 for this combat. In this build, resolve the side choice manually if needed.', flavorText: 'Nobody knows what it does until someone confidently points it at a problem.', timing: ['DURING_COMBAT'], target: 'CHOOSE_COMBAT_SIDE', effect: { type: 'MANUAL_PROMPT' }, scrapValue: 0, junkValue: 0, enforcement: 'MANUAL' },
-  { id: 'TRICK_FLEE_PLUS_001', deck: 'LOOT', type: 'TRICK', publicName: 'Exit Strategy', publicText: 'Play before you roll to Flee. You get +1 to that Flee roll.', flavorText: 'Written in crayon, but surprisingly actionable.', timing: ['BEFORE_ESCAPE_ROLL'], target: 'SELF', effect: { type: 'MODIFY_ESCAPE_ROLL', amount: 1, duration: 'NEXT_ESCAPE' }, scrapValue: 0, junkValue: 0, enforcement: 'AUTO' },
-  { id: 'TRICK_FLEE_REROLL_001', deck: 'LOOT', type: 'TRICK', publicName: 'Try the Other Door', publicText: 'Play after you roll to Flee. Reroll that Flee attempt and use the new result. In this build, resolve manually.', flavorText: 'Sometimes courage is checking whether the first exit had a backup exit.', timing: ['AFTER_ESCAPE_ROLL'], target: 'SELF', effect: { type: 'MANUAL_PROMPT' }, scrapValue: 0, junkValue: 0, enforcement: 'MANUAL' },
+  // One-shots / combat tricks
+  trick('TRICK_NASTY_DRINK', 'Nasty Sports Drink', 'Use during any combat. +2 to either side. One-use.', 'It tastes like victory if victory was refrigerated badly.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 2 }, { junkValue: 200, enforcement: 'MANUAL' }),
+  trick('TRICK_FLAMING_POISON', 'Flaming Poison Potion', 'Use during any combat. +3 to either side. One-use.', 'A little bottle of absolutely not.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, { junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_FREEZING_EXPLOSIVE', 'Freezing Explosive Potion', 'Use during any combat. +3 to either side. One-use.', 'It freezes first, explodes second, and explains never.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, { junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_MAGIC_MISSILE_A', 'Magic Missile', 'Use during any combat. +5 to either side. One-use.', 'Nobody knows what it does until someone confidently points it at a problem.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, { junkValue: 300, enforcement: 'MANUAL', copies: 2 }),
+  trick('TRICK_PRETTY_BALLOONS', 'Pretty Balloons', 'Use during any combat. +5 to either side. One-use.', 'A colorful distraction with surprisingly firm opinions.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, { junkValue: 0, enforcement: 'MANUAL' }),
+  trick('TRICK_HALITOSIS', 'Potion of Halitosis', 'Use during any combat. +2 to either side, or instantly defeats the Hovering Nose. One-use.', 'A tactical cloud with social consequences.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 2 }, { junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_SLEEP_POTION', 'Sleep Potion', 'Use during any combat. +2 to either side. One-use.', 'A bedtime story in liquid form.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 2 }, { junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_ACID_POTION', 'Fizzing Acid Potion', 'Use during any combat. +5 to either side. One-use.', 'Not all treasure is glamorous. Some of it hisses.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, { junkValue: 200, enforcement: 'MANUAL' }),
+  trick('TRICK_YUPPIE_WATER', 'Fancy Sparkling Water', 'Use during combat. Usable only by and to help Brightkin. +2 to each Brightkin in the battle. Manual in this build.', 'Bubbly, expensive, and somehow tactical.', { type: 'MANUAL_PROMPT' }, { junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_COTION_PONFUSION', 'Potion of Confusion', 'Use during any combat. +3 to either side. One-use.', 'Everyone agrees something happened. Accounts differ on whether it helped.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, { junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_DOPPELGANGER', 'Doppelgoblin', 'Summon your exact duplicate; double your combat strength. Only works if you are the only player on your side. Manual in this build.', 'Finally, someone who understands the plan and is also the problem.', { type: 'MANUAL_PROMPT' }, { junkValue: 300, enforcement: 'MANUAL' }),
+  trick('TRICK_INVISIBILITY', 'Invisibility Potion', 'Use after your Flee roll fails. You automatically escape. One-use.', 'For when the bravest thing to be is unavailable.', { type: 'AUTO_ESCAPE' }, { timing: ['BEFORE_ESCAPE_ROLL'], junkValue: 200 }),
+  trick('TRICK_FLASK_GLUE', 'Flask of Glue', 'Use when someone successfully Flees. They must reroll that Flee attempt. Manual in this build.', 'A small administrative pause in someone else’s exit.', { type: 'MANUAL_PROMPT' }, { timing: ['AFTER_ESCAPE_ROLL'], junkValue: 100, enforcement: 'MANUAL' }),
+  trick('TRICK_INSTANT_WALL', 'Instant Wall', 'Automatically lets one or two players escape any fight. One-use. Manual in this build.', 'A door would have been polite. This is faster.', { type: 'MANUAL_PROMPT' }, { timing: ['BEFORE_ESCAPE_ROLL'], junkValue: 300, enforcement: 'MANUAL' }),
 
-  // Loot Specials
-  { id: 'SPECIAL_GAIN_GLORY_002', deck: 'LOOT', type: 'SPECIAL', publicName: 'Heroic Misunderstanding', publicText: 'Play on your turn outside combat. Gain 1 Glory. This cannot give you the final winning Glory.', flavorText: 'You meant to help. History has chosen to round up.', timing: ['OWN_TURN_OUTSIDE_COMBAT'], target: 'SELF', effect: { type: 'GAIN_RENOWN', amount: 1, canWin: false }, enforcement: 'AUTO' },
-  { id: 'SPECIAL_SELL_GEAR_001', deck: 'LOOT', type: 'SPECIAL', publicName: 'Questionable Marketplace', publicText: 'Play on your turn outside combat. You may sell Gear. For every 1000 Junk Value sold, gain 1 Glory. Selling cannot give you the final winning Glory.', flavorText: 'The prices are fair if nobody asks follow-up questions.', timing: ['OWN_TURN_OUTSIDE_COMBAT'], target: 'SELF', effect: { type: 'SELL_GEAR_FOR_RENOWN', threshold: 1000, canWin: false }, enforcement: 'GUIDED' },
-  { id: 'SPECIAL_MODIFY_SALE_VALUE_001', deck: 'LOOT', type: 'SPECIAL', publicName: 'Appraisal Goblin', publicText: 'Play when selling Gear. One Gear card counts as double Junk Value for this sale.', flavorText: 'Squints once, nods twice, invents a number.', timing: ['OWN_TURN_OUTSIDE_COMBAT'], target: 'SELF', effect: { type: 'SELL_GEAR_FOR_RENOWN', threshold: 1000, canWin: false, doubleHighest: true }, enforcement: 'GUIDED' },
-  { id: 'SPECIAL_DRAW_LOOT_002', deck: 'LOOT', type: 'SPECIAL', publicName: 'Refresh the Shelf', publicText: 'Play on your turn outside combat. Draw 2 Loot.', flavorText: 'The dungeon restocked while you were making poor choices.', timing: ['OWN_TURN_OUTSIDE_COMBAT'], target: 'SELF', effect: { type: 'DRAW_LOOT', count: 2 }, enforcement: 'AUTO' },
-  { id: 'SPECIAL_MANUAL_RULE_BREAK_001', deck: 'LOOT', type: 'SPECIAL', publicName: 'Dungeon Loophole', publicText: 'This card creates a rule exception. Resolve it manually with the table, then confirm.', flavorText: 'A small legal door in a large illegal wall.', timing: ['MANUAL'], target: 'VARIES', effect: { type: 'MANUAL_PROMPT' }, enforcement: 'MANUAL' }
+  // Special treasures / rule-breakers / Go Up a Glory
+  special('SPECIAL_GO_UP_GENERAL', 'Potion of General Studliness', 'Play at any time. Gain 1 Glory. Cannot give the final winning Glory.', 'Not heroic exactly, but everyone did look.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'], copies: 1 }),
+  special('SPECIAL_KILL_HIRELING', 'Dismiss the Helper', 'Play only if a player has a helper. Discard that helper. Gain 1 Glory. Manual in this build.', 'A personnel decision with dramatic timing.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], enforcement: 'MANUAL' }),
+  special('SPECIAL_INVOKE_RULES', 'Invoke Obscure Rules', 'Gain 1 Glory. Cannot give the final winning Glory.', 'A small legal door in a large illegal wall.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_MUTILATE_BODIES', 'Check the Pockets', 'Play only after combat, but does not have to be your combat. Gain 1 Glory. Manual in this build.', 'Archaeology, if the artifact is still warm.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], enforcement: 'MANUAL' }),
+  special('SPECIAL_BOIL_ANTHILL', 'Boil an Anthill', 'Gain 1 Glory. Cannot give the final winning Glory.', 'The less said about the method, the better.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_BRIBE_GM', 'Bribe the Dungeon', 'Gain 1 Glory. Cannot give the final winning Glory.', 'The dungeon denies all allegations and accepts snacks.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_WHINE_GM', 'Complain to the Walls', 'Use only if you are tied for or have the highest Glory. Gain 1 Glory. Manual in this build.', 'The walls are listening, unfortunately.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], enforcement: 'MANUAL' }),
+  special('SPECIAL_GOLD_1000', '1000 Junk Voucher', 'Gain 1 Glory by cashing this in, unless it would be the final winning Glory.', 'Not money, but money’s weird cousin.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['OWN_TURN_OUTSIDE_COMBAT'] }),
+  special('SPECIAL_ADDITION_ERROR', 'Convenient Addition Error', 'Gain 1 Glory. Cannot give the final winning Glory.', 'Everyone remembers the math differently.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_WISHING_RING_A', 'Wish Ring', 'Cancel any Hex. Play at any time. Manual in this build.', 'The wish is small, legal, and very smug.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], junkValue: 500, enforcement: 'MANUAL', copies: 2 }),
+  special('SPECIAL_MAGIC_LAMP', 'Magic Lamp', 'Play on your turn. Summon a genie to make one Foe vanish. If you had already failed to Flee, it still works. You gain no Glory, but take its Loot. Manual in this build.', 'The genie prefers clear requests and low expectations.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], junkValue: 500, enforcement: 'MANUAL' }),
+  special('SPECIAL_POLYMORPH', 'Polymorph Potion', 'Use during combat. Turns one Foe into a bird that flies away, leaving its Loot. No Glory. Manual in this build.', 'A monster became a scheduling issue with wings.', { type: 'MANUAL_PROMPT' }, { timing: ['DURING_COMBAT'], junkValue: 1300, enforcement: 'MANUAL' }),
+  special('SPECIAL_OUT_TO_LUNCH', 'Lunch Break', 'Use during combat. All Foes leave; the player facing them discards the Foes and immediately draws 2 Loot. No Glory. Manual in this build.', 'The monster is on break. Please respect the union.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['DURING_COMBAT'], enforcement: 'MANUAL' }),
+  special('SPECIAL_ILLUSION', 'Illusion Swap', 'Use during combat. Discard one Foe and all its modifiers, then replace it with a Foe from your hand. Manual in this build.', 'The old problem left. The new problem signed in.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['DURING_COMBAT'], enforcement: 'MANUAL' }),
+  special('SPECIAL_DIVINE_INTERVENTION', 'Divine Scheduling Conflict', 'You must play this as soon as you get it. All Gravefriends gain 1 Glory; if this makes one win, they win. Manual in this build.', 'The ceiling opened and had opinions.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['ANY_TIME'], enforcement: 'MANUAL' }),
+  special('SPECIAL_TRANSFERRAL', 'Transfer Potion', 'Use during combat. Another player fights the Foe side instead. Original player returns after combat. Manual in this build.', 'A brave decision made for someone else.', { type: 'MANUAL_PROMPT' }, { timing: ['DURING_COMBAT'], junkValue: 300, enforcement: 'MANUAL' }),
+  special('SPECIAL_WAND_DOWSING', 'Wand of Dowsing', 'Search the discard piles for any one card, take it, and discard this. Manual in this build.', 'Everything is lost until someone labels the box.', { type: 'MANUAL_PROMPT' }, { timing: ['OWN_TURN_OUTSIDE_COMBAT'], junkValue: 1100, enforcement: 'MANUAL' }),
+  special('SPECIAL_HOARD', 'Hoard!', 'Draw 3 Loot immediately. Draw face-up if the card that gave this was face-up; otherwise draw face-down. Manual in this build.', 'The dungeon restocked while you were making poor choices.', { type: 'DRAW_LOOT', count: 3 }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_FRIENDSHIP', 'Friendship Potion', 'Use during combat. Discard all Foes in the combat. No Loot is gained, but the player may Loot the Room. Manual in this build.', 'A peaceful solution that still feels suspicious.', { type: 'MANUAL_PROMPT' }, { timing: ['DURING_COMBAT'], junkValue: 200, enforcement: 'MANUAL' }),
+  special('SPECIAL_STEAL_LEVEL', 'Steal a Glory', 'Choose one player. You gain 1 Glory and they lose 1 Glory. Cannot give you the final winning Glory unless the table agrees the source card allows it. Manual in this build.', 'A ladder made of someone else’s applause.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], enforcement: 'MANUAL' })
 ];
 
 module.exports = { chamberCards, lootCards };

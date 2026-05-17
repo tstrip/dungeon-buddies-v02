@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.4.2-table-ux' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5-card-rework' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -41,7 +41,16 @@ function shuffle(arr) {
 }
 
 function expandDeck(defs) {
-  return shuffle(defs.map((def) => ({ ...clone(def), instanceId: instanceId() })));
+  const expanded = [];
+  for (const def of defs) {
+    const copies = Number(def.copies || 1);
+    for (let i = 0; i < copies; i++) {
+      const card = { ...clone(def), instanceId: instanceId() };
+      delete card.copies;
+      expanded.push(card);
+    }
+  }
+  return shuffle(expanded);
 }
 
 function log(room, message) {
@@ -117,6 +126,10 @@ function publicCard(card) {
     strengthDelta: card.strengthDelta,
     lootDelta: card.lootDelta,
     enforcement: card.enforcement,
+    usableByCallings: card.usableByCallings || [],
+    notUsableByCallings: card.notUsableByCallings || [],
+    usableByOrigins: card.usableByOrigins || [],
+    notUsableByOrigins: card.notUsableByOrigins || [],
     effect: card.effect ? { ...card.effect } : undefined
   };
 }
@@ -145,7 +158,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.4.2-table-ux',
+    version: '0.5-card-rework',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -245,7 +258,7 @@ function handLimit(player) {
   return player.origin?.mechanicalSlot === 'DWARF_EQUIV' ? 6 : 5;
 }
 function heavyLimit(player) {
-  return player.origin?.mechanicalSlot === 'DWARF_EQUIV' ? 2 : 1;
+  return player.origin?.mechanicalSlot === 'DWARF_EQUIV' ? 99 : 1;
 }
 function heavyCount(player) {
   return [...player.carriedGear, ...player.equippedGear].filter((g) => g.isHeavy).length;
@@ -263,9 +276,8 @@ function temporaryFleeBonus(player) {
   return player.temporaryEffects.filter((e) => e.type === 'MODIFY_ESCAPE_ROLL').reduce((sum, e) => sum + (e.amount || 0), 0);
 }
 function roleStaticCombatBonus(room, player) {
-  let bonus = 0;
-  if (player.role?.mechanicalSlot === 'CLERIC_EQUIV' && room.combat?.threats?.some((t) => (t.tags || []).includes('RESTLESS'))) bonus += 3;
-  return bonus;
+  // Most Calling combat powers are guided/manual for now; only always-on bonuses belong here.
+  return 0;
 }
 function handsUsed(player) {
   return player.equippedGear.filter((g) => g.slot === 'HAND').reduce((sum, g) => sum + (Number(g.handsUsed) || 1), 0);
@@ -285,6 +297,9 @@ function threatSpecialBonus(room, threat) {
   const active = getActive(room);
   for (const rule of threat.specialRules || []) {
     if (rule.type === 'BONUS_AGAINST_ROLE' && active?.role?.mechanicalSlot === rule.roleMechanicalSlot) total += rule.amount || 0;
+    if (rule.type === 'BONUS_AGAINST_ORIGIN' && active?.origin?.mechanicalSlot === rule.originMechanicalSlot) total += rule.amount || 0;
+    if (rule.type === 'BONUS_IF_NO_ORIGIN' && !active?.origin) total += rule.amount || 0;
+    if (rule.type === 'BONUS_IF_NO_ROLE' && !active?.role) total += rule.amount || 0;
     if (rule.type === 'BONUS_IF_ACTIVE_RENOWN_AT_LEAST' && active?.renown >= (rule.value || 0)) total += rule.amount || 0;
   }
   return total;
@@ -345,6 +360,13 @@ function canActOutsideCombat(room) {
 
 function validateGearEquip(player, card) {
   if (card.type !== 'GEAR') return 'That is not Gear.';
+  const roleId = player.role?.id;
+  const originId = player.origin?.id;
+  if ((card.usableByCallings || []).length && !card.usableByCallings.includes(roleId)) return `Only the right Calling can equip ${card.publicName}.`;
+  if ((card.notUsableByCallings || []).length && roleId && card.notUsableByCallings.includes(roleId)) return `${card.publicName} cannot be equipped by your current Calling.`;
+  if ((card.usableByOrigins || []).length && !card.usableByOrigins.includes(originId)) return `Only the right Kin can equip ${card.publicName}.`;
+  if ((card.notUsableByOrigins || []).length && originId && card.notUsableByOrigins.includes(originId)) return `${card.publicName} cannot be equipped by your current Kin.`;
+  if (card.manualRestriction) return `${card.publicName} has a table restriction; resolve it manually before equipping.`;
   const combinedHeavy = heavyCount(player) + (card.isHeavy && !player.carriedGear.some((g) => g.instanceId === card.instanceId) ? 1 : 0);
   if (combinedHeavy > heavyLimit(player)) return `You can only carry ${heavyLimit(player)} Heavy Gear right now.`;
   if (card.slot === 'HEAD' && player.equippedGear.some((g) => g.slot === 'HEAD')) return 'Your Head slot is already full.';
@@ -746,7 +768,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.4.2-table-ux' });
+  socket.emit('ready', { version: '0.5-card-rework' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -756,7 +778,7 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', ({ name, code }) => {
     const room = rooms.get(String(code || '').trim().toUpperCase());
     if (!room) return emitError(socket, 'Room not found.');
-    if (room.players.length >= 3) return emitError(socket, 'This v0.4.2 table is limited to 3 players.');
+    if (room.players.length >= 3) return emitError(socket, 'This v0.5 table is limited to 3 players.');
     const player = createPlayer(name, socket);
     room.players.push(player);
     attachSocketToPlayer(room, player, socket);
@@ -987,12 +1009,17 @@ function playCard(socket, room, player, card, payload) {
   }
 
   if (card.type === 'SPECIAL') {
-    if (!canActOutsideCombat(room) || activeId(room) !== player.id) return emitError(socket, 'Specials in this build can be played only on your turn outside combat.');
+    const timing = card.timing || [];
+    const canPlayAny = timing.includes('ANY_TIME');
+    const canPlayCombat = timing.includes('DURING_COMBAT') && room.phase === 'COMBAT';
+    const canPlayOwnTurn = canActOutsideCombat(room) && activeId(room) === player.id;
+    if (!canPlayAny && !canPlayCombat && !canPlayOwnTurn) return emitError(socket, 'That Special is not playable in this timing window.');
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Special must be in your hand.');
-    const ok = applyEffect(room, player, real.effect, real, { after: 'TO_TRIBUTE_OR_END' });
+    const ok = applyEffect(room, player, real.effect, real, { after: room.phase === 'COMBAT' ? 'CONTINUE' : 'TO_TRIBUTE_OR_END' });
     discardCard(room, real);
-    log(room, `${player.name} played ${real.publicName}.`);
+    if (room.phase === 'COMBAT') resetCombatPasses(room);
+    log(room, `${player.name} played ${real.publicName}${room.phase === 'COMBAT' ? '. Passes reset.' : '.'}`);
     return;
   }
 

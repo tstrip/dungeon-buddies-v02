@@ -1,35 +1,46 @@
-# Loot Goblins v0.4.3 — Layout Containment + Table Visualization Repair
+# Loot Goblins v0.5 — Classic Card Database Rework
 
-A private three-player browser card-table prototype. This version keeps the v0.4.1 classic rules repair and focuses on making the game readable from the player perspective on iPhone and iPad.
+A private three-player browser card-table prototype inspired by classic dungeon-crawl backstabbing card games, using original Loot Goblins presentation.
 
-## What changed
+## What changed in v0.5
 
-- Removed the chat UI so the table gets more space.
-- Reworked the game screen toward a mobile card-game layout.
-- Compact player strip instead of giant stacked player cards.
-- Main table now visualizes the current moment instead of relying on the log.
-- Fixed global horizontal overflow so the whole app should no longer pan sideways.
-- Added visible Chamber Deck, Chamber discard, Loot Deck, and Loot discard piles.
-- Added a movement banner so draws/reveals/discards show as table movement instead of only as log text.
-- Combat shows a pass tracker for every player.
-- Flee shows a visual dice stage with raw roll, bonus, final result, and success/failure.
-- Hand cards are compact glance cards. Tap a card to open the full inspector with rules, flavor, and legal actions.
-- Event History is collapsed and secondary.
+- Keeps the stable v0.4.3 table/mobile UX base.
+- Replaces the provisional starter card list with a much larger classic-style card database.
+- Uses original Loot Goblins card names, public rules text, and flavor text.
+- Adds mechanical equivalents for:
+  - Callings / classic class-style cards
+  - Kin / classic race-style cards
+  - Foes / monster-style cards
+  - Hexes / curse-style cards
+  - Foe Modifiers / monster enhancer-style cards
+  - Gear / item-style cards
+  - Tricks / one-shot combat and Flee cards
+  - Specials / rule-breakers and gain-Glory cards
+- Supports card copy counts in the deck database.
+- Adds Gear restriction enforcement for Callings and Kin where the current engine can handle it.
+- Updates Deepborn so it can carry any number of Heavy Gear.
 
-## Render settings
+## Still intentionally manual/prototype
 
-Build Command:
+Some classic card effects require larger systems and are intentionally marked manual for now:
+
+- Multiple Foes / Wandering Monster equivalents
+- Mate-style duplicate Foes
+- Cheat-style attachments
+- Super Munchkin / Half-Breed-style stacking
+- Full death/body-looting flow
+- Loaded die / reroll manipulation
+- Out to Lunch / Illusion / Transferral-style combat rewrites
+- Source-card gender/table-trait restrictions
+
+Those are staged for v0.6 advanced mechanics.
+
+## Deploy
+
+Render settings remain:
 
 ```txt
-npm install --package-lock=false
+Build Command: npm install --package-lock=false
+Start Command: npm start
 ```
 
-Start Command:
-
-```txt
-npm start
-```
-
-## Notes
-
-This is still not the accurate full card-list rework. That should come next as v0.5 using the clearer English card sheets as the mechanical source of truth.
