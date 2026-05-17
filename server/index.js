@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.5-backup-deal-table-compression' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.6-qol-visual-feedback' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -87,6 +87,26 @@ function announce(room, kind, title, detail, card = null, options = {}) {
   };
   room.announcement = announcement;
   room.tableNotice = { at: announcement.at, kind, title, detail, card: publicCard(card) };
+}
+
+function movement(room, from, to, label, detail, card = null) {
+  room.movement = {
+    id: instanceId(),
+    at: Date.now(),
+    from,
+    to,
+    label,
+    detail,
+    card: publicCard(card)
+  };
+}
+
+function markFresh(card, deckName) {
+  if (!card) return card;
+  card.fresh = true;
+  card.freshAt = Date.now();
+  card.freshFrom = deckName;
+  return card;
 }
 
 function emitError(socket, message) {
@@ -163,7 +183,10 @@ function publicCard(card) {
     notUsableByCallings: card.notUsableByCallings || [],
     usableByOrigins: card.usableByOrigins || [],
     notUsableByOrigins: card.notUsableByOrigins || [],
-    effect: card.effect ? { ...card.effect } : undefined
+    effect: card.effect ? { ...card.effect } : undefined,
+    fresh: Boolean(card.fresh),
+    freshAt: card.freshAt || null,
+    freshFrom: card.freshFrom || null
   };
 }
 
@@ -191,7 +214,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.5.5-backup-deal-table-compression',
+    version: '0.5.6-qol-visual-feedback',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -210,6 +233,7 @@ function serializeRoom(room, viewerId) {
     revealCard: publicCard(room.revealCard),
     tableNotice: room.tableNotice || null,
     announcement: room.announcement || null,
+    movement: room.movement || null,
     combat: serializeCombat(room),
     escape: serializeEscape(room),
     firstRoll: serializeFirstRoll(room, viewerId),
@@ -309,8 +333,12 @@ function draw(room, deckName) {
 
 function discardCard(room, card) {
   if (!card) return;
+  card.fresh = false;
+  card.freshAt = null;
+  const to = card.deck === 'CHAMBER' ? 'CHAMBER_DISCARD' : 'LOOT_DISCARD';
   if (card.deck === 'CHAMBER') room.chamberDiscard.push(card);
   else room.lootDiscard.push(card);
+  movement(room, 'TABLE', to, 'Card → Discard', `${card.publicName || 'A card'} moved to discard.`, card);
 }
 
 function handLimit(player) {
@@ -447,10 +475,12 @@ function validateGearEquip(player, card) {
 }
 
 function carryGear(player, card) {
+  if (card) card.fresh = false;
   player.carriedGear.push(card);
 }
 
 function equipGear(player, card) {
+  if (card) card.fresh = false;
   player.equippedGear.push(card);
 }
 
@@ -599,11 +629,16 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
   }
 }
 
-function drawMany(room, player, deck, count) {
+function drawMany(room, player, deck, count, markAsFresh = true) {
   let drawn = 0;
   for (let i = 0; i < count; i++) {
     const c = draw(room, deck);
-    if (c) { player.hand.push(c); drawn++; }
+    if (c) {
+      if (markAsFresh) markFresh(c, deck);
+      player.hand.push(c);
+      drawn++;
+      movement(room, deck === 'CHAMBER' ? 'CHAMBER_DECK' : 'LOOT_DECK', 'PLAYER_HAND', `${deck === 'CHAMBER' ? 'Chamber' : 'Loot'} Deck → Hand`, `${player.name} drew ${c.publicName}.`, c);
+    }
   }
   return drawn;
 }
@@ -763,8 +798,8 @@ function setupGame(room) {
     p.equippedGear = [];
     p.temporaryEffects = [];
     p.usedHalfstepSale = false;
-    drawMany(room, p, 'CHAMBER', 4);
-    drawMany(room, p, 'LOOT', 4);
+    drawMany(room, p, 'CHAMBER', 4, false);
+    drawMany(room, p, 'LOOT', 4, false);
   }
   announce(room, 'roll', 'Opening Roll', 'Each goblin draws 4 Chamber and 4 Loot cards. Roll a d6 to see who opens the first Chamber.', null, { importance: 'major' });
   log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
@@ -820,9 +855,13 @@ function drawLootWithBackupDeal(room, active, helper, lootCount) {
   if (helper && room.combat?.backupDeal) {
     const share = Math.max(0, Math.min(cards.length, Number(room.combat.backupDeal.lootCount || 0)));
     const helperCards = cards.splice(0, share);
+    helperCards.forEach((c) => markFresh(c, 'LOOT'));
     helper.hand.push(...helperCards);
+    if (helperCards.length) movement(room, 'LOOT_DECK', 'PLAYER_HAND', 'Loot Deck → Helper Hand', `${helper.name} received ${helperCards.length} Loot from the Backup deal.`, helperCards[0]);
     helperGets = helperCards.length;
   }
+  cards.forEach((c) => markFresh(c, 'LOOT'));
+  if (cards.length) movement(room, 'LOOT_DECK', 'PLAYER_HAND', 'Loot Deck → Hand', `${active.name} received ${cards.length} Loot.`, cards[0]);
   active.hand.push(...cards);
   activeGets = cards.length;
   return { activeGets, helperGets };
@@ -967,7 +1006,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.5.5-backup-deal-table-compression' });
+  socket.emit('ready', { version: '0.5.6-qol-visual-feedback' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1034,6 +1073,11 @@ io.on('connection', (socket) => {
 
 function handleAction(socket, room, player, payload) {
   const type = payload.type;
+  if (type === 'MARK_CARD_SEEN') {
+    const card = player.hand.find((c) => c.instanceId === payload.cardId);
+    if (card) { card.fresh = false; card.freshAt = null; }
+    return;
+  }
   if (room.pendingPrompt && type !== 'RESOLVE_PROMPT') return emitError(socket, 'A prompt must be resolved before anything else can happen.');
 
   if (type === 'START_GAME') {
@@ -1062,7 +1106,9 @@ function handleAction(socket, room, player, payload) {
     if (card.type === 'THREAT') startCombat(room, card);
     else if (card.type === 'HEX') resolveHex(room, card, player, 'TO_NO_THREAT_CHOICE');
     else {
+      markFresh(card, 'CHAMBER');
       player.hand.push(card);
+      movement(room, 'REVEAL_ZONE', 'PLAYER_HAND', 'Reveal Zone → Hand', `${card.publicName} went to ${player.name}'s hand.`, card);
       announce(room, 'draw', 'Card Added to Hand', `${card.publicName} went to ${player.name}'s hand.`, card, { importance: 'normal' });
       log(room, `${card.publicName} went to ${player.name}'s hand.`);
       room.phase = 'NO_THREAT_CHOICE';
@@ -1088,7 +1134,11 @@ function handleAction(socket, room, player, payload) {
   if (type === 'SEARCH_ROOM') {
     if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'Only the active player can Loot the Room in this phase.');
     const card = draw(room, 'CHAMBER');
-    if (card) player.hand.push(card);
+    if (card) {
+      markFresh(card, 'CHAMBER');
+      player.hand.push(card);
+      movement(room, 'CHAMBER_DECK', 'PLAYER_HAND', 'Chamber Deck → Hand', `${player.name} drew a hidden Chamber card.`, card);
+    }
     announce(room, 'draw', 'Loot the Room', `${player.name} drew a hidden Chamber card into hand.`, null, { importance: 'normal' });
     log(room, `${player.name} looted the room and drew a hidden Chamber card.`);
     room.revealCard = null;
@@ -1341,7 +1391,9 @@ function resolveTribute(socket, room, player, payload) {
     moved.push(card);
   }
   if (recipient) {
+    moved.forEach((c) => { c.fresh = true; c.freshAt = Date.now(); c.freshFrom = 'TRIBUTE'; });
     recipient.hand.push(...moved);
+    if (moved.length) movement(room, 'PLAYER_HAND', 'PLAYER_HAND', 'Tribute → Hand', `${recipient.name} received ${moved.length} Tribute card${moved.length === 1 ? '' : 's'}.`, moved[0]);
     announce(room, 'tribute', 'Tribute Given', `${player.name} gave ${moved.length} Tribute card${moved.length === 1 ? '' : 's'} to ${recipient.name}.`, null, { importance: 'normal' });
     log(room, `${player.name} gave ${moved.length} Tribute card${moved.length === 1 ? '' : 's'} to ${recipient.name}.`);
   } else {
@@ -1444,5 +1496,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.5.5 announcements pass listening on ${PORT}`);
+  console.log(`Loot Goblins v0.5.6 QoL visual feedback listening on ${PORT}`);
 });

@@ -853,3 +853,79 @@ body, .screen, .game, .panel, .table-shell, .active-table, .hand-panel, .phase-b
   .hand-card { flex-basis: 92px; width: 92px; height: 122px; }
   .seat-identity { font-size: .56rem; }
 }
+
+/* v0.5.6 QoL visual feedback */
+button.selected-action,
+.primary-action button.selected-action {
+  background: linear-gradient(135deg, rgba(157,227,127,.24), rgba(143,227,207,.14));
+  border-color: rgba(157,227,127,.7);
+  color: #eaffdf;
+  box-shadow: inset 0 0 0 1px rgba(157,227,127,.22), 0 0 0 3px rgba(157,227,127,.08);
+  cursor: default;
+  opacity: 1;
+}
+.pass-pill.you.passed {
+  border-color: rgba(157,227,127,.8);
+  background: rgba(157,227,127,.13);
+  box-shadow: 0 0 0 2px rgba(157,227,127,.10), inset 0 0 0 1px rgba(157,227,127,.20);
+}
+.pass-pill.you.passed .micro::before {
+  content: '✓ ';
+}
+.hand-card.new-card {
+  border-color: rgba(255, 211, 107, .95);
+  background: linear-gradient(160deg, #fff0c6, #d9ccbb 58%, #c4bbb3);
+  box-shadow: 0 0 0 3px rgba(255,211,107,.18), 0 10px 22px rgba(0,0,0,.34);
+  animation: new-card-pop .7s ease both;
+}
+.new-badge {
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  background: var(--accent);
+  color: #241307;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: .48rem;
+  font-weight: 1000;
+  letter-spacing: .11em;
+  box-shadow: 0 6px 14px rgba(0,0,0,.25);
+}
+@keyframes new-card-pop {
+  0% { transform: translateY(-8px) scale(.96); opacity: .35; }
+  62% { transform: translateY(0) scale(1.025); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.movement-card {
+  position: absolute;
+  left: 50%;
+  top: 41%;
+  width: 86px;
+  height: 42px;
+  transform: translate(-50%, -50%);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #f8eddb, #d7b887);
+  color: #3b272b;
+  border: 2px solid rgba(34,25,35,.45);
+  box-shadow: 0 12px 26px rgba(0,0,0,.34);
+  pointer-events: none;
+  z-index: 4;
+  animation: table-card-move 1.15s ease both;
+}
+.movement-card span {
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .58rem;
+  font-weight: 950;
+}
+@keyframes table-card-move {
+  0% { opacity: 0; transform: translate(-50%, -90%) scale(.72) rotate(-8deg); }
+  18% { opacity: 1; }
+  68% { opacity: 1; transform: translate(-50%, -50%) scale(1.02) rotate(2deg); }
+  100% { opacity: 0; transform: translate(-50%, -24%) scale(.88) rotate(6deg); }
+}
+.table-core-center { position: relative; }

@@ -1,4 +1,4 @@
-# Loot Goblins v0.5.5
+# Loot Goblins v0.5.6
 
 Backup deal and table compression pass.
 

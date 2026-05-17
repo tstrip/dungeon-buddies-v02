@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV054Session';
+const SESSION_KEY = 'lootGoblinsV056Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -171,6 +171,7 @@ function pileHtml(pile, move) {
 }
 
 function deriveMovement() {
+  if (state?.movement) return state.movement;
   const msg = latestEvent();
   if (!msg) return null;
   if (/opened a Chamber/i.test(msg)) return { from: 'CHAMBER_DECK', to: 'REVEAL_ZONE', label: 'Chamber Deck → Reveal Zone', detail: msg };
@@ -205,6 +206,7 @@ function tableBoardHtml(options = {}) {
             <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
             <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the center of the table.')}</div>
           </div>
+          ${move ? `<div class="movement-card ${escapeHtml(move.from || 'from-table')} ${escapeHtml(move.to || 'to-table')}" key="${escapeHtml(move.id || move.at || '')}"><span>${escapeHtml(move.card?.publicName || 'Card')}</span></div>` : ''}
           <div class="center-zone ${centerClass}">
             <strong>${escapeHtml(centerLabel)}</strong>
             <span>${escapeHtml(centerSub)}</span>
@@ -308,7 +310,8 @@ function renderPhaseBanner() {
     const totals = state.combat?.totals;
     const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
     title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
-    copy = `${marginText}. Buff, nerf, request Backup, or confirm you are done. Combat only resolves once everyone is done.`;
+    const done = Boolean(state.combat?.passes?.[you?.id]);
+    copy = done ? `${marginText}. You are done for this buff/nerf window. Waiting on the table unless someone plays a new card.` : `${marginText}. Buff, nerf, request Backup, or confirm you are done. Combat only resolves once everyone is done.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
@@ -371,7 +374,9 @@ function combatButtons() {
       buttons.push(`<button data-combat-action="REQUEST_BACKUP" data-target="${p.id}">Ask ${escapeHtml(p.name)} for Backup</button>`);
     }
   }
-  buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No Buffs/Nerfs</button>`);
+  const youAreDone = Boolean(combat.passes?.[you.id]);
+  if (youAreDone) buttons.push(`<button class="selected-action" disabled>✓ Done — Waiting on Others</button>`);
+  else buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No Buffs/Nerfs</button>`);
   return buttons;
 }
 
@@ -525,13 +530,16 @@ function renderCombat(root) {
   const threat = combat.threats[0];
   const waiting = state.players.filter((p) => !combat.passes?.[p.id]);
   const needsYou = waiting.some((p) => p.isYou);
+  const youAreDone = Boolean(combat.passes?.[me()?.id]);
   const tableCopy = combat.backupRequest
     ? `${playerName(combat.backupRequest.toPlayerId)} has a Backup request to answer.`
-    : needsYou
-      ? 'Your response is needed: buff, nerf, request Backup, or tap Done — No Buffs/Nerfs.'
-      : waiting.length
-        ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm they are done.`
-        : 'Everyone is done buffing/nerfing. Combat resolves now.';
+    : youAreDone && waiting.length
+      ? `You are marked done. Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm they are done.`
+      : needsYou
+        ? 'Your response is needed: buff, nerf, request Backup, or tap Done — No Buffs/Nerfs.'
+        : waiting.length
+          ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm they are done.`
+          : 'Everyone is done buffing/nerfing. Combat resolves now.';
   const status = combatStatusText(totals);
   root.innerHTML = `${announcementHtml()}
     <div class="compact-table-frame">${tableSeatsHtml()}</div>
@@ -623,7 +631,7 @@ function renderHand() {
   if (!you) { root.innerHTML = ''; return; }
   const over = you.handCount > you.handLimit;
   let html = `<div class="hand-header"><h3>Your Hand</h3><span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span></div>`;
-  html += `<p class="micro hand-help">Compact view: tap a card to expand details and show legal actions.</p>`;
+  html += `<p class="micro hand-help">Compact view: tap a card to expand details and show legal actions. New cards glow until opened.</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
     html += `<p class="micro">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
@@ -710,7 +718,9 @@ function compactCardHtml(card, opts = {}) {
   if (opts.playable) classes.push('playable');
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
+  if (card.fresh) classes.push('new-card');
   return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
+    ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
     <div class="hand-card-type">${escapeHtml(typeLabel(card))}</div>
     <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
     <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
@@ -770,6 +780,7 @@ function typeLabel(card) {
 
 function inspectCard(card) {
   if (!card) return;
+  if (card.fresh) emitAction('MARK_CARD_SEEN', { cardId: card.instanceId });
   const root = $('inspectContent');
   const actions = cardActions(card);
   root.innerHTML = `<div class="inspect-layout"><div>${cardHtml(card)}</div><div><h2>${escapeHtml(card.publicName)}</h2><p>${escapeHtml(card.publicText || '')}</p>${card.flavorText ? `<p class="inspect-flavor">${escapeHtml(card.flavorText)}</p>` : ''}<div class="action-list">${actions}</div></div></div>`;
