@@ -1,13 +1,13 @@
-# Loot Goblins v0.5.3
+# Loot Goblins v0.5.4
 
-Table consolidation and Hex clarity patch.
+Table announcements and buff/nerf clarity pass.
 
 ## Highlights
-- Consolidates the table into a central felt-table view with tappable player seats.
-- Hides the extra player strip so the same information is not repeated all over the screen.
-- Makes Hex reveals and Hex results visible in the table center, including no-effect outcomes.
-- Hex cards in hand can target a specific player from the card inspector.
-- Keeps the v0.5.2 playable-card filtering so advanced/manual mechanics stay parked for v0.6.
+- Adds a central table announcement spotlight for major events.
+- Announces opening-roll results, first-player result, card reveals, Hex outcomes, combat wins/losses, Flee rolls, Bad News-style effects, Tribute, and turn changes.
+- Reframes combat confirmation language from “Pass Combat” to “Done — No Buffs/Nerfs.”
+- Updates combat response copy to clarify the player choice: buff, nerf, request Backup, or confirm done.
+- Keeps the v0.5.3 poker-table-style layout and the v0.5 filtered live deck.
 
 ## Render
 Build command: `npm install --package-lock=false`

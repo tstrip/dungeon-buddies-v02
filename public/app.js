@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV052Session';
+const SESSION_KEY = 'lootGoblinsV054Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -125,6 +125,25 @@ function renderGame() {
   renderEventHistory();
 }
 
+function announcementHtml() {
+  const a = state?.announcement;
+  if (!a) return '';
+  const icon = announcementIcon(a.kind);
+  return `<section class="table-announcement ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
+    <div class="announce-icon">${icon}</div>
+    <div class="announce-copy">
+      <div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div>
+      <div class="announce-detail">${escapeHtml(a.detail || '')}</div>
+    </div>
+    ${a.card ? `<div class="announce-card-name">${escapeHtml(a.card.publicName)}</div>` : ''}
+  </section>`;
+}
+
+function announcementIcon(kind) {
+  const map = { roll: '⚄', combat: '⚔', hex: '✦', draw: '▣', effect: '★', card: '◆', backup: '+', flee: '↗', tribute: '⇄', turn: '→', game: '♛', reveal: '▤', gear: '◈', prompt: '!' };
+  return map[kind] || '•';
+}
+
 
 function renderDeckDock() {
   const dock = $('deckDock');
@@ -175,7 +194,7 @@ function tableBoardHtml(options = {}) {
   const centerSub = options.centerSub || centerZoneSub();
   const centerClass = options.centerClass || centerZoneClass();
   const activeCard = options.activeCard || notice?.card || state.revealCard;
-  return `<div class="felt-table">
+  return `${announcementHtml()}<div class="felt-table">
     <div class="table-seats">${tableSeatsHtml()}</div>
     <div class="table-core">
       <div class="mini-deck-lane">
@@ -288,7 +307,7 @@ function renderPhaseBanner() {
     const totals = state.combat?.totals;
     const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
     title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
-    copy = `${marginText}. Use the table center below for totals and response status.`;
+    copy = `${marginText}. Buff, nerf, request Backup, or confirm you are done. Combat only resolves once everyone is done.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
@@ -333,7 +352,7 @@ function combatButtons() {
       buttons.push(`<button data-combat-action="REQUEST_BACKUP" data-target="${p.id}">Request Backup: ${escapeHtml(p.name)}</button>`);
     }
   }
-  buttons.push(`<button data-combat-action="PASS_COMBAT">No More Cards</button>`);
+  buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No Buffs/Nerfs</button>`);
   return buttons;
 }
 
@@ -386,7 +405,7 @@ function renderEscape(root) {
   const detail = last
     ? `Raw roll ${last.raw} ${signed(last.bonus || 0)} Flee bonus = ${last.total}`
     : `Target number is 5+. ${runner?.isYou ? 'Tap Roll to Flee above.' : `Waiting for ${escapeHtml(runner?.name || 'the runner')}.`}`;
-  root.innerHTML = `
+  root.innerHTML = `${announcementHtml()}
     <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="table-event"><strong>Flee:</strong> ${escapeHtml(runner?.name || 'Runner')} must roll against ${escapeHtml(esc.threat?.publicName || 'the Foe')}.</div>
     <div class="escape-layout focus-layout">
@@ -418,7 +437,7 @@ function renderFirstRoll(root) {
   const first = state.firstRoll || { rolls: {}, eligible: [] };
   const latest = first.latest;
   const waiting = (first.eligible || []).filter((id) => !first.rolls?.[id]).map(playerName);
-  root.innerHTML = `
+  root.innerHTML = `${announcementHtml()}
     <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="table-event"><strong>Opening Roll:</strong> ${escapeHtml(first.requiresYou ? 'Your roll is needed.' : waiting.length ? `Waiting for ${waiting.join(', ')}.` : 'Resolving first player.')}</div>
     <div class="opening-roll-grid focus-layout">
@@ -469,15 +488,15 @@ function renderCombat(root) {
   const tableCopy = combat.backupRequest
     ? `${playerName(combat.backupRequest.toPlayerId)} has a Backup request to answer.`
     : needsYou
-      ? 'Your response is needed: play a card, request Backup, or tap No More Cards.'
+      ? 'Your response is needed: buff, nerf, request Backup, or tap Done — No Buffs/Nerfs.'
       : waiting.length
-        ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to play or confirm.`
-        : 'Everyone has confirmed. Combat resolves now.';
+        ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm they are done.`
+        : 'Everyone is done buffing/nerfing. Combat resolves now.';
   const status = combatStatusText(totals);
-  root.innerHTML = `
+  root.innerHTML = `${announcementHtml()}
     <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
-    <div class="table-event"><strong>Response window:</strong> ${escapeHtml(tableCopy)}</div>
+    <div class="table-event"><strong>Buff/Nerf window:</strong> ${escapeHtml(tableCopy)}</div>
     <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
     <div class="combat-layout focus-layout">
       <div class="combat-side">
@@ -501,11 +520,11 @@ function renderCombat(root) {
 }
 
 function passPill(p, passed) {
-  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'No more cards' : 'Needs response'}</span></div>`;
+  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Done' : 'Can buff/nerf'}</span></div>`;
 }
 
 function passSummary(passes) {
-  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'confirmed' : 'deciding'}`).join(' · ');
+  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'done' : 'buff/nerf?' }`).join(' · ');
 }
 
 function renderPrompt() {
@@ -737,9 +756,16 @@ function cardActions(card) {
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
   if (card.type === 'TRICK' && state.phase === 'COMBAT' && card.effect?.type === 'MODIFY_COMBAT_TOTAL') {
-    actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Help Player Side</button>`);
-    actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Help Foe Side</button>`);
-  } else if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
+    const amt = Number(card.effect.amount || 0);
+    if (amt >= 0) {
+      actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Buff Player Side ${signed(amt)}</button>`);
+      actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Buff Foe Side ${signed(amt)}</button>`);
+    } else {
+      actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Nerf Player Side ${signed(amt)}</button>`);
+      actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Nerf Foe Side ${signed(amt)}</button>`);
+    }
+  } else if (card.type === 'THREAT_MODIFIER' && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Attach to Foe</button>`);
+  else if (card.type === 'TRICK' && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Combat Trick</button>`);
   if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
   if (card.type === 'HEX') {
     for (const p of state.players) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Hex ${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</button>`);

@@ -721,3 +721,78 @@ body, .screen, .game, .panel, .table-shell, .active-table, .hand-panel, .phase-b
   .pass-pill strong { font-size: .68rem; }
   .pass-pill .micro { font-size: .52rem; }
 }
+
+/* v0.5.4 announcement spotlight */
+.table-announcement {
+  width: min(100%, 720px);
+  margin: 0 auto 8px;
+  border: 1px solid rgba(245,189,88,.38);
+  background: radial-gradient(circle at 10% 0%, rgba(245,189,88,.18), rgba(32,22,18,.94) 62%);
+  border-radius: 18px;
+  padding: 10px 11px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  box-shadow: 0 10px 28px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.05);
+  overflow: hidden;
+}
+.table-announcement.major {
+  border-color: rgba(245,189,88,.72);
+  box-shadow: 0 0 0 1px rgba(245,189,88,.18), 0 14px 36px rgba(0,0,0,.3);
+}
+.announce-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(245,189,88,.18);
+  border: 1px solid rgba(245,189,88,.35);
+  color: var(--gold);
+  font-weight: 900;
+  font-size: 1.08rem;
+}
+.announce-copy { min-width: 0; }
+.announce-title {
+  color: var(--gold);
+  font-family: var(--display, inherit);
+  letter-spacing: .02em;
+  font-weight: 900;
+  line-height: 1.05;
+  margin-bottom: 2px;
+}
+.announce-detail {
+  font-size: .82rem;
+  color: rgba(255,255,255,.9);
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+.announce-card-name {
+  max-width: 112px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.82);
+  font-size: .68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-announcement.roll .announce-icon { font-size: 1.35rem; }
+.table-announcement.combat .announce-icon { color: #ffd36b; }
+.table-announcement.hex .announce-icon { color: #d8b4fe; }
+.table-announcement.game .announce-icon { color: #ffe083; }
+
+@media (max-width: 520px) {
+  .table-announcement {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 8px 9px;
+    border-radius: 15px;
+    gap: 8px;
+  }
+  .announce-icon { width: 30px; height: 30px; border-radius: 10px; font-size: .95rem; }
+  .announce-detail { font-size: .76rem; }
+  .announce-card-name { display: none; }
+}
