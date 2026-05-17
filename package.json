@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v057",
-  "version": "0.5.7",
+  "name": "loot-goblins-v062",
+  "version": "0.6.2",
   "private": true,
-  "description": "Loot Goblins v0.6.0: directional face-down card movement pass.",
+  "description": "Loot Goblins v0.6.2: one-for-one card parity automation pass.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

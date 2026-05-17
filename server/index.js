@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.6.0-advanced-mechanics' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.6.2-one-for-one-automation' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -232,7 +232,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.6.0-advanced-mechanics',
+    version: '0.6.2-one-for-one-automation',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -385,7 +385,8 @@ function heavyCount(player) {
   return [...player.carriedGear, ...player.equippedGear].filter((g) => g.isHeavy).length;
 }
 function gearCombatBonus(player) {
-  return player.equippedGear.reduce((sum, g) => sum + (Number(g.combatBonus) || 0), 0);
+  const gear = hasTemp(player, 'ONLY_BODY_GEAR_NEXT_COMBAT') ? player.equippedGear.filter((g) => g.slot === 'BODY') : player.equippedGear;
+  return gear.reduce((sum, g) => sum + effectiveGearCombatBonus(player, g), 0);
 }
 function gearFleeBonus(player) {
   return player.equippedGear.reduce((sum, g) => sum + (Number(g.escapeBonus) || 0), 0);
@@ -394,7 +395,13 @@ function originFleeBonus(player) {
   return hasOrigin(player, 'ELF_EQUIV') ? 1 : 0;
 }
 function temporaryFleeBonus(player) {
-  return player.temporaryEffects.filter((e) => e.type === 'MODIFY_ESCAPE_ROLL').reduce((sum, e) => sum + (e.amount || 0), 0);
+  return player.temporaryEffects.filter((e) => e.type === 'MODIFY_ESCAPE_ROLL').reduce((sum, e) => sum + (e.amount || 0), 0) + dieRollPenalty(player);
+}
+function dieRollPenalty(player) {
+  return player.temporaryEffects.filter((e) => e.type === 'DIE_ROLL_PENALTY').reduce((sum, e) => sum + (e.amount || 0), 0);
+}
+function hasTemp(player, type) {
+  return player.temporaryEffects.some((e) => e.type === type);
 }
 function roleStaticCombatBonus(room, player) {
   // Most Calling combat powers are guided/manual for now; only always-on bonuses belong here.
@@ -455,6 +462,13 @@ function startCombat(room, threat) {
     roleUses: {},
     passes: {}
   };
+  const active = getActive(room);
+  const nextCombatDelta = active ? active.temporaryEffects.filter((e) => e.type === 'NEXT_COMBAT_DELTA').reduce((sum, e) => sum + (e.amount || 0), 0) : 0;
+  if (nextCombatDelta) {
+    room.combat.playerDelta += nextCombatDelta;
+    active.temporaryEffects = active.temporaryEffects.filter((e) => e.type !== 'NEXT_COMBAT_DELTA');
+    announce(room, 'combat', 'Lingering Penalty Applied', `${active.name} has ${nextCombatDelta} to this combat.`, null, { importance: 'normal' });
+  }
   resetCombatPasses(room);
   room.phase = 'COMBAT';
   room.revealCard = threat;
@@ -808,6 +822,223 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       announce(room, 'roll', 'Reroll Required', `${player.name} played ${sourceCard?.publicName}. The current Flee roll must be rolled again.`, sourceCard, { importance: 'major' });
       return true;
     }
+
+    case 'NO_EFFECT': {
+      announce(room, 'effect', 'No Effect', `${sourceCard?.publicName || 'The effect'} had no further effect.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'MULTI_EFFECT': {
+      let complete = true;
+      for (const inner of effect.effects || []) {
+        const ok = applyEffect(room, player, inner, sourceCard, context);
+        if (!ok) complete = false;
+      }
+      return complete;
+    }
+    case 'CHANGE_ROLE': {
+      if (!player.role) { announce(room, 'effect', 'No Effect', `${player.name} had no Calling to change.`, sourceCard, { importance: 'normal' }); return true; }
+      discardCard(room, player.role); player.role = null;
+      const revealed = [];
+      let found = null;
+      while (!found) {
+        const c = draw(room, 'CHAMBER');
+        if (!c) break;
+        revealed.push(c);
+        if (c.type === 'ROLE') found = c;
+      }
+      for (const c of revealed) {
+        if (c === found) continue;
+        discardCard(room, c);
+      }
+      if (found) { player.role = found; announce(room, 'effect', 'Calling Changed', `${player.name} is now ${found.publicName}.`, found, { importance: 'major' }); }
+      else announce(room, 'effect', 'No Calling Found', `${player.name} lost their Calling and no replacement appeared.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'CHANGE_ORIGIN': {
+      if (!player.origin) { announce(room, 'effect', 'No Effect', `${player.name} had no Kin to change.`, sourceCard, { importance: 'normal' }); return true; }
+      discardCard(room, player.origin); player.origin = null;
+      const revealed = [];
+      let found = null;
+      while (!found) {
+        const c = draw(room, 'CHAMBER');
+        if (!c) break;
+        revealed.push(c);
+        if (c.type === 'ORIGIN') found = c;
+      }
+      for (const c of revealed) {
+        if (c === found) continue;
+        discardCard(room, c);
+      }
+      if (found) { player.origin = found; announce(room, 'effect', 'Kin Changed', `${player.name} is now ${found.publicName}.`, found, { importance: 'major' }); }
+      else announce(room, 'effect', 'No Kin Found', `${player.name} lost their Kin and no replacement appeared.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'NEXT_COMBAT_DELTA': {
+      player.temporaryEffects.push({ type: 'NEXT_COMBAT_DELTA', amount: effect.amount || 0, duration: 'NEXT_COMBAT' });
+      announce(room, 'effect', 'Next Combat Penalty', `${player.name} has ${effect.amount} in their next combat.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'ADD_DIE_PENALTY': {
+      player.temporaryEffects.push({ type: 'DIE_ROLL_PENALTY', amount: effect.amount || -1 });
+      announce(room, 'effect', 'Die Roll Penalty', `${player.name} has ${effect.amount || -1} to die rolls until the penalty is removed.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'ONLY_BODY_GEAR_NEXT_COMBAT': {
+      player.temporaryEffects.push({ type: 'ONLY_BODY_GEAR_NEXT_COMBAT', duration: 'NEXT_COMBAT' });
+      announce(room, 'effect', 'Mirror Curse', `${player.name}'s next combat only counts Body Gear bonuses.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'DISCARD_ALL_HEAVY_GEAR': {
+      const heavy = [...player.carriedGear, ...player.equippedGear].filter((g) => g.isHeavy);
+      for (const g of heavy) discardSpecificGear(room, player, g.instanceId);
+      announce(room, 'effect', 'Heavy Gear Dropped', `${player.name} discarded ${heavy.length} Heavy Gear.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'DISCARD_HAND_AND_GEAR': {
+      const count = player.hand.length + player.carriedGear.length + player.equippedGear.length;
+      while (player.hand.length) discardCard(room, player.hand.pop());
+      while (player.carriedGear.length) discardCard(room, player.carriedGear.pop());
+      while (player.equippedGear.length) discardCard(room, player.equippedGear.pop());
+      announce(room, 'effect', 'Everything Lost', `${player.name} discarded hand and all Gear (${count} cards).`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'DISCARD_ALL_IDENTITIES': {
+      if (player.role) { discardCard(room, player.role); player.role = null; }
+      if (player.origin) { discardCard(room, player.origin); player.origin = null; }
+      while ((player.extraRoles || []).length) discardCard(room, player.extraRoles.pop());
+      while ((player.extraOrigins || []).length) discardCard(room, player.extraOrigins.pop());
+      announce(room, 'effect', 'Ordinary Again', `${player.name} lost all Callings and Kin.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'CHOOSE_DISCARD_HAND_OR_LOSE_GLORY': {
+      createPrompt(room, { type: 'CHOOSE_BAD_NEWS_OPTION', playerId: player.id, message: `Choose Bad News: discard your hand or lose ${effect.amount || 2} Glory.`, options: [], meta: { option: 'HAND_OR_GLORY', amount: effect.amount || 2, after: context.after || 'CONTINUE' } });
+      return false;
+    }
+    case 'ROLL_DISCARD_OWNED': {
+      const raw = rollD6();
+      const count = Math.min(raw, allOwnedCards(player).length);
+      if (!count) { announce(room, 'roll', 'Bad News Roll', `${player.name} rolled ${raw}, but had nothing to lose.`, sourceCard, { importance: 'major' }); return true; }
+      createPrompt(room, { type: 'DISCARD_OWNED_CARDS', playerId: player.id, message: `${player.name} rolled ${raw}. Choose ${count} card${count === 1 ? '' : 's'} from hand/Gear to discard.`, options: allOwnedCards(player), meta: { count, after: context.after || 'CONTINUE' } });
+      announce(room, 'roll', 'Bad News Roll', `${player.name} rolled ${raw} and must discard ${count} card${count === 1 ? '' : 's'}.`, sourceCard, { importance: 'major' });
+      return false;
+    }
+    case 'ROLL_LOSE_GLORY': {
+      const raw = rollD6();
+      const loss = raw <= 2 ? raw : raw;
+      const before = player.renown;
+      player.renown = Math.max(1, player.renown - loss);
+      announce(room, 'roll', 'Bad News Roll', `${player.name} rolled ${raw} and Glory changed ${before} → ${player.renown}.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'LOSE_HEAD_OR_GLORY': {
+      const heads = player.equippedGear.filter((g) => g.slot === 'HEAD');
+      if (heads.length) { discardSpecificGear(room, player, heads[0].instanceId); announce(room, 'effect', 'Head Gear Lost', `${player.name} lost ${heads[0].publicName}.`, heads[0], { importance: 'major' }); }
+      else { const before = player.renown; player.renown = Math.max(1, player.renown - 1); announce(room, 'effect', 'No Head Gear', `${player.name} had no Head Gear, so Glory changed ${before} → ${player.renown}.`, sourceCard, { importance: 'major' }); }
+      return true;
+    }
+    case 'LOSE_ALL_ROLES_OR_GLORY': {
+      if (player.role || (player.extraRoles || []).length) { if (player.role) { discardCard(room, player.role); player.role = null; } while ((player.extraRoles || []).length) discardCard(room, player.extraRoles.pop()); announce(room, 'effect', 'Calling Lost', `${player.name} lost all Callings.`, sourceCard, { importance: 'major' }); }
+      else { const before = player.renown; player.renown = Math.max(1, player.renown - (effect.amount || 3)); announce(room, 'effect', 'No Calling', `${player.name} lost Glory ${before} → ${player.renown}.`, sourceCard, { importance: 'major' }); }
+      return true;
+    }
+    case 'SET_TO_LOWEST_GLORY': {
+      const min = Math.min(...room.players.map((p) => p.renown));
+      const before = player.renown; player.renown = min;
+      announce(room, 'effect', 'Glory Setback', `${player.name}'s Glory changed ${before} → ${player.renown}.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'LAWYERS_BAD_NEWS': {
+      const gear = [...player.carriedGear, ...player.equippedGear][0];
+      if (gear) discardSpecificGear(room, player, gear.instanceId);
+      for (const other of room.players.filter((p) => p.id !== player.id)) {
+        if (player.hand.length) { const card = player.hand.splice(Math.floor(Math.random()*player.hand.length),1)[0]; markFresh(card, 'LAWYERS'); other.hand.push(card); }
+      }
+      announce(room, 'effect', 'Legal Trouble', `${player.name} lost Gear and other players drew from their hand.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'ADJACENT_TAKE_GEAR': {
+      const publicGear = [...player.carriedGear, ...player.equippedGear];
+      const others = room.players.filter((p) => p.id !== player.id);
+      let moved = 0;
+      for (const other of others.slice(0, effect.count || 2)) {
+        const gear = publicGear.shift();
+        if (!gear) break;
+        discardSpecificGear(room, player, gear.instanceId);
+        markFresh(gear, 'TAKEN_GEAR');
+        other.hand.push(gear);
+        moved++;
+      }
+      announce(room, 'effect', 'Gear Taken', `${moved} Gear card${moved === 1 ? '' : 's'} were taken from ${player.name}.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'HIGHEST_TAKE_GEAR': {
+      const max = Math.max(...room.players.map((p) => p.renown));
+      const takers = room.players.filter((p) => p.id !== player.id && p.renown === max);
+      let moved = 0;
+      for (const taker of takers) {
+        const gear = [...player.carriedGear, ...player.equippedGear][0];
+        if (!gear) break;
+        discardSpecificGear(room, player, gear.instanceId);
+        markFresh(gear, 'TAKEN_GEAR');
+        taker.hand.push(gear);
+        moved++;
+      }
+      announce(room, 'effect', 'Highest Took Gear', `${moved} Gear card${moved === 1 ? '' : 's'} moved from ${player.name} to the highest-Glory player(s).`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'DISCARD_GEAR_VALUE_OR_ALL': {
+      const gear = [...player.carriedGear, ...player.equippedGear].sort((a,b)=>gearJunkValue(b)-gearJunkValue(a));
+      let total = 0, count = 0;
+      for (const g of gear) { if (total >= (effect.value || 1000)) break; total += gearJunkValue(g); discardSpecificGear(room, player, g.instanceId); count++; }
+      announce(room, 'effect', 'Gear Payment', `${player.name} discarded ${count} Gear worth ${total} Junk.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'INCOME_TAX': {
+      for (const p of room.players) {
+        const gear = [...p.carriedGear, ...p.equippedGear][0];
+        if (gear) discardSpecificGear(room, p, gear.instanceId);
+        else p.renown = Math.max(1, p.renown - 1);
+      }
+      announce(room, 'effect', 'Dungeon Tax Paid', `Each player paid one Gear or lost 1 Glory.`, sourceCard, { importance: 'major' });
+      return true;
+    }
+    case 'YUPPIE_WATER': {
+      if (!room.combat) return true;
+      const active = getPlayer(room, room.combat.activePlayerId);
+      const helper = room.combat.helperPlayerId ? getPlayer(room, room.combat.helperPlayerId) : null;
+      let bonus = 0;
+      if (hasOrigin(active, 'ELF_EQUIV')) bonus += 2;
+      if (helper && hasOrigin(helper, 'ELF_EQUIV')) bonus += 2;
+      room.combat.playerDelta += bonus;
+      announce(room, 'combat', 'Brightkin Refreshed', `${sourceCard?.publicName || 'A card'} gave the player side +${bonus}.`, sourceCard, { importance: 'major' });
+      resetCombatPasses(room);
+      return true;
+    }
+    case 'GAIN_IF_HIGHEST_OR_TIED': {
+      const max = Math.max(...room.players.map((p) => p.renown));
+      if (player.renown >= max) gainGlory(room, player, effect.amount || 1, false, false);
+      else announce(room, 'effect', 'No Effect', `${player.name} was not tied for highest Glory.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'KILL_HIRELING_GAIN_GLORY': {
+      const hireling = [...player.equippedGear, ...player.carriedGear].find((g) => g.id === 'GEAR_HIRELING');
+      if (hireling) { discardSpecificGear(room, player, hireling.instanceId); gainGlory(room, player, 1, false, false); announce(room, 'effect', 'Helper Dismissed', `${player.name} discarded Little Helper and gained 1 Glory.`, sourceCard, { importance: 'major' }); }
+      else announce(room, 'effect', 'No Helper', `${player.name} had no Little Helper to dismiss.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'CANCEL_ACTIVE_HEX': {
+      announce(room, 'effect', 'Wish Held', `${sourceCard?.publicName || 'Wish Ring'} is ready to cancel Hexes when reaction timing is open.`, sourceCard, { importance: 'normal' });
+      return true;
+    }
+    case 'TRANSFER_COMBAT': {
+      if (!room.combat) return true;
+      const target = getPlayer(room, context.targetPlayerId);
+      if (!target || target.id === room.combat.activePlayerId) { announce(room, 'effect', 'No Transfer', `No valid combat transfer target was chosen.`, sourceCard, { importance: 'normal' }); return true; }
+      room.combat.activePlayerId = target.id;
+      resetCombatPasses(room);
+      announce(room, 'combat', 'Combat Transferred', `${target.name} is now fighting the Foe side.`, sourceCard, { importance: 'major' });
+      return true;
+    }
     case 'MANUAL_PROMPT': {
       createPrompt(room, { type: 'MANUAL', playerId: context.playerId || player.id, message: `${sourceCard?.publicName || 'This card'} needs table resolution.`, options: [], meta: { after: context.after || 'CONTINUE' } });
       return false;
@@ -848,10 +1079,16 @@ function selectableGear(player, effect) {
   if (effect.target === 'EQUIPPED_GEAR') zones = player.equippedGear;
   else if (effect.target === 'CARRIED_GEAR') zones = player.carriedGear;
   else zones = [...player.equippedGear, ...player.carriedGear];
-  return zones.filter((g) => {
+  let candidates = zones.filter((g) => {
     if (!effect.slot || effect.slot === 'ANY') return true;
     return g.slot === effect.slot;
   });
+  if (effect.selector === 'HEAVY') candidates = candidates.filter((g) => g.isHeavy);
+  if (effect.selector === 'HIGHEST_COMBAT_BONUS' && candidates.length) {
+    const max = Math.max(...candidates.map((g) => Number(g.combatBonus || 0)));
+    candidates = candidates.filter((g) => Number(g.combatBonus || 0) === max);
+  }
+  return candidates;
 }
 
 function discardSpecificGear(room, player, gearId) {
@@ -1003,6 +1240,12 @@ function setupGame(room) {
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
   log(room, `Hex revealed: ${card.publicName}.`);
   announce(room, 'hex', 'Hex Revealed', `${card.publicName} affects ${targetPlayer.name}.`, card, { importance: 'major' });
+  if (after === 'TO_NO_THREAT_CHOICE' && targetPlayer.equippedGear.some((g) => g.id === 'GEAR_SANDALS_PROTECTION')) {
+    announce(room, 'hex', 'Hex Blocked', `${targetPlayer.name}'s Sandals of Protection blocked ${card.publicName}.`, card, { importance: 'major' });
+    discardCard(room, card);
+    room.phase = 'NO_THREAT_CHOICE';
+    return;
+  }
   let complete = true;
   for (const effect of card.effects || []) {
     const ok = applyEffect(room, targetPlayer, effect, card, { after, revealedHex: true });
@@ -1021,6 +1264,7 @@ function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
 
 function canFoePursuePlayer(threat, player) {
   for (const rule of threat.willNotPursue || []) {
+    if (rule.type === 'NEVER') return false;
     if (rule.type === 'RENOWN_BELOW' && player.renown < rule.value) return false;
   }
   return true;
@@ -1114,6 +1358,8 @@ function cleanupCombatToDiscard(room) {
     discardCard(room, threat);
   }
   for (const trick of room.combat.playedTricks || []) discardCard(room, trick);
+  const active = getActive(room);
+  if (active) active.temporaryEffects = active.temporaryEffects.filter((e) => !['ONLY_BODY_GEAR_NEXT_COMBAT'].includes(e.type));
   room.combat = null;
   room.escape = null;
 }
@@ -1207,7 +1453,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.6.0-advanced-mechanics' });
+  socket.emit('ready', { version: '0.6.2-one-for-one-automation' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1805,6 +2051,34 @@ function resolvePrompt(socket, room, player, payload) {
     return;
   }
 
+
+  if (prompt.type === 'DISCARD_OWNED_CARDS') {
+    const need = prompt.meta?.count || 1;
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
+    if (ids.length !== need) return emitError(socket, `Choose exactly ${need} card${need === 1 ? '' : 's'} to discard.`);
+    const valid = new Set((prompt.options || []).map((c) => c.instanceId));
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid owned cards.');
+    for (const id of ids) removeAndDiscardOwnedCard(room, player, id);
+    announce(room, 'effect', 'Cards Discarded', `${player.name} discarded ${ids.length} card${ids.length === 1 ? '' : 's'}.`, null, { importance: 'major' });
+    continueAfterPrompt(room, after);
+    return;
+  }
+
+  if (prompt.type === 'CHOOSE_BAD_NEWS_OPTION') {
+    const option = payload.option || 'LOSE_GLORY';
+    if (prompt.meta?.option === 'HAND_OR_GLORY' && option === 'DISCARD_HAND') {
+      while (player.hand.length) discardCard(room, player.hand.pop());
+      announce(room, 'effect', 'Hand Discarded', `${player.name} discarded their hand.`, null, { importance: 'major' });
+    } else {
+      const amount = prompt.meta?.amount || 2;
+      const before = player.renown;
+      player.renown = Math.max(1, player.renown - amount);
+      announce(room, 'effect', 'Glory Lost', `${player.name}'s Glory changed ${before} → ${player.renown}.`, null, { importance: 'major' });
+    }
+    continueAfterPrompt(room, after);
+    return;
+  }
+
   if (prompt.type === 'SELL_GEAR') {
     const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
     if (!ids.length) return emitError(socket, 'Choose at least one Gear card to sell.');
@@ -1841,5 +2115,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.6.0 advanced mechanics listening on ${PORT}`);
+  console.log(`Loot Goblins v0.6.2 one-for-one automation listening on ${PORT}`);
 });
