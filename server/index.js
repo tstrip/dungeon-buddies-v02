@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.1-ux-clarity' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.2-core-playability' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -40,9 +40,22 @@ function shuffle(arr) {
   return copy;
 }
 
+function isPlayableDefinition(def) {
+  // v0.5.2: keep the live deck clean. Cards that need advanced systems are parked for v0.6
+  // instead of showing confusing "manual resolution" prompts during play.
+  if (!def) return false;
+  if (def.id === 'SPECIAL_STEAL_LEVEL') return true;
+  if (def.type === 'TRICK' && def.effect?.type === 'MODIFY_COMBAT_TOTAL') return true;
+  if (def.enforcement === 'MANUAL') return false;
+  if (def.effect?.type === 'MANUAL_PROMPT') return false;
+  if (def.consequence?.type === 'MANUAL_PROMPT') return false;
+  return true;
+}
+
 function expandDeck(defs) {
   const expanded = [];
   for (const def of defs) {
+    if (!isPlayableDefinition(def)) continue;
     const copies = Number(def.copies || 1);
     for (let i = 0; i < copies; i++) {
       const card = { ...clone(def), instanceId: instanceId() };
@@ -160,7 +173,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.5.1-ux-clarity',
+    version: '0.5.2-core-playability',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -238,13 +251,19 @@ function serializeEscape(room) {
 
 function serializePrompt(prompt, viewerId) {
   if (!prompt) return null;
+  const requiresYou = prompt.playerId === viewerId;
+  let options = [];
+  if (requiresYou) {
+    if (prompt.type === 'CHOOSE_PLAYER') options = (prompt.options || []).map((p) => ({ id: p.id, name: p.name }));
+    else options = (prompt.options || []).map(publicCard);
+  }
   return {
     id: prompt.id,
     type: prompt.type,
     playerId: prompt.playerId,
     message: prompt.message,
-    options: prompt.playerId === viewerId ? (prompt.options || []).map(publicCard) : [],
-    requiresYou: prompt.playerId === viewerId,
+    options,
+    requiresYou,
     meta: prompt.meta || {}
   };
 }
@@ -510,6 +529,21 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       while (player.carriedGear.length) discardCard(room, player.carriedGear.pop());
       while (player.equippedGear.length) discardCard(room, player.equippedGear.pop());
       log(room, `${player.name} was Knocked Out and discarded ${lostHand} hand card${lostHand === 1 ? '' : 's'} and ${lostGear} Gear.`);
+      return true;
+    }
+    case 'TRANSFER_RENOWN': {
+      const target = getPlayer(room, context.targetPlayerId);
+      if (!target || target.id === player.id) {
+        createPrompt(room, { type: 'CHOOSE_PLAYER', playerId: player.id, message: `${sourceCard?.publicName || 'This card'}: choose a player to steal Glory from.`, options: room.players.filter((p) => p.id !== player.id), meta: { effect, sourceCard, after: context.after || 'TO_TRIBUTE_OR_END' } });
+        return false;
+      }
+      if (target.renown <= (effect.minimum ?? 1)) {
+        log(room, `${target.name} had no stealable Glory.`);
+        return true;
+      }
+      target.renown = Math.max(effect.minimum ?? 1, target.renown - (effect.amount || 1));
+      gainGlory(room, player, effect.amount || 1, Boolean(effect.canWin), false);
+      log(room, `${player.name} stole ${effect.amount || 1} Glory from ${target.name}.`);
       return true;
     }
     case 'SELL_GEAR_FOR_RENOWN': {
@@ -835,7 +869,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.5.1-ux-clarity' });
+  socket.emit('ready', { version: '0.5.2-core-playability' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1090,7 +1124,7 @@ function playCard(socket, room, player, card, payload) {
     if (!canPlayAny && !canPlayCombat && !canPlayOwnTurn) return emitError(socket, 'That Special is not playable in this timing window.');
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Special must be in your hand.');
-    const ok = applyEffect(room, player, real.effect, real, { after: room.phase === 'COMBAT' ? 'CONTINUE' : 'TO_TRIBUTE_OR_END' });
+    const ok = applyEffect(room, player, real.effect, real, { after: room.phase === 'COMBAT' ? 'CONTINUE' : 'TO_TRIBUTE_OR_END', targetPlayerId: payload.targetPlayerId });
     discardCard(room, real);
     if (room.phase === 'COMBAT') resetCombatPasses(room);
     log(room, `${player.name} played ${real.publicName}${room.phase === 'COMBAT' ? '. Everyone must confirm again.' : '.'}`);
@@ -1114,8 +1148,11 @@ function playCard(socket, room, player, card, payload) {
     if (!(card.timing || []).includes('DURING_COMBAT')) return emitError(socket, 'That Trick is not playable in this combat window.');
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Trick must be in your hand.');
-    applyEffect(room, player, real.effect, real);
-    room.combat.playedTricks.push(real);
+    const effect = { ...(real.effect || {}) };
+    if (effect.type === 'MODIFY_COMBAT_TOTAL' && payload.side) effect.side = payload.side;
+    const displayed = { ...real, effect };
+    applyEffect(room, player, effect, displayed);
+    room.combat.playedTricks.push(displayed);
     resetCombatPasses(room);
     log(room, `${player.name} played ${real.publicName}. Everyone must confirm again.`);
     return;
@@ -1225,8 +1262,15 @@ function resolvePrompt(socket, room, player, payload) {
     return;
   }
 
+  if (prompt.type === 'CHOOSE_PLAYER') {
+    const target = getPlayer(room, payload.targetPlayerId);
+    if (!target || target.id === player.id) return emitError(socket, 'Choose another player.');
+    const ok = applyEffect(room, player, prompt.meta.effect, prompt.meta.sourceCard, { after, targetPlayerId: target.id });
+    if (ok) continueAfterPrompt(room, after);
+    return;
+  }
   if (prompt.type === 'MANUAL') {
-    log(room, `${player.name} confirmed manual resolution.`);
+    log(room, `${player.name} confirmed advanced card resolution.`);
     continueAfterPrompt(room, after);
     return;
   }

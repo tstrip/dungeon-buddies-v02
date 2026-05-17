@@ -565,3 +565,61 @@ body, .screen, .game, .panel, .table-shell, .active-table, .hand-panel, .phase-b
   .die-face { width: 82px; }
   .die-face.small { width: 54px; }
 }
+
+/* v0.5.2: central-table framing + reduced header crowding */
+.phase-banner {
+  padding: 8px 10px;
+  position: sticky;
+  top: max(0px, var(--safe-top));
+}
+.phase-banner h2 { font-size: clamp(1rem, 4.2vw, 1.35rem); margin: 0 0 2px; }
+.phase-banner p {
+  font-size: .78rem;
+  line-height: 1.18;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.phase-banner .eyebrow { font-size: .58rem; }
+.primary-action { margin-top: 6px; }
+.primary-action button { padding: .56rem .75rem; }
+.table-shell { padding: 8px; min-height: auto; }
+.table-topline { margin-bottom: 6px; align-items: center; }
+.compact-title .eyebrow { margin: 0; }
+.table-title-block h2 { display: none; }
+.active-table { min-height: 0; }
+.table-event { margin-bottom: 7px; padding: 8px 9px; font-size: .84rem; }
+.focus-layout { margin-top: 6px; }
+.combat-status { padding: 8px 9px; margin: 0 0 7px; }
+.combat-status span { font-size: .76rem; }
+.pass-tracker { margin-bottom: 7px; }
+.pass-pill { padding: 6px 6px; border-radius: 12px; }
+.pass-pill .micro { font-size: .62rem; }
+.combat-side { padding: 8px; }
+.combat-side h3 { font-size: .82rem; }
+.total-big { font-size: clamp(2rem, 10vw, 3.4rem); margin: 3px 0; }
+.escape-layout { margin-top: 2px; }
+.dice-stage { margin: 7px 0; }
+.deck-dock { font-size: .61rem; }
+.deck-dock span { padding: 3px 5px; }
+.player-strip { order: 3; }
+.player-mini { padding: 6px; }
+.player-stats { font-size: .62rem; }
+
+@media (max-width: 560px) {
+  .game { gap: 7px; }
+  .phase-banner { border-radius: 16px; }
+  .phase-banner p { font-size: .74rem; }
+  .table-shell { border-radius: 16px; }
+  .deck-dock { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .combat-layout { gap: 6px; }
+  .combat-side .card-row { padding-bottom: 2px; }
+  .card.table-small { flex-basis: 104px; width: 104px; min-height: 154px; }
+  .die-face { width: 72px; border-radius: 18px; padding: 13px; }
+  .opening-roll-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .roll-card { padding: 6px 4px; border-radius: 12px; }
+  .roll-card strong { font-size: .74rem; }
+  .die-face.small { width: 44px; padding: 8px; border-radius: 12px; }
+  .die-face.small .pip { width: 6px; height: 6px; }
+}

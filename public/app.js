@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV051Session';
+const SESSION_KEY = 'lootGoblinsV052Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -268,7 +268,7 @@ function renderPhaseBanner() {
     const totals = state.combat?.totals;
     const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
     title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
-    copy = `${marginText}. Combat resolves only after every player confirms they are done playing combat cards. Player side must be higher than Foe side; ties lose unless a Calling says otherwise.`;
+    copy = `${marginText}. Use the table center below for totals and response status.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
@@ -376,9 +376,7 @@ function renderEscape(root) {
     : `Target number is 5+. ${runner?.isYou ? 'Tap Roll to Flee above.' : `Waiting for ${escapeHtml(runner?.name || 'the runner')}.`}`;
   root.innerHTML = `
     <div class="table-event"><strong>Flee:</strong> ${escapeHtml(runner?.name || 'Runner')} must roll against ${escapeHtml(esc.threat?.publicName || 'the Foe')}.</div>
-    ${tableBoardHtml({ centerLabel: 'Flee Zone', centerSub: `${runner?.name || 'Runner'} is rolling against ${esc.threat?.publicName || 'the Foe'}.`, centerClass: 'flee-center' })}
-    <div class="zone-title"><h2>Flee Zone</h2><span class="micro">Classic d6 roll</span></div>
-    <div class="escape-layout">
+    <div class="escape-layout focus-layout">
       <div>
         <h3>${escapeHtml(runner?.name || 'Runner')} vs ${escapeHtml(esc.threat?.publicName || 'Foe')}</h3>
         <p class="micro">Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
@@ -408,9 +406,7 @@ function renderFirstRoll(root) {
   const waiting = (first.eligible || []).filter((id) => !first.rolls?.[id]).map(playerName);
   root.innerHTML = `
     <div class="table-event"><strong>Opening Roll:</strong> ${escapeHtml(first.requiresYou ? 'Your roll is needed.' : waiting.length ? `Waiting for ${waiting.join(', ')}.` : 'Resolving first player.')}</div>
-    ${tableBoardHtml({ centerLabel: 'Opening Roll', centerSub: 'Highest d6 opens the first Chamber. Ties reroll.', centerClass: 'roll-center' })}
-    <div class="zone-title"><h2>Opening Roll</h2><span class="micro">Round ${Number(first.round || 1)}</span></div>
-    <div class="opening-roll-grid">
+    <div class="opening-roll-grid focus-layout">
       ${state.players.map((p) => {
         const rolled = first.rolls?.[p.id];
         const eligible = (first.eligible || []).includes(p.id);
@@ -463,12 +459,10 @@ function renderCombat(root) {
         : 'Everyone has confirmed. Combat resolves now.';
   const status = combatStatusText(totals);
   root.innerHTML = `
-    <div class="table-event"><strong>Combat:</strong> ${escapeHtml(tableCopy)}</div>
     <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
-    ${tableBoardHtml({ centerLabel: 'Combat Zone', centerSub: `${playerName(combat.activePlayerId)} is fighting ${threat?.publicName || 'a Foe'}.`, centerClass: 'combat-center' })}
+    <div class="table-event"><strong>Response window:</strong> ${escapeHtml(tableCopy)}</div>
     <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
-    <div class="zone-title"><h2>Combat Zone</h2><span class="micro">${escapeHtml(passSummary(combat.passes))}</span></div>
-    <div class="combat-layout">
+    <div class="combat-layout focus-layout">
       <div class="combat-side">
         <h3>Player Side</h3>
         <div>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
@@ -533,8 +527,13 @@ function renderPrompt() {
     $('confirmSell').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] }); selectedSell.clear(); });
     return;
   }
+  if (p.type === 'CHOOSE_PLAYER') {
+    root.innerHTML = `<h3>Choose a player</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((opt) => `<button class="primary" data-target-player-id="${opt.id}">${escapeHtml(opt.name)}</button>`).join('')}</div>`;
+    root.querySelectorAll('[data-target-player-id]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { targetPlayerId: btn.dataset.targetPlayerId })));
+    return;
+  }
   if (p.type === 'MANUAL') {
-    root.innerHTML = `<h3>Manual resolution</h3><p>${escapeHtml(p.message)}</p><button class="primary" id="confirmManual">Confirm Resolved</button>`;
+    root.innerHTML = `<h3>Advanced card</h3><p>${escapeHtml(p.message)}</p><p class="micro">This card should be parked until the advanced mechanics pass. Confirm only if you intentionally resolved it out loud.</p><button class="primary" id="confirmManual">Confirm Advanced Resolution</button>`;
     $('confirmManual').addEventListener('click', () => emitAction('RESOLVE_PROMPT'));
     return;
   }
@@ -700,6 +699,9 @@ function inspectCard(card) {
     const a = btn.dataset.inspectAction;
     closeInspect();
     if (a === 'PLAY') emitAction('PLAY_CARD', { cardId: card.instanceId });
+    if (a === 'PLAY_PLAYER_SIDE') emitAction('PLAY_CARD', { cardId: card.instanceId, side: 'PLAYER' });
+    if (a === 'PLAY_FOE_SIDE') emitAction('PLAY_CARD', { cardId: card.instanceId, side: 'THREAT' });
+    if (a === 'PLAY_TARGET') emitAction('PLAY_CARD', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
     if (a === 'EQUIP') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' });
     if (a === 'CARRY') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' });
     if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
@@ -716,13 +718,18 @@ function cardActions(card) {
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
-  if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
+  if (card.type === 'TRICK' && state.phase === 'COMBAT' && card.effect?.type === 'MODIFY_COMBAT_TOTAL') {
+    actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Help Player Side</button>`);
+    actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Help Foe Side</button>`);
+  } else if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
   if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
   if (card.type === 'HEX') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Hex</button>`);
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
     const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase));
-    if (canSpecial) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
+    if (canSpecial && card.id === 'SPECIAL_STEAL_LEVEL') {
+      for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Steal from ${escapeHtml(p.name)}</button>`);
+    } else if (canSpecial) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
   }
   if (!actions.length) actions.push(`<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`);
   return actions.join('');

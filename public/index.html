@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Loot Goblins v0.5.1</title>
+  <title>Loot Goblins v0.5.2</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
 
   <main id="resumeScreen" class="screen hidden">
     <section class="hero panel">
-      <div class="eyebrow">Loot Goblins v0.5.1</div>
+      <div class="eyebrow">Loot Goblins v0.5.2</div>
       <h1>Resume your table?</h1>
       <p id="resumeCopy">Saved room found.</p>
       <div class="button-row">
@@ -23,7 +23,7 @@
 
   <main id="entryScreen" class="screen">
     <section class="hero panel">
-      <div class="eyebrow">Loot Goblins v0.5.1</div>
+      <div class="eyebrow">Loot Goblins v0.5.2</div>
       <h1>Get loot. Gain glory. Betray responsibly.</h1>
       <p>A cozy-chaotic three-player dungeon card table with private hands, rejoin support, card zones, and a starter Loot Goblins deck.</p>
       <label>Your name</label>
@@ -56,13 +56,10 @@
   <main id="gameScreen" class="screen game hidden">
     <section id="phaseBanner" class="phase-banner panel"></section>
 
-    <section id="playerStrip" class="player-strip"></section>
-
     <section class="table-shell panel">
       <div class="table-topline">
-        <div class="table-title-block">
-          <div class="eyebrow">The Table</div>
-          <h2>What is happening right now</h2>
+        <div class="table-title-block compact-title">
+          <div class="eyebrow">Table Center</div>
         </div>
         <div id="deckDock" class="deck-dock">
           <span>Chamber <strong id="chamberCount">0</strong></span>
@@ -73,6 +70,8 @@
       </div>
       <div id="activeTable" class="active-table"></div>
     </section>
+
+    <section id="playerStrip" class="player-strip"></section>
 
     <section id="promptPanel" class="panel prompt-panel hidden"></section>
 

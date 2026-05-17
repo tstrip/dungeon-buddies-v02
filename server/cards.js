@@ -1,4 +1,4 @@
-// Loot Goblins v0.5 — Classic Card Database Rework
+// Loot Goblins v0.5.2 — Core Playability and No-Manual-Deck Patch
 // Mechanical baseline: classic Munchkin-style rules and the clearer English source card sheets provided by the user.
 // Names, rules wording, and flavor are original Loot Goblins presentation.
 
@@ -44,15 +44,15 @@ const special = (id, publicName, publicText, flavorText, effect, stats = {}) => 
 
 const chamberCards = [
   // Callings / Classes
-  role('CALLING_BRUISER', 'Bruiser', 'You win tied combats. Berserking: during combat, you may discard up to 3 cards; each gives you +3 for that combat. In this build, resolve discards manually.', 'A practical Calling for anyone who believes every puzzle has a door-shaped solution.', 'WARRIOR_EQUIV', 2),
-  role('CALLING_HEXHAND', 'Hexhand', 'Flight: you may discard up to 3 cards after failing to Flee; each gives +1 to one retry. Charm: discard your whole hand, minimum 3 cards, to remove one Foe and take its Loot but no Glory. Manual in this build.', 'Magic is mostly confidence, hand gestures, and cleaning up later.', 'WIZARD_EQUIV', 2),
-  role('CALLING_CUTPURSE', 'Cutpurse', 'Backstab: discard 1 card during combat to give a player -2. Theft: outside combat, discard 1 card and roll; 4+ steals one small Gear, failure loses 1 Glory. Manual in this build.', 'Believes sharing is important, especially when other people start.', 'THIEF_EQUIV', 3),
-  role('CALLING_GRAVEFRIEND', 'Gravefriend', 'Resurrection: when drawing face-up, you may take from the matching discard instead, then pay the cost. Turning: discard up to 3 cards against a Restless Foe for +3 each. Manual in this build.', 'Keeps in touch with old friends, even the very old ones.', 'CLERIC_EQUIV', 3),
+  role('CALLING_BRUISER', 'Bruiser', 'You win tied combats. Advanced discard-for-bonus power is coming in the advanced mechanics pass.', 'A practical Calling for anyone who believes every puzzle has a door-shaped solution.', 'WARRIOR_EQUIV', 2),
+  role('CALLING_HEXHAND', 'Hexhand', 'Magic Calling. Advanced Flee and charm powers are coming in the advanced mechanics pass.', 'Magic is mostly confidence, hand gestures, and cleaning up later.', 'WIZARD_EQUIV', 2),
+  role('CALLING_CUTPURSE', 'Cutpurse', 'Sneaky Calling. Advanced backstab and theft powers are coming in the advanced mechanics pass.', 'Believes sharing is important, especially when other people start.', 'THIEF_EQUIV', 3),
+  role('CALLING_GRAVEFRIEND', 'Gravefriend', 'Grave Calling. Advanced discard-pile and Restless-Foe powers are coming in the advanced mechanics pass.', 'Keeps in touch with old friends, even the very old ones.', 'CLERIC_EQUIV', 3),
 
   // Kin / Races
   origin('KIN_BRIGHTKIN', 'Brightkin', '+1 to Flee. When you help kill a Foe, gain 1 Glory for each Foe killed, but this cannot force the final winning Glory.', 'Graceful, helpful, and only a little pleased that everyone noticed.', 'ELF_EQUIV', 3),
   origin('KIN_DEEPBORN', 'Deepborn', 'You may carry any number of Heavy Gear. Your hand limit is 6.', 'Packs like every errand might become an expedition.', 'DWARF_EQUIV', 3),
-  origin('KIN_HALFSTEP', 'Halfstep', 'Once each turn, you may sell one Gear for double Junk Value. If your first Flee roll fails, you may discard 1 card and try once more. Manual reroll in this build.', 'Small pockets, excellent receipts.', 'HALFLING_EQUIV', 3),
+  origin('KIN_HALFSTEP', 'Halfstep', 'Once each turn, one Gear you sell counts for double Junk Value. Advanced Flee reroll power is coming later.', 'Small pockets, excellent receipts.', 'HALFLING_EQUIV', 3),
 
   // Role expanders and rule cards
   special('SPECIAL_MIXED_KIN', 'Mixed Kin Permit', 'Attach to a Kin. You may have an extra Kin. With one Kin, keep its advantages and ignore its drawbacks. With two or more, all normal advantages and drawbacks apply. Manual in this build.', 'Every branch of the family tree brought paperwork.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'MANUAL', copies: 2 }),
@@ -200,9 +200,9 @@ const lootCards = [
   special('SPECIAL_DIVINE_INTERVENTION', 'Divine Scheduling Conflict', 'You must play this as soon as you get it. All Gravefriends gain 1 Glory; if this makes one win, they win. Manual in this build.', 'The ceiling opened and had opinions.', { type: 'MANUAL_PROMPT' }, { deck: 'CHAMBER', timing: ['ANY_TIME'], enforcement: 'MANUAL' }),
   special('SPECIAL_TRANSFERRAL', 'Transfer Potion', 'Use during combat. Another player fights the Foe side instead. Original player returns after combat. Manual in this build.', 'A brave decision made for someone else.', { type: 'MANUAL_PROMPT' }, { timing: ['DURING_COMBAT'], junkValue: 300, enforcement: 'MANUAL' }),
   special('SPECIAL_WAND_DOWSING', 'Wand of Dowsing', 'Search the discard piles for any one card, take it, and discard this. Manual in this build.', 'Everything is lost until someone labels the box.', { type: 'MANUAL_PROMPT' }, { timing: ['OWN_TURN_OUTSIDE_COMBAT'], junkValue: 1100, enforcement: 'MANUAL' }),
-  special('SPECIAL_HOARD', 'Hoard!', 'Draw 3 Loot immediately. Draw face-up if the card that gave this was face-up; otherwise draw face-down. Manual in this build.', 'The dungeon restocked while you were making poor choices.', { type: 'DRAW_LOOT', count: 3 }, { timing: ['ANY_TIME'] }),
+  special('SPECIAL_HOARD', 'Hoard!', 'Draw 3 Loot immediately.', 'The dungeon restocked while you were making poor choices.', { type: 'DRAW_LOOT', count: 3 }, { timing: ['ANY_TIME'] }),
   special('SPECIAL_FRIENDSHIP', 'Friendship Potion', 'Use during combat. Discard all Foes in the combat. No Loot is gained, but the player may Loot the Room. Manual in this build.', 'A peaceful solution that still feels suspicious.', { type: 'MANUAL_PROMPT' }, { timing: ['DURING_COMBAT'], junkValue: 200, enforcement: 'MANUAL' }),
-  special('SPECIAL_STEAL_LEVEL', 'Steal a Glory', 'Choose one player. You gain 1 Glory and they lose 1 Glory. Cannot give you the final winning Glory unless the table agrees the source card allows it. Manual in this build.', 'A ladder made of someone else’s applause.', { type: 'MANUAL_PROMPT' }, { timing: ['ANY_TIME'], enforcement: 'MANUAL' })
+  special('SPECIAL_STEAL_LEVEL', 'Steal a Glory', 'Choose another player. They lose 1 Glory, to a minimum of 1, and you gain 1 Glory. This cannot give you the final winning Glory.', 'A ladder made of someone else’s applause.', { type: 'TRANSFER_RENOWN', amount: 1, minimum: 1, canWin: false }, { timing: ['ANY_TIME'], target: 'OTHER_PLAYER', enforcement: 'AUTO' })
 ];
 
 module.exports = { chamberCards, lootCards };
