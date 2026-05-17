@@ -223,6 +223,7 @@ function tableSeatsHtml() {
   return state.players.map((p, i) => `<button class="table-seat ${positions[i] || ''} ${p.id === state.activePlayerId ? 'active' : ''} ${p.isYou ? 'you' : ''} ${p.connected ? '' : 'offline'}" data-player-seat="${p.id}">
     <span class="seat-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
     <span class="seat-glory">${p.renown}/10 Glory</span>
+    <span class="seat-identity">${escapeHtml(p.role?.publicName || 'No Calling')} · ${escapeHtml(p.origin?.publicName || 'No Kin')}</span>
     <span class="seat-sub">Hand ${p.handCount} · Gear +${p.combatBonus} · Flee +${p.escapeBonus}</span>
   </button>`).join('');
 }
@@ -332,7 +333,7 @@ function renderPhaseBanner() {
 
   root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p><div class="primary-action">${buttons.join('')}</div>`;
   root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
-  root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target)));
+  root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot)));
 }
 
 function buttonHtml(label, action, cls = '') { return `<button class="${cls}" data-action="${action}">${escapeHtml(label)}</button>`; }
@@ -342,22 +343,41 @@ function combatButtons() {
   const you = me();
   const combat = state.combat;
   if (!combat) return buttons;
-  if (combat.backupRequest?.toPlayerId === you.id) {
-    buttons.push(`<button class="primary" data-combat-action="ACCEPT_BACKUP">Accept Backup</button>`);
-    buttons.push(`<button data-combat-action="DECLINE_BACKUP">Decline</button>`);
+  const req = combat.backupRequest;
+  const totalLoot = combat.threats?.reduce((sum, t) => sum + Number(t.finalLoot || t.lootReward || 0), 0) || 0;
+  if (req) {
+    if (req.fromPlayerId === you.id) {
+      buttons.push(`<span class="micro action-note">Offer Loot to ${escapeHtml(playerName(req.toPlayerId))}. Glory is not negotiable by default.</span>`);
+      const counts = Array.from(new Set([0, 1, 2, totalLoot].filter((n) => n >= 0 && n <= totalLoot)));
+      for (const n of counts) buttons.push(`<button ${n === Number(req.deal?.lootCount || -1) ? 'class="primary"' : ''} data-combat-action="SET_BACKUP_DEAL" data-loot-count="${n}">${n === 0 ? 'Offer Free Help' : `Offer ${n} Loot`}</button>`);
+      if (totalLoot > 0) buttons.push(`<button data-combat-action="SET_BACKUP_DEAL" data-all-loot="1">Offer All Loot</button>`);
+      return buttons;
+    }
+    if (req.toPlayerId === you.id) {
+      if (req.deal) {
+        buttons.push(`<span class="micro action-note">Deal offered: you get ${Number(req.deal.lootCount || 0)} of ${totalLoot} Loot if the Foe is defeated.</span>`);
+        buttons.push(`<button class="primary" data-combat-action="ACCEPT_BACKUP">Accept Deal & Help</button>`);
+      } else {
+        buttons.push(`<span class="micro action-note">${escapeHtml(playerName(req.fromPlayerId))} is choosing your Backup deal.</span>`);
+      }
+      buttons.push(`<button data-combat-action="DECLINE_BACKUP">Decline Backup</button>`);
+      return buttons;
+    }
+    buttons.push(`<span class="micro action-note">Backup negotiation: ${escapeHtml(playerName(req.fromPlayerId))} ↔ ${escapeHtml(playerName(req.toPlayerId))}</span>`);
     return buttons;
   }
   if (combat.activePlayerId === you.id && !combat.helperPlayerId) {
     for (const p of state.players.filter((p) => p.id !== you.id)) {
-      buttons.push(`<button data-combat-action="REQUEST_BACKUP" data-target="${p.id}">Request Backup: ${escapeHtml(p.name)}</button>`);
+      buttons.push(`<button data-combat-action="REQUEST_BACKUP" data-target="${p.id}">Ask ${escapeHtml(p.name)} for Backup</button>`);
     }
   }
   buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No Buffs/Nerfs</button>`);
   return buttons;
 }
 
-function handleCombatButton(action, target) {
-  if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target, deal: 'Table deal / negotiated out loud' });
+function handleCombatButton(action, target, lootCount, allLoot) {
+  if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target });
+  else if (action === 'SET_BACKUP_DEAL') emitAction('SET_BACKUP_DEAL', { lootCount: Number(lootCount || 0), allLoot: Boolean(allLoot) });
   else emitAction(action);
 }
 
@@ -479,6 +499,26 @@ function pipOn(n, pos) {
   return (map[n] || []).includes(logical);
 }
 
+
+function backupDealPanel(combat) {
+  const req = combat.backupRequest;
+  const deal = combat.backupDeal;
+  const totalLoot = combat.threats?.reduce((sum, t) => sum + Number(t.finalLoot || t.lootReward || 0), 0) || 0;
+  if (req) {
+    const fighter = playerName(req.fromPlayerId);
+    const helper = playerName(req.toPlayerId);
+    const detail = req.deal
+      ? `${fighter} is offering ${helper} ${Number(req.deal.lootCount || 0)} of ${totalLoot} Loot if this combat is won.`
+      : `${fighter} asked ${helper} for Backup. Waiting for ${fighter} to propose a Loot split.`;
+    return `<div class="backup-deal-panel negotiating"><strong>Backup negotiation</strong><span>${escapeHtml(detail)}</span></div>`;
+  }
+  if (deal && combat.helperPlayerId) {
+    const helper = playerName(combat.helperPlayerId);
+    return `<div class="backup-deal-panel locked"><strong>Backup deal locked</strong><span>${escapeHtml(helper)} gets first ${Number(deal.lootCount || 0)} Loot if the Foe is defeated.</span></div>`;
+  }
+  return '';
+}
+
 function renderCombat(root) {
   const combat = state.combat;
   const totals = combat.totals;
@@ -497,6 +537,7 @@ function renderCombat(root) {
     <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
     <div class="table-event"><strong>Buff/Nerf window:</strong> ${escapeHtml(tableCopy)}</div>
+    ${backupDealPanel(combat)}
     <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
     <div class="combat-layout focus-layout">
       <div class="combat-side">

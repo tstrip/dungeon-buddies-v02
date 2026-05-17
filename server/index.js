@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.4-announcements-pass' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.5-backup-deal-table-compression' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -191,7 +191,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.5.4-announcements-pass',
+    version: '0.5.5-backup-deal-table-compression',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -243,6 +243,7 @@ function serializeCombat(room) {
     activePlayerId: room.combat.activePlayerId,
     helperPlayerId: room.combat.helperPlayerId,
     backupRequest: room.combat.backupRequest,
+    backupDeal: room.combat.backupDeal,
     threats: room.combat.threats.map((t) => ({ ...publicCard(t), modifiers: (t.modifiers || []).map(publicCard), finalStrength: finalFoeStrength(room, t), finalLoot: finalFoeLoot(t) })),
     playerDelta: room.combat.playerDelta || 0,
     threatDelta: room.combat.threatDelta || 0,
@@ -384,6 +385,7 @@ function startCombat(room, threat) {
     activePlayerId: activeId(room),
     helperPlayerId: null,
     backupRequest: null,
+    backupDeal: null,
     threats: [threat],
     playerDelta: 0,
     threatDelta: 0,
@@ -794,17 +796,52 @@ function canFoePursuePlayer(threat, player) {
   return true;
 }
 
+
+function totalCombatLoot(room) {
+  if (!room.combat) return 0;
+  return room.combat.threats.reduce((s, t) => s + finalFoeLoot(t), 0);
+}
+
+function describeBackupDeal(deal, helperName = 'helper') {
+  if (!deal) return 'No Backup deal locked.';
+  const n = Number(deal.lootCount || 0);
+  if (n <= 0) return `${helperName} helps for free.`;
+  return `${helperName} gets first ${n} Loot card${n === 1 ? '' : 's'} if the Foe is defeated.`;
+}
+
+function drawLootWithBackupDeal(room, active, helper, lootCount) {
+  const cards = [];
+  for (let i = 0; i < lootCount; i++) {
+    const c = draw(room, 'LOOT');
+    if (c) cards.push(c);
+  }
+  let helperGets = 0;
+  let activeGets = 0;
+  if (helper && room.combat?.backupDeal) {
+    const share = Math.max(0, Math.min(cards.length, Number(room.combat.backupDeal.lootCount || 0)));
+    const helperCards = cards.splice(0, share);
+    helper.hand.push(...helperCards);
+    helperGets = helperCards.length;
+  }
+  active.hand.push(...cards);
+  activeGets = cards.length;
+  return { activeGets, helperGets };
+}
+
 function resolveCombat(room) {
   const totals = combatTotals(room);
   const active = getPlayer(room, room.combat.activePlayerId);
   const helper = room.combat.helperPlayerId ? getPlayer(room, room.combat.helperPlayerId) : null;
   if (totals.wins) {
     const renown = room.combat.threats.reduce((s, t) => s + (t.renownReward || 0), 0);
-    const loot = room.combat.threats.reduce((s, t) => s + finalFoeLoot(t), 0);
+    const loot = totalCombatLoot(room);
     gainGlory(room, active, renown, true, true);
-    drawMany(room, active, 'LOOT', loot);
-    announce(room, 'combat', 'Combat Won', `${active.name} defeated the Foe side. +${renown} Glory, +${loot} Loot.`, room.combat.threats[0], { importance: 'major' });
-    log(room, `${active.name} defeated the Foe side and drew ${loot} Loot.`);
+    const split = drawLootWithBackupDeal(room, active, helper, loot);
+    const helperLine = helper
+      ? ` Backup deal: ${helper.name} gets ${split.helperGets} Loot, ${active.name} gets ${split.activeGets}.`
+      : '';
+    announce(room, 'combat', 'Combat Won', `${active.name} defeated the Foe side. +${renown} Glory, ${loot} total Loot.${helperLine}`, room.combat.threats[0], { importance: 'major' });
+    log(room, `${active.name} defeated the Foe side. Loot split: ${active.name} ${split.activeGets}${helper ? `, ${helper.name} ${split.helperGets}` : ''}.`);
     if (helper?.origin?.mechanicalSlot === 'ELF_EQUIV') gainGlory(room, helper, 1, false, false);
     cleanupCombatToDiscard(room);
     if (active.renown >= 10) {
@@ -930,7 +967,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.5.4-announcements-pass' });
+  socket.emit('ready', { version: '0.5.5-backup-deal-table-compression' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1062,27 +1099,44 @@ function handleAction(socket, room, player, payload) {
   if (type === 'REQUEST_BACKUP') {
     if (room.phase !== 'COMBAT' || !room.combat) return emitError(socket, 'Backup can only be requested during combat.');
     if (room.combat.activePlayerId !== player.id) return emitError(socket, 'Only the active combat player can request Backup.');
+    if (room.combat.helperPlayerId) return emitError(socket, 'You already have Backup in this combat.');
     const target = getPlayer(room, payload.targetPlayerId);
     if (!target || target.id === player.id) return emitError(socket, 'Choose another player for Backup.');
-    room.combat.backupRequest = { fromPlayerId: player.id, toPlayerId: target.id, deal: payload.deal || 'Custom table deal' };
-    announce(room, 'backup', 'Backup Requested', `${player.name} asks ${target.name} for Backup.`, null, { importance: 'normal' });
-    log(room, `${player.name} requested Backup from ${target.name}. Deal: ${room.combat.backupRequest.deal}.`);
+    room.combat.backupRequest = { fromPlayerId: player.id, toPlayerId: target.id, stage: 'NEGOTIATING', deal: null };
+    announce(room, 'backup', 'Backup Negotiation', `${player.name} asks ${target.name} for Backup. ${player.name} must propose a Loot deal.`, null, { importance: 'major' });
+    log(room, `${player.name} opened Backup negotiation with ${target.name}.`);
+    return;
+  }
+
+  if (type === 'SET_BACKUP_DEAL') {
+    if (room.phase !== 'COMBAT' || !room.combat?.backupRequest) return emitError(socket, 'No Backup negotiation is open.');
+    if (room.combat.backupRequest.fromPlayerId !== player.id) return emitError(socket, 'Only the fighter can propose the Backup deal.');
+    const helper = getPlayer(room, room.combat.backupRequest.toPlayerId);
+    const maxLoot = Math.max(0, totalCombatLoot(room));
+    const lootCount = payload.allLoot ? maxLoot : Math.max(0, Math.min(maxLoot, Number(payload.lootCount || 0)));
+    room.combat.backupRequest.deal = { lootCount, totalLootAtOffer: maxLoot };
+    announce(room, 'backup', 'Backup Deal Offered', `${player.name} offers ${helper?.name || 'the helper'} ${lootCount} of ${maxLoot} Loot if the Foe is defeated.`, null, { importance: 'major' });
+    log(room, `${player.name} offered ${helper?.name || 'helper'} ${lootCount}/${maxLoot} Loot for Backup.`);
     return;
   }
 
   if (type === 'ACCEPT_BACKUP') {
     if (!room.combat?.backupRequest || room.combat.backupRequest.toPlayerId !== player.id) return emitError(socket, 'No Backup request for you.');
+    if (!room.combat.backupRequest.deal) return emitError(socket, 'Wait for the fighter to propose a Loot deal first.');
     room.combat.helperPlayerId = player.id;
+    room.combat.backupDeal = room.combat.backupRequest.deal;
+    const fighter = getPlayer(room, room.combat.activePlayerId);
+    const dealText = describeBackupDeal(room.combat.backupDeal, player.name);
     room.combat.backupRequest = null;
     resetCombatPasses(room);
-    announce(room, 'backup', 'Backup Joined', `${player.name} joins the Player side. Combat totals updated.`, null, { importance: 'major' });
-    log(room, `${player.name} joined the combat as Backup.`);
+    announce(room, 'backup', 'Backup Deal Locked', `${player.name} joins ${fighter?.name || 'the fight'}. ${dealText}`, null, { importance: 'major' });
+    log(room, `${player.name} joined the combat as Backup. ${dealText}`);
     return;
   }
 
   if (type === 'DECLINE_BACKUP') {
     if (!room.combat?.backupRequest || room.combat.backupRequest.toPlayerId !== player.id) return emitError(socket, 'No Backup request for you.');
-    announce(room, 'backup', 'Backup Declined', `${player.name} declined Backup.`, null, { importance: 'normal' });
+    announce(room, 'backup', 'Backup Declined', `${player.name} declined the Backup negotiation.`, null, { importance: 'normal' });
     log(room, `${player.name} declined Backup.`);
     room.combat.backupRequest = null;
     return;
@@ -1390,5 +1444,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.5.4 announcements pass listening on ${PORT}`);
+  console.log(`Loot Goblins v0.5.5 announcements pass listening on ${PORT}`);
 });

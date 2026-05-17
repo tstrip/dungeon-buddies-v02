@@ -1,13 +1,17 @@
-# Loot Goblins v0.5.4
+# Loot Goblins v0.5.5
 
-Table announcements and buff/nerf clarity pass.
+Backup deal and table compression pass.
 
 ## Highlights
-- Adds a central table announcement spotlight for major events.
-- Announces opening-roll results, first-player result, card reveals, Hex outcomes, combat wins/losses, Flee rolls, Bad News-style effects, Tribute, and turn changes.
-- Reframes combat confirmation language from “Pass Combat” to “Done — No Buffs/Nerfs.”
-- Updates combat response copy to clarify the player choice: buff, nerf, request Backup, or confirm done.
-- Keeps the v0.5.3 poker-table-style layout and the v0.5 filtered live deck.
+- Adds a real Backup negotiation flow before a helper joins combat.
+- Fighter can propose a Loot split: free help, specific Loot count, or all Loot.
+- Helper must accept the locked deal before joining combat.
+- Combat rewards now split Loot based on the locked Backup deal.
+- Glory/level reward still stays with the original fighter by default, preserving classic rules. Brightkin/Elf-style helper Glory remains a special exception.
+- Shrinks deck/discard stacks so they function as table props.
+- Enlarges the table center and trims repeated header information.
+- Makes hand cards more compact.
+- Shows Calling and Kin directly on player seats without tapping.
 
 ## Render
 Build command: `npm install --package-lock=false`

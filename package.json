@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v054",
-  "version": "0.5.4",
+  "name": "loot-goblins-v055",
+  "version": "0.5.5",
   "private": true,
-  "description": "Loot Goblins v0.5.4: classic card database rework based on the improved English source card sheets.",
+  "description": "Loot Goblins v0.5.5: Backup deal and table compression pass.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
