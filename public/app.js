@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV056Session';
+const SESSION_KEY = 'lootGoblinsV057Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -170,6 +170,42 @@ function pileHtml(pile, move) {
   </div>`;
 }
 
+
+function movementZoneClass(zone) {
+  return String(zone || 'TABLE').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'table';
+}
+
+function movementZoneLabel(zone) {
+  const map = {
+    CHAMBER_DECK: 'CHAMBER',
+    CHAMBER_DISCARD: 'CHAMBER',
+    LOOT_DECK: 'LOOT',
+    LOOT_DISCARD: 'LOOT',
+    PLAYER_HAND: 'HAND',
+    REVEAL_ZONE: 'REVEAL',
+    COMBAT_ZONE: 'COMBAT',
+    FLEE_ZONE: 'FLEE',
+    TABLE: 'TABLE',
+    DISCARD: 'DISCARD',
+    RESULT: 'RESULT',
+    DIE: 'DIE'
+  };
+  return map[zone] || 'CARD';
+}
+
+function movementCardHtml(move) {
+  if (!move || (!move.from && !move.to)) return '';
+  const fromClass = `from-${movementZoneClass(move.from)}`;
+  const toClass = `to-${movementZoneClass(move.to)}`;
+  const fromLabel = movementZoneLabel(move.from);
+  const toLabel = movementZoneLabel(move.to);
+  const cardName = move.card?.publicName || 'Card';
+  return `<div class="movement-card ${fromClass} ${toClass}" aria-label="${escapeHtml(fromLabel)} to ${escapeHtml(toLabel)}: ${escapeHtml(cardName)}" data-from="${escapeHtml(fromLabel)}" data-to="${escapeHtml(toLabel)}">
+    <div class="moving-card-back"><span>${escapeHtml(fromLabel)}</span></div>
+    <div class="movement-path-label">${escapeHtml(fromLabel)} → ${escapeHtml(toLabel)}</div>
+  </div>`;
+}
+
 function deriveMovement() {
   if (state?.movement) return state.movement;
   const msg = latestEvent();
@@ -206,7 +242,7 @@ function tableBoardHtml(options = {}) {
             <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
             <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the center of the table.')}</div>
           </div>
-          ${move ? `<div class="movement-card ${escapeHtml(move.from || 'from-table')} ${escapeHtml(move.to || 'to-table')}" key="${escapeHtml(move.id || move.at || '')}"><span>${escapeHtml(move.card?.publicName || 'Card')}</span></div>` : ''}
+          ${movementCardHtml(move)}
           <div class="center-zone ${centerClass}">
             <strong>${escapeHtml(centerLabel)}</strong>
             <span>${escapeHtml(centerSub)}</span>

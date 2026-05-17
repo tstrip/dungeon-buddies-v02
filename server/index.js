@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.6-qol-visual-feedback' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.7-directional-card-movement' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -214,7 +214,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.5.6-qol-visual-feedback',
+    version: '0.5.7-directional-card-movement',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1006,7 +1006,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.5.6-qol-visual-feedback' });
+  socket.emit('ready', { version: '0.5.7-directional-card-movement' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1496,5 +1496,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.5.6 QoL visual feedback listening on ${PORT}`);
+  console.log(`Loot Goblins v0.5.7 directional card movement listening on ${PORT}`);
 });

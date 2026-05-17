@@ -929,3 +929,141 @@ button.selected-action,
   100% { opacity: 0; transform: translate(-50%, -24%) scale(.88) rotate(6deg); }
 }
 .table-core-center { position: relative; }
+
+/* v0.5.7: directional face-down card movement */
+.table-core-center { position: relative; overflow: visible; }
+.movement-card {
+  --from-x: 0px;
+  --from-y: 0px;
+  --to-x: 0px;
+  --to-y: 0px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 50px;
+  height: 70px;
+  border-radius: 9px;
+  display: block;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  box-shadow: none;
+  pointer-events: none;
+  z-index: 12;
+  opacity: 0;
+  animation: directional-card-move 1.28s cubic-bezier(.2,.88,.2,1) both;
+  transform-origin: center;
+}
+.moving-card-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  border: 2px solid rgba(255,231,184,.85);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255,218,119,.32) 0 22%, transparent 23%),
+    linear-gradient(135deg, rgba(116,72,40,.98), rgba(45,28,26,.98));
+  box-shadow: 0 13px 24px rgba(0,0,0,.38), inset 0 0 0 3px rgba(44,24,18,.5), inset 0 0 0 5px rgba(255,218,119,.18);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.moving-card-back::before,
+.moving-card-back::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,218,119,.35);
+}
+.moving-card-back::after {
+  inset: 17px 12px;
+  opacity: .65;
+  transform: rotate(90deg);
+}
+.moving-card-back span {
+  position: relative;
+  z-index: 1;
+  font-size: .44rem;
+  letter-spacing: .12em;
+  font-weight: 1000;
+  color: rgba(255,238,198,.92);
+  text-shadow: 0 1px 2px rgba(0,0,0,.55);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+.movement-path-label {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 5px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  max-width: 145px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.42);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.86);
+  font-size: .48rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+  box-shadow: 0 5px 12px rgba(0,0,0,.2);
+}
+
+.movement-card.from-chamber-deck { --from-x: -132px; --from-y: -28px; }
+.movement-card.from-chamber-discard { --from-x: -78px; --from-y: -28px; }
+.movement-card.from-loot-deck { --from-x: 132px; --from-y: -28px; }
+.movement-card.from-loot-discard { --from-x: 78px; --from-y: -28px; }
+.movement-card.from-player-hand { --from-x: 0px; --from-y: 126px; }
+.movement-card.from-reveal-zone { --from-x: -38px; --from-y: 0px; }
+.movement-card.from-combat-zone { --from-x: 0px; --from-y: 0px; }
+.movement-card.from-flee-zone { --from-x: 0px; --from-y: 0px; }
+.movement-card.from-die { --from-x: 0px; --from-y: -118px; }
+.movement-card.from-table { --from-x: 0px; --from-y: 0px; }
+
+.movement-card.to-reveal-zone,
+.movement-card.to-combat-zone,
+.movement-card.to-flee-zone,
+.movement-card.to-result,
+.movement-card.to-table { --to-x: 0px; --to-y: 0px; }
+.movement-card.to-player-hand { --to-x: 0px; --to-y: 126px; }
+.movement-card.to-chamber-discard { --to-x: -78px; --to-y: -28px; }
+.movement-card.to-loot-discard { --to-x: 78px; --to-y: -28px; }
+.movement-card.to-discard { --to-x: 100px; --to-y: -30px; }
+
+@keyframes directional-card-move {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--from-x)), calc(-50% + var(--from-y))) scale(.72) rotate(-8deg);
+  }
+  12% { opacity: 1; }
+  58% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--to-x)), calc(-50% + var(--to-y) - 22px)) scale(1.04) rotate(3deg);
+  }
+  86% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--to-x)), calc(-50% + var(--to-y))) scale(.96) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--to-x)), calc(-50% + var(--to-y))) scale(.88) rotate(4deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .movement-card { width: 42px; height: 59px; border-radius: 8px; }
+  .movement-card.from-chamber-deck { --from-x: -94px; --from-y: -22px; }
+  .movement-card.from-chamber-discard { --from-x: -54px; --from-y: -22px; }
+  .movement-card.from-loot-deck { --from-x: 94px; --from-y: -22px; }
+  .movement-card.from-loot-discard { --from-x: 54px; --from-y: -22px; }
+  .movement-card.from-player-hand { --from-x: 0px; --from-y: 98px; }
+  .movement-card.from-die { --from-x: 0px; --from-y: -92px; }
+  .movement-card.to-player-hand { --to-x: 0px; --to-y: 98px; }
+  .movement-card.to-chamber-discard { --to-x: -54px; --to-y: -22px; }
+  .movement-card.to-loot-discard { --to-x: 54px; --to-y: -22px; }
+  .movement-card.to-discard { --to-x: 72px; --to-y: -23px; }
+  .moving-card-back span { font-size: .36rem; }
+  .movement-path-label { font-size: .40rem; max-width: 118px; padding: 2px 5px; }
+}
