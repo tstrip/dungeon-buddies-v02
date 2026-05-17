@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV042Session';
+const SESSION_KEY = 'lootGoblinsV043Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -116,16 +116,116 @@ function renderLobby() {
 
 function renderGame() {
   showScreen('gameScreen');
-  $('chamberCount').textContent = state.decks.chamber;
-  $('lootCount').textContent = state.decks.loot;
-  $('chamberDiscard').textContent = `Chamber discard ${state.decks.chamberDiscard}`;
-  $('lootDiscard').textContent = `Loot discard ${state.decks.lootDiscard}`;
+  renderDeckDock();
   renderPhaseBanner();
   renderPlayers();
   renderActiveTable();
   renderPrompt();
   renderHand();
   renderEventHistory();
+}
+
+
+function renderDeckDock() {
+  const dock = $('deckDock');
+  if (!dock || !state?.decks) return;
+  const move = deriveMovement();
+  const piles = [
+    { key: 'CHAMBER_DECK', label: 'Chamber', sub: 'deck', count: state.decks.chamber, kind: 'chamber' },
+    { key: 'CHAMBER_DISCARD', label: 'Chamber', sub: 'discard', count: state.decks.chamberDiscard, kind: 'discard' },
+    { key: 'LOOT_DECK', label: 'Loot', sub: 'deck', count: state.decks.loot, kind: 'loot' },
+    { key: 'LOOT_DISCARD', label: 'Loot', sub: 'discard', count: state.decks.lootDiscard, kind: 'discard' }
+  ];
+  dock.innerHTML = piles.map((p) => pileHtml(p, move)).join('');
+}
+
+function pileHtml(pile, move) {
+  const classes = ['deck-pile', pile.kind];
+  if (move?.from === pile.key) classes.push('source');
+  if (move?.to === pile.key) classes.push('destination');
+  const empty = Number(pile.count || 0) <= 0;
+  if (empty) classes.push('empty');
+  return `<div class="${classes.join(' ')}" aria-label="${escapeHtml(pile.label)} ${escapeHtml(pile.sub)} ${Number(pile.count || 0)} cards">
+    <div class="mini-stack"><span></span><span></span><span></span></div>
+    <div class="pile-copy"><strong>${escapeHtml(pile.label)}</strong><small>${escapeHtml(pile.sub)} · ${Number(pile.count || 0)}</small></div>
+  </div>`;
+}
+
+function deriveMovement() {
+  const msg = latestEvent();
+  if (!msg) return null;
+  if (/opened a Chamber/i.test(msg)) return { from: 'CHAMBER_DECK', to: 'REVEAL_ZONE', label: 'Chamber Deck → Reveal Zone', detail: msg };
+  if (/looted the room/i.test(msg)) return { from: 'CHAMBER_DECK', to: 'PLAYER_HAND', label: 'Chamber Deck → Hand', detail: msg };
+  if (/drew \d+ Loot/i.test(msg) || /drew .* Loot/i.test(msg)) return { from: 'LOOT_DECK', to: 'PLAYER_HAND', label: 'Loot Deck → Hand', detail: msg };
+  if (/drew \d+ Chamber/i.test(msg) || /drew .* Chamber/i.test(msg)) return { from: 'CHAMBER_DECK', to: 'PLAYER_HAND', label: 'Chamber Deck → Hand', detail: msg };
+  if (/went to .* hand/i.test(msg)) return { from: 'REVEAL_ZONE', to: 'PLAYER_HAND', label: 'Reveal Zone → Hand', detail: msg };
+  if (/faces/i.test(msg)) return { from: 'REVEAL_ZONE', to: 'COMBAT_ZONE', label: 'Reveal Zone → Combat Zone', detail: msg };
+  if (/played/i.test(msg) && /combat|Foe|side|modifier|Prepared|Puddle|Health|Confidence|Stair/i.test(msg)) return { from: 'PLAYER_HAND', to: 'COMBAT_ZONE', label: 'Hand → Combat Zone', detail: msg };
+  if (/discarded|discard/i.test(msg)) return { from: 'TABLE', to: 'DISCARD', label: 'Card → Discard', detail: msg };
+  if (/rolled Flee/i.test(msg)) return { from: 'DIE', to: 'FLEE_ZONE', label: 'Die Roll → Flee Zone', detail: msg };
+  if (/escaped|failed to escape/i.test(msg)) return { from: 'FLEE_ZONE', to: 'RESULT', label: 'Flee Zone → Result', detail: msg };
+  return { from: null, to: null, label: 'Latest table event', detail: msg };
+}
+
+function tableBoardHtml(options = {}) {
+  const move = deriveMovement();
+  const centerLabel = options.centerLabel || centerZoneLabel();
+  const centerSub = options.centerSub || centerZoneSub();
+  const centerClass = options.centerClass || centerZoneClass();
+  return `<div class="board-mat">
+    <div class="board-piles board-piles-left">
+      ${boardPile('CHAMBER_DECK', 'Chamber', 'Deck', state.decks?.chamber || 0, move)}
+      ${boardPile('CHAMBER_DISCARD', 'Chamber', 'Discard', state.decks?.chamberDiscard || 0, move)}
+    </div>
+    <div class="board-center">
+      <div class="movement-banner ${move?.from || move?.to ? 'active' : ''}">
+        <div class="movement-label">${escapeHtml(move?.label || 'Table ready')}</div>
+        <div class="movement-detail">${escapeHtml(move?.detail || 'Cards will move through the table here.')}</div>
+      </div>
+      <div class="center-zone ${centerClass}">
+        <strong>${escapeHtml(centerLabel)}</strong>
+        <span>${escapeHtml(centerSub)}</span>
+      </div>
+    </div>
+    <div class="board-piles board-piles-right">
+      ${boardPile('LOOT_DECK', 'Loot', 'Deck', state.decks?.loot || 0, move)}
+      ${boardPile('LOOT_DISCARD', 'Loot', 'Discard', state.decks?.lootDiscard || 0, move)}
+    </div>
+  </div>`;
+}
+
+function boardPile(key, label, sub, count, move) {
+  const classes = ['board-pile'];
+  if (move?.from === key) classes.push('source');
+  if (move?.to === key) classes.push('destination');
+  if (Number(count || 0) <= 0) classes.push('empty');
+  return `<div class="${classes.join(' ')}">
+    <div class="table-stack"><span></span><span></span><span></span></div>
+    <div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(sub)} · ${Number(count || 0)}</small></div>
+  </div>`;
+}
+
+function centerZoneLabel() {
+  if (state.phase === 'COMBAT') return 'Combat Zone';
+  if (state.phase === 'ESCAPE') return 'Flee Zone';
+  if (state.revealCard) return 'Reveal Zone';
+  if (state.pendingPrompt) return 'Prompt Zone';
+  return 'Table Center';
+}
+
+function centerZoneSub() {
+  if (state.phase === 'COMBAT') return 'Foes, modifiers, and played Tricks live here.';
+  if (state.phase === 'ESCAPE') return 'Dice rolls and Bad News resolve here.';
+  if (state.revealCard) return `${state.revealCard.publicName} is being resolved.`;
+  if (state.pendingPrompt) return state.pendingPrompt.message || 'Waiting for a player choice.';
+  return 'Revealed cards will appear here.';
+}
+
+function centerZoneClass() {
+  if (state.phase === 'COMBAT') return 'combat-center';
+  if (state.phase === 'ESCAPE') return 'flee-center';
+  if (state.revealCard) return 'reveal-center';
+  return '';
 }
 
 function renderPhaseBanner() {
@@ -242,6 +342,7 @@ function renderActiveTable() {
   if (state.phase === 'ESCAPE' && state.escape) return renderEscape(root);
   const reveal = state.revealCard;
   let html = `<div class="table-event"><strong>Latest:</strong> ${escapeHtml(latestEvent())}</div>`;
+  html += tableBoardHtml();
   html += `<div class="zone-title"><h2>Active Table</h2><span class="micro">${prettyPhase(state.phase)}</span></div>`;
   if (reveal) {
     html += `<div class="reveal-zone"><h3>Reveal Zone</h3><p class="micro">This is the card currently being resolved.</p><div class="card-row">${cardHtml(reveal, { tableSmall: false })}</div></div>`;
@@ -263,6 +364,7 @@ function renderEscape(root) {
     : `Target number is 5+. ${runner?.isYou ? 'Tap Roll to Flee above.' : `Waiting for ${escapeHtml(runner?.name || 'the runner')}.`}`;
   root.innerHTML = `
     <div class="table-event"><strong>Flee:</strong> ${escapeHtml(runner?.name || 'Runner')} must roll against ${escapeHtml(esc.threat?.publicName || 'the Foe')}.</div>
+    ${tableBoardHtml({ centerLabel: 'Flee Zone', centerSub: `${runner?.name || 'Runner'} is rolling against ${esc.threat?.publicName || 'the Foe'}.`, centerClass: 'flee-center' })}
     <div class="zone-title"><h2>Flee Zone</h2><span class="micro">Classic d6 roll</span></div>
     <div class="escape-layout">
       <div>
@@ -302,6 +404,7 @@ function renderCombat(root) {
         : 'Everyone has passed. Combat will resolve.';
   root.innerHTML = `
     <div class="table-event"><strong>Combat:</strong> ${escapeHtml(tableCopy)}</div>
+    ${tableBoardHtml({ centerLabel: 'Combat Zone', centerSub: `${playerName(combat.activePlayerId)} is fighting ${threat?.publicName || 'a Foe'}.`, centerClass: 'combat-center' })}
     <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
     <div class="zone-title"><h2>Combat Zone</h2><span class="micro">${escapeHtml(passSummary(combat.passes))}</span></div>
     <div class="combat-layout">

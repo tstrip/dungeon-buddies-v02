@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v042",
-  "version": "0.4.2",
+  "name": "loot-goblins-v043",
+  "version": "0.4.3",
   "private": true,
-  "description": "Loot Goblins v0.4.2: table and mobile hand UX repair for the private three-player browser card-table prototype.",
+  "description": "Loot Goblins v0.4.3: table and mobile hand UX repair for the private three-player browser card-table prototype.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
