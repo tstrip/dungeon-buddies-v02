@@ -1,16 +1,16 @@
 {
-  "name": "dungeon-buddies-v02",
-  "version": "0.2.0",
+  "name": "dungeon-buddies-v03",
+  "version": "0.3.0",
   "private": true,
-  "description": "Mechanics-first, original-presentation, three-player dungeon card game web app.",
+  "description": "Dungeon Buddies v0.3: a private three-player browser card-table prototype.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "NODE_ENV=development node server/index.js"
+    "dev": "node server/index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "express": "latest",
+    "socket.io": "latest"
   },
   "engines": {
     "node": ">=20"

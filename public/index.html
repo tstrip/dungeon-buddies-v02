@@ -1,100 +1,102 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dungeon Buddies v0.2</title>
+  <title>Dungeon Buddies v0.3</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div id="app">
-    <header class="topbar">
-      <div>
-        <h1>Dungeon Buddies</h1>
-        <p class="subtitle">v0.2 mechanics skeleton · private 3-player chaos</p>
-      </div>
-      <div id="connection" class="pill">connecting…</div>
-    </header>
+  <div id="toast" class="toast hidden"></div>
 
-    <main id="lobby" class="panel lobby-panel">
-      <h2>Start or Join</h2>
-      <p>This build is intentionally simple: one Render server, no React build, no accounts.</p>
+  <main id="resumeScreen" class="screen hidden">
+    <section class="hero panel">
+      <div class="eyebrow">Dungeon Buddies v0.3</div>
+      <h1>Resume your table?</h1>
+      <p id="resumeCopy">Saved room found.</p>
+      <div class="button-row">
+        <button id="resumeBtn" class="primary">Resume Game</button>
+        <button id="clearSessionBtn">Join as Someone Else</button>
+      </div>
+    </section>
+  </main>
+
+  <main id="entryScreen" class="screen">
+    <section class="hero panel">
+      <div class="eyebrow">Dungeon Buddies v0.3</div>
+      <h1>Digital Card Table</h1>
+      <p>Three-player room, private hands, clearer zones, rejoin support, and a more table-like layout.</p>
       <label>Your name</label>
       <input id="nameInput" placeholder="Trey" maxlength="24" />
-      <div class="row gap">
+      <div class="button-row">
         <button id="createBtn" class="primary">Create Room</button>
       </div>
-      <hr />
-      <label>Room code</label>
-      <input id="codeInput" placeholder="ABCDE" maxlength="5" />
-      <button id="joinBtn">Join Room</button>
-      <div id="lobbyToast" class="toast"></div>
-    </main>
+      <div class="join-box">
+        <label>Join room code</label>
+        <input id="codeInput" placeholder="ABCDE" maxlength="5" autocapitalize="characters" />
+        <button id="joinBtn">Join Room</button>
+      </div>
+      <p class="micro">Connection: <span id="connection">connecting</span></p>
+    </section>
+  </main>
 
-    <main id="game" class="game hidden">
-      <section class="status-strip panel">
-        <div>
-          <div class="label">Room</div>
-          <div id="roomCode" class="room-code">—</div>
-        </div>
-        <div>
-          <div class="label">Phase</div>
-          <div id="phaseText" class="phase">—</div>
-        </div>
-        <div>
-          <div class="label">Active</div>
-          <div id="activeText">—</div>
-        </div>
-        <div>
-          <div class="label">Decks</div>
-          <div id="deckText">—</div>
-        </div>
-      </section>
+  <main id="lobbyScreen" class="screen hidden">
+    <section class="panel lobby-panel">
+      <div class="eyebrow">Lobby</div>
+      <h1>Room <span id="lobbyRoomCode">—</span></h1>
+      <p>This is just the gathering room. The table appears after the host starts the game.</p>
+      <div class="button-row">
+        <button id="copyInviteBtn">Copy Invite Link</button>
+        <button id="startGameBtn" class="primary">Start Game</button>
+      </div>
+      <div id="lobbySeats" class="seat-list"></div>
+    </section>
+  </main>
 
-      <section id="players" class="players"></section>
+  <main id="gameScreen" class="screen game hidden">
+    <section id="phaseBanner" class="phase-banner panel"></section>
+    <section id="playerStrip" class="player-strip"></section>
 
-      <section class="table-grid">
-        <div class="panel center-panel">
-          <h2 id="mainTitle">Waiting…</h2>
-          <div id="mainArea"></div>
-          <div id="actions" class="actions"></div>
+    <section class="table-grid">
+      <div class="table-zone panel deck-zone">
+        <h3>Decks</h3>
+        <div class="deck-row">
+          <div class="deck-card"><strong>Chamber</strong><span id="chamberCount">0</span></div>
+          <div class="deck-card"><strong>Loot</strong><span id="lootCount">0</span></div>
         </div>
-
-        <aside class="panel log-panel">
-          <div class="tabs">
-            <button class="tab active" data-tab="log">Log</button>
-            <button class="tab" data-tab="chat">Chat</button>
-          </div>
-          <div id="logBox" class="scrollbox"></div>
-          <div id="chatBox" class="scrollbox hidden"></div>
-          <form id="chatForm" class="chat-form">
-            <input id="chatInput" placeholder="Talk trash…" maxlength="240" />
-            <button>Send</button>
-          </form>
-        </aside>
-      </section>
-
-      <section class="panel hand-panel">
-        <div class="hand-header">
-          <div>
-            <h2>Your Hand</h2>
-            <p id="handMeta">—</p>
-          </div>
-          <div id="selectedInfo" class="selected-info">Tap a card.</div>
+        <div class="discard-row">
+          <span id="chamberDiscard">Chamber discard 0</span>
+          <span id="lootDiscard">Loot discard 0</span>
         </div>
-        <div id="hand" class="hand"></div>
-      </section>
-    </main>
+      </div>
+
+      <div id="activeTable" class="table-zone panel active-table"></div>
+    </section>
+
+    <section id="promptPanel" class="panel prompt-panel hidden"></section>
+    <section id="handPanel" class="panel hand-panel"></section>
+    <section class="panel log-panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="log">Log</button>
+        <button class="tab" data-tab="chat">Chat</button>
+      </div>
+      <div id="logBox" class="log-box"></div>
+      <div id="chatBox" class="chat-box hidden">
+        <div id="chatMessages" class="chat-messages"></div>
+        <form id="chatForm" class="chat-form">
+          <input id="chatInput" placeholder="negotiate / threaten / lie" maxlength="240" />
+          <button>Send</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="inspectOverlay" class="inspect-overlay hidden">
+    <div class="inspect-card panel">
+      <button id="closeInspect" class="close-btn">×</button>
+      <div id="inspectContent"></div>
+    </div>
   </div>
-
-  <template id="cardTemplate">
-    <button class="card">
-      <div class="card-type"></div>
-      <div class="card-name"></div>
-      <div class="card-body"></div>
-      <div class="card-meta"></div>
-    </button>
-  </template>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/app.js"></script>

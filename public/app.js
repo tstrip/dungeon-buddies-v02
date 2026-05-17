@@ -1,311 +1,473 @@
 const socket = io();
+const SESSION_KEY = 'dungeonBuddiesV03Session';
 let state = null;
-let selectedCardId = null;
 let selectedTribute = new Set();
-let tab = 'log';
+let currentTab = 'log';
 
 const $ = (id) => document.getElementById(id);
-const lobby = $('lobby');
-const game = $('game');
+const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
 
 socket.on('ready', () => setConnection('connected'));
-socket.on('connect', () => setConnection('connected'));
+socket.on('connect', () => {
+  setConnection('connected');
+  maybeShowResume();
+});
 socket.on('disconnect', () => setConnection('disconnected'));
+socket.on('session', (session) => {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, lastSeenAt: Date.now() }));
+});
 socket.on('toast', ({ type, message }) => showToast(message, type));
 socket.on('state', (next) => {
   state = next;
   render();
 });
 
+function savedSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+  catch { return null; }
+}
+
+function maybeShowResume() {
+  const saved = savedSession();
+  const roomFromUrl = new URLSearchParams(location.search).get('room');
+  if (roomFromUrl && !state) $('codeInput').value = roomFromUrl.toUpperCase();
+  if (saved && !state) {
+    $('resumeCopy').textContent = `Room ${saved.roomCode} · Player ${saved.playerName}`;
+    showScreen('resumeScreen');
+  }
+}
+
+function showScreen(id) {
+  for (const s of screens) $(s).classList.toggle('hidden', s !== id);
+}
+
 function setConnection(text) {
-  $('connection').textContent = text;
+  const el = $('connection');
+  if (el) el.textContent = text;
 }
 
 function showToast(message, type = 'ok') {
-  const el = $('lobbyToast');
+  const el = $('toast');
   el.textContent = message;
-  el.style.color = type === 'error' ? 'var(--bad)' : 'var(--accent)';
-  setTimeout(() => { if (el.textContent === message) el.textContent = ''; }, 4500);
+  el.className = `toast ${type === 'error' ? 'error' : 'ok'}`;
+  setTimeout(() => { if (el.textContent === message) el.classList.add('hidden'); }, 4500);
 }
 
+function emitAction(type, extra = {}) {
+  socket.emit('action', { type, ...extra });
+}
+
+$('resumeBtn').addEventListener('click', () => {
+  const saved = savedSession();
+  if (!saved) return showScreen('entryScreen');
+  socket.emit('resumeRoom', { roomCode: saved.roomCode, playerId: saved.playerId });
+});
+$('clearSessionBtn').addEventListener('click', () => {
+  localStorage.removeItem(SESSION_KEY);
+  showScreen('entryScreen');
+});
 $('createBtn').addEventListener('click', () => {
-  const name = $('nameInput').value || 'Host';
-  socket.emit('createRoom', { name });
+  socket.emit('createRoom', { name: $('nameInput').value || 'Host' });
 });
-
 $('joinBtn').addEventListener('click', () => {
-  const name = $('nameInput').value || 'Player';
-  const code = $('codeInput').value || '';
-  socket.emit('joinRoom', { name, code });
+  socket.emit('joinRoom', { name: $('nameInput').value || 'Player', code: $('codeInput').value || '' });
 });
-
+$('startGameBtn').addEventListener('click', () => emitAction('START_GAME'));
+$('copyInviteBtn').addEventListener('click', async () => {
+  if (!state?.code) return;
+  const url = `${location.origin}/?room=${state.code}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Invite link copied.', 'ok');
+  } catch {
+    showToast(url, 'ok');
+  }
+});
+$('closeInspect').addEventListener('click', closeInspect);
+$('inspectOverlay').addEventListener('click', (e) => { if (e.target.id === 'inspectOverlay') closeInspect(); });
 $('chatForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('chatInput');
   socket.emit('chat', { message: input.value });
   input.value = '';
 });
-
 document.querySelectorAll('.tab').forEach((btn) => {
   btn.addEventListener('click', () => {
-    tab = btn.dataset.tab;
-    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-    $('logBox').classList.toggle('hidden', tab !== 'log');
-    $('chatBox').classList.toggle('hidden', tab !== 'chat');
+    currentTab = btn.dataset.tab;
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === currentTab));
+    $('logBox').classList.toggle('hidden', currentTab !== 'log');
+    $('chatBox').classList.toggle('hidden', currentTab !== 'chat');
   });
 });
 
-function me() {
-  return state?.players.find((p) => p.isYou);
-}
-
-function activePlayer() {
-  return state?.players.find((p) => p.id === state.activePlayerId);
-}
-
-function isMyTurn() {
-  return me()?.id === state?.activePlayerId;
-}
-
-function action(type, extra = {}) {
-  socket.emit('action', { type, ...extra });
-}
+function me() { return state?.players.find((p) => p.isYou); }
+function active() { return state?.players.find((p) => p.id === state.activePlayerId); }
+function isMyTurn() { return me()?.id === state?.activePlayerId; }
+function myHand() { return state?.you?.hand || []; }
 
 function render() {
   if (!state) return;
-  lobby.classList.add('hidden');
-  game.classList.remove('hidden');
-
-  $('roomCode').textContent = state.code;
-  $('phaseText').textContent = prettyPhase(state.phase);
-  $('activeText').textContent = state.activePlayerName || '—';
-  $('deckText').textContent = `C ${state.decks.chamber} / L ${state.decks.loot}`;
-
-  renderPlayers();
-  renderMain();
-  renderHand();
-  renderLog();
+  if (state.status === 'LOBBY') renderLobby();
+  else renderGame();
 }
 
-function prettyPhase(phase) {
-  const map = {
-    LOBBY: 'Lobby', START_TURN: 'Start Turn', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over'
-  };
-  return map[phase] || phase;
+function renderLobby() {
+  showScreen('lobbyScreen');
+  $('lobbyRoomCode').textContent = state.code;
+  const seats = $('lobbySeats');
+  seats.innerHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const p = state.players[i];
+    const div = document.createElement('div');
+    div.className = 'seat';
+    div.innerHTML = p
+      ? `<strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span>${i === 0 ? 'Host' : 'Joined'} · ${p.connected ? 'online' : 'offline'}</span>`
+      : `<strong>Open seat</strong><span>Waiting</span>`;
+    seats.appendChild(div);
+  }
+  $('startGameBtn').disabled = !(state.players[0]?.isYou && state.players.length === 3);
+}
+
+function renderGame() {
+  showScreen('gameScreen');
+  $('chamberCount').textContent = state.decks.chamber;
+  $('lootCount').textContent = state.decks.loot;
+  $('chamberDiscard').textContent = `Chamber discard ${state.decks.chamberDiscard}`;
+  $('lootDiscard').textContent = `Loot discard ${state.decks.lootDiscard}`;
+  renderPhaseBanner();
+  renderPlayers();
+  renderActiveTable();
+  renderPrompt();
+  renderHand();
+  renderLogAndChat();
+}
+
+function renderPhaseBanner() {
+  const root = $('phaseBanner');
+  const you = me();
+  let title = '';
+  let copy = '';
+  let buttons = [];
+
+  if (state.phase === 'GAME_OVER') {
+    const winner = state.players.find((p) => p.id === state.winnerId);
+    title = `${winner?.name || 'Someone'} wins!`;
+    copy = 'The final Renown came from a combat victory.';
+  } else if (state.pendingPrompt) {
+    title = state.pendingPrompt.requiresYou ? 'Your decision required' : 'Table prompt pending';
+    copy = state.pendingPrompt.message;
+  } else if (state.phase === 'START_TURN') {
+    title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn — Open Chamber`;
+    copy = isMyTurn() ? 'Step 1: open a Chamber. You may also play Role, Origin, or Gear before opening.' : `Waiting for ${active()?.name} to open a Chamber.`;
+    if (isMyTurn()) buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
+  } else if (state.phase === 'NO_THREAT_CHOICE') {
+    title = isMyTurn() ? 'No Threat — Choose Your Move' : `${active()?.name} chooses next`;
+    copy = isMyTurn() ? 'Start Trouble with a Threat from hand, or Search Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Search Room.`;
+    if (isMyTurn()) {
+      buttons.push(buttonHtml('Search Room', 'SEARCH_ROOM', 'primary'));
+      buttons.push(`<span class="micro">To Start Trouble, tap a Threat in your hand.</span>`);
+    }
+  } else if (state.phase === 'COMBAT') {
+    const totals = state.combat?.totals;
+    const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
+    title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Threat'}`;
+    copy = `${marginText}. Reaction window open.`;
+    buttons = combatButtons();
+  } else if (state.phase === 'ESCAPE') {
+    const runner = state.players.find((p) => p.id === state.combat?.activePlayerId) || state.players.find((p) => p.id === state?.escape?.currentPlayerId);
+    title = 'Escape';
+    copy = 'A losing fighter must roll to avoid the Consequence.';
+  } else if (state.phase === 'TRIBUTE') {
+    title = isMyTurn() ? 'Tribute Required' : `${active()?.name} must resolve Tribute`;
+    copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose excess cards below.` : `Waiting for ${active()?.name} to give or discard excess cards.`;
+  } else if (state.phase === 'END_TURN') {
+    title = isMyTurn() ? 'End Your Turn' : `${active()?.name}'s turn is wrapping up`;
+    copy = isMyTurn() ? 'Everything required is resolved. End your turn when ready.' : `Waiting for ${active()?.name} to end their turn.`;
+    if (isMyTurn()) buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary'));
+  } else {
+    title = `${prettyPhase(state.phase)}`;
+    copy = 'Follow the table prompt.';
+  }
+
+  root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p><div class="primary-action">${buttons.join('')}</div>`;
+  root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
+  root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target)));
+}
+
+function buttonHtml(label, action, cls = '') { return `<button class="${cls}" data-action="${action}">${escapeHtml(label)}</button>`; }
+
+function combatButtons() {
+  const buttons = [];
+  const you = me();
+  const combat = state.combat;
+  if (!combat) return buttons;
+  if (combat.backupRequest?.toPlayerId === you.id) {
+    buttons.push(`<button class="primary" data-combat-action="ACCEPT_BACKUP">Accept Backup</button>`);
+    buttons.push(`<button data-combat-action="DECLINE_BACKUP">Decline</button>`);
+    return buttons;
+  }
+  if (combat.activePlayerId === you.id && !combat.helperPlayerId) {
+    for (const p of state.players.filter((p) => p.id !== you.id)) {
+      buttons.push(`<button data-combat-action="REQUEST_BACKUP" data-target="${p.id}">Request Backup: ${escapeHtml(p.name)}</button>`);
+    }
+  }
+  buttons.push(`<button data-combat-action="PASS_COMBAT">Pass Combat</button>`);
+  return buttons;
+}
+
+function handleCombatButton(action, target) {
+  if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target, deal: 'Table deal / negotiated in chat' });
+  else emitAction(action);
 }
 
 function renderPlayers() {
-  const root = $('players');
+  const root = $('playerStrip');
   root.innerHTML = '';
   for (const p of state.players) {
     const div = document.createElement('div');
-    div.className = `player-card ${p.id === state.activePlayerId ? 'active' : ''} ${p.isYou ? 'you' : ''}`;
-    const leader = p.renown >= 9 ? '<div class="warning">ONE VICTORY AWAY</div>' : p.renown >= 8 ? '<div class="warning">dangerously famous</div>' : '';
+    div.className = `player-mini ${p.id === state.activePlayerId ? 'active' : ''} ${p.isYou ? 'you' : ''} ${p.connected ? '' : 'offline'}`;
+    const leader = p.renown >= 9 ? '<div class="warning">one combat win away</div>' : p.renown >= 8 ? '<div class="warning">getting dangerous</div>' : '';
     div.innerHTML = `
-      <div class="player-top">
-        <div class="player-name">${escapeHtml(p.name)} ${p.isYou ? '(you)' : ''}</div>
-        <div class="renown">${p.renown}/10</div>
-      </div>
+      <div class="player-head"><div class="player-name">${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</div><div class="renown">${p.renown}/10</div></div>
       ${leader}
-      <div class="mini">${p.connected ? 'online' : 'away'} · hand ${p.handCount}/${p.handLimit}</div>
-      <div class="mini">Role: ${p.role ? escapeHtml(p.role.publicName) : 'none'} · Origin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</div>
-      <div class="gear-list">${p.gear.length ? p.gear.map(g => `<span class="gear-chip">${escapeHtml(g.publicName)} +${g.combatBonus || 0}</span>`).join('') : '<span class="gear-chip">no Gear</span>'}</div>
+      <div class="player-stats">Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Escape +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
+      <div class="player-stats">Role: ${p.role ? escapeHtml(p.role.publicName) : 'none'} · Origin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</div>
+      <div class="slot-line">${slotChips(p)}</div>
     `;
+    div.addEventListener('click', () => inspectPlayer(p));
     root.appendChild(div);
   }
 }
 
-function renderMain() {
-  const main = $('mainArea');
-  const actions = $('actions');
-  main.innerHTML = '';
-  actions.innerHTML = '';
-
-  if (state.status === 'lobby') {
-    $('mainTitle').textContent = 'Lobby';
-    const needed = 3 - state.players.length;
-    main.innerHTML = `<p>Share room code <strong>${state.code}</strong>. Waiting for ${needed} more player${needed === 1 ? '' : 's'}.</p>`;
-    if (me()?.id && state.players[0]?.id === me().id) {
-      addButton(actions, 'Start Game', () => action('START_GAME'), state.players.length !== 3);
-    }
-    return;
-  }
-
-  if (state.phase === 'GAME_OVER') {
-    const winner = state.players.find((p) => p.id === state.winnerId);
-    $('mainTitle').textContent = `${winner?.name || 'Someone'} wins!`;
-    main.innerHTML = `<p>The final Renown came from defeating a Threat. This is the way.</p>`;
-    return;
-  }
-
-  if (state.phase === 'START_TURN') {
-    $('mainTitle').textContent = `${state.activePlayerName} is entering the chamber`;
-    main.innerHTML = `<p>Active player opens a Chamber face-up. Threats start combat. Hexes resolve immediately. Other cards go to hand.</p>`;
-    addButton(actions, 'Open Chamber', () => action('OPEN_CHAMBER'), !isMyTurn());
-    renderPlayableHandActions(actions);
-    return;
-  }
-
-  if (state.phase === 'NO_THREAT_CHOICE') {
-    $('mainTitle').textContent = `${state.activePlayerName}: Start Trouble or Search?`;
-    const threats = me()?.hand?.filter((c) => c.type === 'THREAT') || [];
-    main.innerHTML = `<p>No Threat is active. The active player may play a Threat from hand or draw a hidden Chamber card.</p>`;
-    addButton(actions, 'Search Room', () => action('SEARCH_ROOM'), !isMyTurn());
-    if (isMyTurn()) {
-      const selected = selectedCard();
-      addButton(actions, selected?.type === 'THREAT' ? `Start Trouble: ${selected.publicName}` : 'Select a Threat to Start Trouble', () => action('START_TROUBLE', { cardId: selectedCardId }), !selected || selected.type !== 'THREAT');
-    }
-    renderPlayableHandActions(actions);
-    return;
-  }
-
-  if (state.phase === 'COMBAT') {
-    renderCombat(main, actions);
-    return;
-  }
-
-  if (state.phase === 'TRIBUTE') {
-    $('mainTitle').textContent = `${state.activePlayerName} owes Tribute`;
-    const self = me();
-    const excess = self ? Math.max(0, self.handCount - self.handLimit) : 0;
-    main.innerHTML = isMyTurn()
-      ? `<p>Select exactly <strong>${excess}</strong> card${excess === 1 ? '' : 's'} from your hand to give away or discard.</p>`
-      : `<p>Waiting for ${state.activePlayerName} to give Tribute.</p>`;
-    if (isMyTurn()) {
-      const lowest = Math.min(...state.players.map((p) => p.renown));
-      const possible = state.players.filter((p) => !p.isYou && p.renown === lowest);
-      if (possible.length) {
-        for (const p of possible) addButton(actions, `Give to ${p.name}`, () => action('GIVE_TRIBUTE', { cardIds: [...selectedTribute], recipientId: p.id }), selectedTribute.size !== excess);
-      } else {
-        addButton(actions, 'Discard Tribute', () => action('GIVE_TRIBUTE', { cardIds: [...selectedTribute] }), selectedTribute.size !== excess);
-      }
-    }
-    return;
-  }
-
-  if (state.phase === 'END_TURN') {
-    $('mainTitle').textContent = `${state.activePlayerName}'s turn is wrapping up`;
-    main.innerHTML = `<p>End the turn when ready.</p>`;
-    addButton(actions, 'End Turn', () => { selectedCardId = null; selectedTribute.clear(); action('END_TURN'); }, !isMyTurn());
-    renderPlayableHandActions(actions);
-  }
+function slotChips(p) {
+  const gear = p.equippedGear || [];
+  const bySlot = (slot) => gear.filter((g) => g.slot === slot).map((g) => `${g.publicName} +${g.combatBonus || 0}`).join(', ') || 'empty';
+  return ['HEAD','BODY','FEET','HAND','NO_SLOT'].map((slot) => `<span class="chip">${slot}: ${escapeHtml(bySlot(slot))}</span>`).join('');
 }
 
-function renderCombat(main, actions) {
-  const c = state.combat;
-  const totals = c.totals;
-  const active = activePlayer();
-  const helper = c.helperId ? state.players.find((p) => p.id === c.helperId) : null;
-  $('mainTitle').textContent = `Combat: ${state.activePlayerName} vs ${c.threats.map(t => t.publicName).join(' + ')}`;
-  main.innerHTML = `
-    <div class="combat-box">
-      <div class="total-box">
-        <div class="label">Player Side ${helper ? `(${escapeHtml(active.name)} + ${escapeHtml(helper.name)})` : ''}</div>
-        <div class="big-total ${totals.wins ? 'win' : 'lose'}">${totals.playerTotal}</div>
-        <div class="mini">Tie ${totals.tieWin ? 'goes to player side' : 'goes to Threat'}</div>
+function renderActiveTable() {
+  const root = $('activeTable');
+  if (state.phase === 'COMBAT' && state.combat) return renderCombat(root);
+  const reveal = state.revealCard;
+  let html = `<div class="zone-title"><h2>Active Table</h2><span class="micro">${prettyPhase(state.phase)}</span></div>`;
+  if (reveal) {
+    html += `<div class="reveal-zone"><h3>Reveal Zone</h3><div class="card-row">${cardHtml(reveal, { small: false })}</div></div>`;
+  } else {
+    html += `<div class="empty-zone"><div><strong>No active card</strong><br><span>Cards revealed from the Chamber will appear here before moving zones.</span></div></div>`;
+  }
+  root.innerHTML = html;
+}
+
+function renderCombat(root) {
+  const combat = state.combat;
+  const totals = combat.totals;
+  const threat = combat.threats[0];
+  root.innerHTML = `
+    <div class="zone-title"><h2>Combat Zone</h2><span class="micro">Passes: ${passSummary(combat.passes)}</span></div>
+    <div class="combat-layout">
+      <div class="combat-side">
+        <h3>Player Side</h3>
+        <div>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
+        <div class="total-big">${totals.playerTotal}</div>
+        <div class="micro">Renown + equipped Gear + Role/Origin + Tricks</div>
+        <div class="modifier-list">${combat.playedTricks.filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('')}</div>
       </div>
-      <div class="total-box">
-        <div class="label">Threat Side</div>
-        <div class="big-total ${totals.wins ? 'lose' : 'win'}">${totals.threatTotal}</div>
-        <div class="mini">Modifiers: ${c.threatDelta >= 0 ? '+' : ''}${c.threatDelta} · Loot delta ${c.lootDelta >= 0 ? '+' : ''}${c.lootDelta}</div>
+      <div class="vs">VS</div>
+      <div class="combat-side">
+        <h3>Threat Side</h3>
+        <div class="card-row">${cardHtml(threat, { small: true })}</div>
+        <div class="total-big">${totals.threatTotal}</div>
+        <div class="micro">Loot if defeated: ${threat.finalLoot}</div>
+        <div class="modifier-list">${(threat.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)} / Loot ${signed(m.lootDelta)}</span>`).join('')}</div>
       </div>
     </div>
-    <h3>Threats</h3>
-    <div class="card-row">${c.threats.map(cardHtml).join('')}</div>
-    <h3>Combat modifiers</h3>
-    <div>${c.modifiers.length ? c.modifiers.map(m => `<span class="badge">${escapeHtml(m.publicName)}</span>`).join('') : '<span class="badge">none yet</span>'}</div>
-    <p class="mini">Combat resolves when all players pass. Playing a combat card resets passes.</p>
   `;
-
-  if (isMyTurn()) addButton(actions, 'Call for Backup', () => {
-    const offer = prompt('Offer a deal for Backup (example: first Loot pick, 1 Loot, eternal friendship):') || '';
-    action('REQUEST_BACKUP', { offer });
-  }, c.helperId);
-  if (!isMyTurn() && c.helpRequested && !c.helperId) {
-    addButton(actions, 'Accept Backup', () => action('ACCEPT_BACKUP'));
-    addButton(actions, 'Decline Backup', () => action('DECLINE_BACKUP'));
-  }
-  const selected = selectedCard();
-  const canPlayCombat = selected && (selected.type === 'TRICK' || selected.type === 'THREAT_MODIFIER');
-  addButton(actions, canPlayCombat ? `Play ${selected.publicName}` : 'Select combat card to play', () => action('PLAY_CARD', { cardId: selectedCardId }), !canPlayCombat);
-  addButton(actions, 'Pass', () => action('PASS_REACTION'));
 }
 
-function renderPlayableHandActions(actions) {
-  const selected = selectedCard();
-  if (!selected || !isMyTurn()) return;
-  if (['ROLE', 'ORIGIN', 'GEAR', 'TRICK', 'SPECIAL'].includes(selected.type)) {
-    const playable = selected.type !== 'TRICK' || selected.effect?.type === 'DRAW_LOOT';
-    addButton(actions, `Play / Equip ${selected.publicName}`, () => action('PLAY_CARD', { cardId: selectedCardId }), !playable && state.phase !== 'COMBAT');
+function passSummary(passes) {
+  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'passed' : 'waiting'}`).join(' · ');
+}
+
+function renderPrompt() {
+  const root = $('promptPanel');
+  if (!state.pendingPrompt) { root.classList.add('hidden'); root.innerHTML = ''; return; }
+  const p = state.pendingPrompt;
+  root.classList.remove('hidden');
+  if (!p.requiresYou) {
+    root.innerHTML = `<h3>Prompt pending</h3><p>${escapeHtml(p.message)}</p><p class="micro">Waiting for ${escapeHtml(playerName(p.playerId))}.</p>`;
+    return;
+  }
+  if (p.type === 'DISCARD_GEAR') {
+    root.innerHTML = `<h3>Choose Gear to discard</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)}</button>`).join('')}</div>`;
+    root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+  if (p.type === 'MANUAL') {
+    root.innerHTML = `<h3>Manual resolution</h3><p>${escapeHtml(p.message)}</p><button class="primary" id="confirmManual">Confirm Resolved</button>`;
+    $('confirmManual').addEventListener('click', () => emitAction('RESOLVE_PROMPT'));
+    return;
   }
 }
 
 function renderHand() {
-  const self = me();
-  const root = $('hand');
-  root.innerHTML = '';
-  if (!self) return;
-  $('handMeta').textContent = `${self.handCount} cards · limit ${self.handLimit}${state.phase === 'TRIBUTE' && isMyTurn() ? ' · tap cards for Tribute' : ''}`;
-  const card = selectedCard();
-  $('selectedInfo').textContent = card ? `${card.publicName}: ${card.publicText || ''}` : 'Tap a card.';
-  for (const c of self.hand || []) {
-    const node = makeCard(c);
-    node.classList.toggle('selected', selectedCardId === c.instanceId || selectedTribute.has(c.instanceId));
-    node.addEventListener('click', () => {
-      if (state.phase === 'TRIBUTE' && isMyTurn()) {
-        if (selectedTribute.has(c.instanceId)) selectedTribute.delete(c.instanceId);
-        else selectedTribute.add(c.instanceId);
-      } else {
-        selectedCardId = selectedCardId === c.instanceId ? null : c.instanceId;
-      }
-      render();
-    });
-    root.appendChild(node);
+  const root = $('handPanel');
+  const you = me();
+  if (!you) { root.innerHTML = ''; return; }
+  const over = you.handCount > you.handLimit;
+  let html = `<div class="hand-header"><h3>Your Hand</h3><span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span></div>`;
+  if (state.phase === 'TRIBUTE' && isMyTurn()) {
+    const need = you.handCount - you.handLimit;
+    html += `<p class="micro">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
+    html += `<div class="card-row">${myHand().map((c) => cardHtml(c, { small: true, selectableTribute: true })).join('')}</div>`;
+    html += tributeControls(need);
+  } else {
+    html += `<div class="card-row">${myHand().map((c) => cardHtml(c, { small: true, playable: isCardPlayable(c) })).join('')}</div>`;
   }
+  root.innerHTML = html;
+  root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
+    cardEl.addEventListener('click', () => {
+      const card = myHand().find((c) => c.instanceId === cardEl.dataset.cardId);
+      if (state.phase === 'TRIBUTE' && isMyTurn()) toggleTribute(card.instanceId);
+      else inspectCard(card);
+    });
+  });
+  const confirm = $('confirmTribute');
+  if (confirm) confirm.addEventListener('click', () => confirmTribute());
 }
 
-function selectedCard() {
-  return me()?.hand?.find((c) => c.instanceId === selectedCardId);
+function tributeControls(need) {
+  const selectedCount = selectedTribute.size;
+  const minRenown = Math.min(...state.players.map((p) => p.renown));
+  const you = me();
+  const recipients = state.players.filter((p) => p.id !== you.id && p.renown === minRenown);
+  let html = `<div class="primary-action"><span class="micro">Selected ${selectedCount}/${need}</span>`;
+  if (you.renown !== minRenown && recipients.length > 1) {
+    html += `<select id="tributeTarget">${recipients.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>`;
+  }
+  html += `<button id="confirmTribute" class="primary" ${selectedCount !== need ? 'disabled' : ''}>Confirm Tribute</button></div>`;
+  return html;
 }
 
-function makeCard(c, small = false) {
-  const tpl = $('cardTemplate');
-  const node = tpl.content.firstElementChild.cloneNode(true);
-  if (small) node.classList.add('small');
-  node.querySelector('.card-type').textContent = c.type;
-  node.querySelector('.card-name').textContent = c.publicName;
-  node.querySelector('.card-body').textContent = c.publicText || '';
-  node.querySelector('.card-meta').textContent = metaFor(c);
-  return node;
+function toggleTribute(cardId) {
+  if (selectedTribute.has(cardId)) selectedTribute.delete(cardId);
+  else selectedTribute.add(cardId);
+  renderHand();
 }
 
-function cardHtml(c) {
-  return `<div class="card small"><div class="card-type">${escapeHtml(c.type)}</div><div class="card-name">${escapeHtml(c.publicName)}</div><div class="card-body">${escapeHtml(c.publicText || '')}</div><div class="card-meta">${escapeHtml(metaFor(c))}</div></div>`;
+function confirmTribute() {
+  const target = $('tributeTarget')?.value;
+  emitAction('GIVE_TRIBUTE', { cardIds: [...selectedTribute], targetPlayerId: target });
+  selectedTribute.clear();
 }
 
-function metaFor(c) {
-  if (!c) return '';
-  if (c.type === 'THREAT') return `Strength ${c.strength} · ${c.renownReward} Renown · ${c.lootReward} Loot`;
-  if (c.type === 'GEAR') return `${c.slot || 'NO SLOT'} · +${c.combatBonus || 0} · ${c.scrapValue || 0} Scrap${c.isHeavy ? ' · Heavy' : ''}`;
-  if (c.type === 'THREAT_MODIFIER') return `${c.strengthDelta >= 0 ? '+' : ''}${c.strengthDelta} Threat · ${c.lootDelta >= 0 ? '+' : ''}${c.lootDelta} Loot`;
-  if (c.type === 'ROLE' || c.type === 'ORIGIN') return c.mechanicalSlot || '';
-  if (c.type === 'TRICK') return c.timing?.join(', ') || '';
-  return c.deck || '';
+function isCardPlayable(card) {
+  if (!state || !card) return false;
+  if (state.pendingPrompt) return false;
+  if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR' || card.type === 'SPECIAL') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase);
+  if (card.type === 'THREAT') return isMyTurn() && state.phase === 'NO_THREAT_CHOICE';
+  if (card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') return state.phase === 'COMBAT';
+  if (card.type === 'HEX') return state.phase === 'COMBAT' && (card.timing || []).includes('DURING_COMBAT');
+  return false;
 }
 
-function renderLog() {
-  $('logBox').innerHTML = state.log.slice().reverse().map((l) => `<div class="log-line">${escapeHtml(l.message)}</div>`).join('');
-  $('chatBox').innerHTML = state.chat.slice().reverse().map((c) => `<div class="chat-line"><strong>${escapeHtml(c.name)}:</strong> ${escapeHtml(c.message)}</div>`).join('');
+function cardHtml(card, opts = {}) {
+  if (!card) return '';
+  const classes = ['card'];
+  if (opts.small) classes.push('small');
+  if (opts.playable) classes.push('playable');
+  if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
+  if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
+  const bottom = cardBottom(card);
+  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
+    <div class="type">${escapeHtml(typeLabel(card))}</div>
+    <div class="title">${escapeHtml(card.publicName)}</div>
+    <div class="art">ART</div>
+    <div class="text">${escapeHtml(card.publicText || '')}</div>
+    <div class="stats">${escapeHtml(bottom)}</div>
+  </article>`;
 }
 
-function addButton(root, label, onClick, disabled = false) {
-  const btn = document.createElement('button');
-  btn.textContent = label;
-  btn.disabled = Boolean(disabled);
-  btn.addEventListener('click', onClick);
-  root.appendChild(btn);
+function cardBottom(card) {
+  if (card.type === 'THREAT') return `STR ${card.strength} · ${card.renownReward} Renown · ${card.lootReward} Loot`;
+  if (card.type === 'GEAR') return `${card.slot || 'Gear'} · +${card.combatBonus || 0}${card.escapeBonus ? ` · Escape +${card.escapeBonus}` : ''} · ${card.scrapValue || 0} Scrap${card.isHeavy ? ' · Heavy' : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Threat ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
+  if (card.type === 'TRICK') return `${card.timing?.join(', ') || 'Trick'} · ${card.scrapValue || 0} Scrap`;
+  if (card.type === 'ROLE') return 'Role';
+  if (card.type === 'ORIGIN') return 'Origin';
+  if (card.type === 'HEX') return card.timing?.join(', ') || 'Hex';
+  return card.type || 'Card';
 }
 
+function typeLabel(card) {
+  const map = { THREAT: 'Threat', HEX: 'Hex', ROLE: 'Role', ORIGIN: 'Origin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Threat Modifier' };
+  return map[card.type] || card.type;
+}
+
+function inspectCard(card) {
+  if (!card) return;
+  const root = $('inspectContent');
+  const actions = cardActions(card);
+  root.innerHTML = `<div class="inspect-layout"><div>${cardHtml(card)}</div><div><h2>${escapeHtml(card.publicName)}</h2><p>${escapeHtml(card.publicText || '')}</p><div class="action-list">${actions}</div></div></div>`;
+  root.querySelectorAll('[data-inspect-action]').forEach((btn) => btn.addEventListener('click', () => {
+    const a = btn.dataset.inspectAction;
+    closeInspect();
+    if (a === 'PLAY') emitAction('PLAY_CARD', { cardId: card.instanceId });
+    if (a === 'EQUIP') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' });
+    if (a === 'CARRY') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' });
+    if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
+  }));
+  $('inspectOverlay').classList.remove('hidden');
+}
+
+function cardActions(card) {
+  const actions = [];
+  if (state.pendingPrompt) return `<p>Resolve the current prompt first.</p>`;
+  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
+  if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) {
+    actions.push(`<button class="primary" data-inspect-action="EQUIP">Equip</button>`);
+    actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
+  }
+  if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
+  if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER' || (card.type === 'HEX' && (card.timing || []).includes('DURING_COMBAT'))) && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
+  if (card.type === 'SPECIAL' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
+  if (!actions.length) actions.push(`<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`);
+  return actions.join('');
+}
+
+function whyNotPlayable(card) {
+  if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase.';
+  if (card.type === 'THREAT_MODIFIER') return 'Threat Modifiers can only be played during combat.';
+  if (card.type === 'TRICK') return 'This Trick is only available during its timing window.';
+  if (card.type === 'THREAT') return 'Threats are played with Start Trouble after no Threat appears.';
+  return 'The current phase does not allow this card.';
+}
+
+function closeInspect() { $('inspectOverlay').classList.add('hidden'); }
+
+function inspectPlayer(p) {
+  const root = $('inspectContent');
+  const gearCards = [...(p.equippedGear || []), ...(p.carriedGear || [])];
+  root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Renown ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
+    <p>Role: ${p.role ? escapeHtml(p.role.publicName) : 'none'}<br>Origin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</p>
+    <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { small: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
+  $('inspectOverlay').classList.remove('hidden');
+}
+
+function renderLogAndChat() {
+  $('logBox').innerHTML = state.log.map((l) => `<div class="log-line">${escapeHtml(l.message)}</div>`).join('');
+  $('logBox').scrollTop = $('logBox').scrollHeight;
+  $('chatMessages').innerHTML = state.chat.map((m) => `<div class="chat-line"><strong>${escapeHtml(m.name)}:</strong> ${escapeHtml(m.message)}</div>`).join('');
+  $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
+}
+
+function prettyPhase(phase) {
+  const map = { LOBBY: 'Lobby', START_TURN: 'Open Chamber', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', ESCAPE: 'Escape', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over' };
+  return map[phase] || phase;
+}
+function playerName(id) { return state.players.find((p) => p.id === id)?.name || 'Unknown'; }
+function signed(n) { return `${Number(n || 0) >= 0 ? '+' : ''}${Number(n || 0)}`; }
 function escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  return String(str ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }
+
+maybeShowResume();
