@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Loot Goblins v0.4.1.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Loot Goblins v0.4.2</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
 
   <main id="resumeScreen" class="screen hidden">
     <section class="hero panel">
-      <div class="eyebrow">Loot Goblins v0.4.1.1</div>
+      <div class="eyebrow">Loot Goblins v0.4.2</div>
       <h1>Resume your table?</h1>
       <p id="resumeCopy">Saved room found.</p>
       <div class="button-row">
@@ -23,7 +23,7 @@
 
   <main id="entryScreen" class="screen">
     <section class="hero panel">
-      <div class="eyebrow">Loot Goblins v0.4.1.1</div>
+      <div class="eyebrow">Loot Goblins v0.4.2</div>
       <h1>Get loot. Gain glory. Betray responsibly.</h1>
       <p>A cozy-chaotic three-player dungeon card table with private hands, rejoin support, card zones, and a starter Loot Goblins deck.</p>
       <label>Your name</label>
@@ -55,40 +55,33 @@
 
   <main id="gameScreen" class="screen game hidden">
     <section id="phaseBanner" class="phase-banner panel"></section>
+
     <section id="playerStrip" class="player-strip"></section>
 
-    <section class="table-grid">
-      <div class="table-zone panel deck-zone">
-        <h3>Decks</h3>
-        <div class="deck-row">
-          <div class="deck-card"><strong>Chamber</strong><span id="chamberCount">0</span></div>
-          <div class="deck-card"><strong>Loot</strong><span id="lootCount">0</span></div>
+    <section class="table-shell panel">
+      <div class="table-topline">
+        <div class="table-title-block">
+          <div class="eyebrow">The Table</div>
+          <h2>What is happening right now</h2>
         </div>
-        <div class="discard-row">
-          <span id="chamberDiscard">Chamber discard 0</span>
-          <span id="lootDiscard">Loot discard 0</span>
+        <div id="deckDock" class="deck-dock">
+          <span>Chamber <strong id="chamberCount">0</strong></span>
+          <span>Loot <strong id="lootCount">0</strong></span>
+          <span class="wide-only" id="chamberDiscard">Chamber discard 0</span>
+          <span class="wide-only" id="lootDiscard">Loot discard 0</span>
         </div>
       </div>
-
-      <div id="activeTable" class="table-zone panel active-table"></div>
+      <div id="activeTable" class="active-table"></div>
     </section>
 
     <section id="promptPanel" class="panel prompt-panel hidden"></section>
+
     <section id="handPanel" class="panel hand-panel"></section>
-    <section class="panel log-panel">
-      <div class="tabs">
-        <button class="tab active" data-tab="log">Log</button>
-        <button class="tab" data-tab="chat">Chat</button>
-      </div>
+
+    <details class="panel event-history">
+      <summary>Event History</summary>
       <div id="logBox" class="log-box"></div>
-      <div id="chatBox" class="chat-box hidden">
-        <div id="chatMessages" class="chat-messages"></div>
-        <form id="chatForm" class="chat-form">
-          <input id="chatInput" placeholder="negotiate / beg / betray responsibly" maxlength="240" />
-          <button>Send</button>
-        </form>
-      </div>
-    </section>
+    </details>
   </main>
 
   <div id="inspectOverlay" class="inspect-overlay hidden">

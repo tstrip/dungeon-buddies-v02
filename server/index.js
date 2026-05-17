@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.4.1-classic-rules' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.4.2-table-ux' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -145,7 +145,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.4.1-classic-rules',
+    version: '0.4.2-table-ux',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -746,7 +746,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.4.1-classic-rules' });
+  socket.emit('ready', { version: '0.4.2-table-ux' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -756,7 +756,7 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', ({ name, code }) => {
     const room = rooms.get(String(code || '').trim().toUpperCase());
     if (!room) return emitError(socket, 'Room not found.');
-    if (room.players.length >= 3) return emitError(socket, 'This v0.4.1 table is limited to 3 players.');
+    if (room.players.length >= 3) return emitError(socket, 'This v0.4.2 table is limited to 3 players.');
     const player = createPlayer(name, socket);
     room.players.push(player);
     attachSocketToPlayer(room, player, socket);
@@ -1164,5 +1164,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.4.1 classic-rules repair listening on ${PORT}`);
+  console.log(`Loot Goblins v0.4.2 classic-rules repair listening on ${PORT}`);
 });

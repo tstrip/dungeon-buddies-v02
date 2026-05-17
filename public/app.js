@@ -1,9 +1,8 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV041Session';
+const SESSION_KEY = 'lootGoblinsV042Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
-let currentTab = 'log';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
@@ -86,20 +85,6 @@ $('copyInviteBtn').addEventListener('click', async () => {
 });
 $('closeInspect').addEventListener('click', closeInspect);
 $('inspectOverlay').addEventListener('click', (e) => { if (e.target.id === 'inspectOverlay') closeInspect(); });
-$('chatForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const input = $('chatInput');
-  socket.emit('chat', { message: input.value });
-  input.value = '';
-});
-document.querySelectorAll('.tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    currentTab = btn.dataset.tab;
-    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === currentTab));
-    $('logBox').classList.toggle('hidden', currentTab !== 'log');
-    $('chatBox').classList.toggle('hidden', currentTab !== 'chat');
-  });
-});
 
 function me() { return state?.players.find((p) => p.isYou); }
 function active() { return state?.players.find((p) => p.id === state.activePlayerId); }
@@ -140,7 +125,7 @@ function renderGame() {
   renderActiveTable();
   renderPrompt();
   renderHand();
-  renderLogAndChat();
+  renderEventHistory();
 }
 
 function renderPhaseBanner() {
@@ -222,7 +207,7 @@ function combatButtons() {
 }
 
 function handleCombatButton(action, target) {
-  if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target, deal: 'Table deal / negotiated in chat' });
+  if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target, deal: 'Table deal / negotiated out loud' });
   else emitAction(action);
 }
 
@@ -256,9 +241,10 @@ function renderActiveTable() {
   if (state.phase === 'COMBAT' && state.combat) return renderCombat(root);
   if (state.phase === 'ESCAPE' && state.escape) return renderEscape(root);
   const reveal = state.revealCard;
-  let html = `<div class="zone-title"><h2>Active Table</h2><span class="micro">${prettyPhase(state.phase)}</span></div>`;
+  let html = `<div class="table-event"><strong>Latest:</strong> ${escapeHtml(latestEvent())}</div>`;
+  html += `<div class="zone-title"><h2>Active Table</h2><span class="micro">${prettyPhase(state.phase)}</span></div>`;
   if (reveal) {
-    html += `<div class="reveal-zone"><h3>Reveal Zone</h3><div class="card-row">${cardHtml(reveal, { small: false })}</div></div>`;
+    html += `<div class="reveal-zone"><h3>Reveal Zone</h3><p class="micro">This is the card currently being resolved.</p><div class="card-row">${cardHtml(reveal, { tableSmall: false })}</div></div>`;
   } else {
     html += `<div class="empty-zone"><div><strong>No active card</strong><br><span>Cards revealed from the Chamber will appear here before moving zones.</span></div></div>`;
   }
@@ -269,23 +255,34 @@ function renderEscape(root) {
   const esc = state.escape;
   const runner = state.players.find((p) => p.id === esc.currentPlayerId);
   const last = esc.lastRoll;
-  const rollLine = last
-    ? `<div class="roll-result"><strong>Last roll:</strong> ${last.raw} ${last.bonus ? signed(last.bonus) : '+0'} = <strong>${last.total}</strong> · ${last.total >= 5 ? 'escaped' : 'failed'}</div>`
-    : `<div class="roll-result">No roll yet. Target number is <strong>5+</strong>.</div>`;
+  const raw = last?.raw ?? '—';
+  const total = last?.total ?? '—';
+  const outcome = last ? (last.total >= 5 ? '<span class="roll-success">Success — escaped the Bad News.</span>' : '<span class="roll-fail">Failed — Bad News resolves.</span>') : 'Waiting for the roll.';
+  const detail = last
+    ? `Raw roll ${last.raw} ${signed(last.bonus || 0)} Flee bonus = ${last.total}`
+    : `Target number is 5+. ${runner?.isYou ? 'Tap Roll to Flee above.' : `Waiting for ${escapeHtml(runner?.name || 'the runner')}.`}`;
   root.innerHTML = `
+    <div class="table-event"><strong>Flee:</strong> ${escapeHtml(runner?.name || 'Runner')} must roll against ${escapeHtml(esc.threat?.publicName || 'the Foe')}.</div>
     <div class="zone-title"><h2>Flee Zone</h2><span class="micro">Classic d6 roll</span></div>
     <div class="escape-layout">
       <div>
         <h3>${escapeHtml(runner?.name || 'Runner')} vs ${escapeHtml(esc.threat?.publicName || 'Foe')}</h3>
-        <p>Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
-        <div class="dice-breakdown">
-          <span>Target: <strong>5+</strong></span>
-          <span>Flee bonus: <strong>${signed(esc.fleeBonus || 0)}</strong></span>
-          <span>Runner ${Number(esc.index || 0) + 1}/${esc.runners?.length || 1}</span>
+        <p class="micro">Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
+        <div class="dice-stage">
+          <div class="die-face">${escapeHtml(raw)}</div>
+          <div class="roll-result">
+            <div class="dice-breakdown">
+              <span>Target <strong>5+</strong></span>
+              <span>Flee bonus <strong>${signed(esc.fleeBonus || 0)}</strong></span>
+              <span>Runner <strong>${Number(esc.index || 0) + 1}/${esc.runners?.length || 1}</strong></span>
+            </div>
+            <p><strong>Final:</strong> ${escapeHtml(total)}</p>
+            <p>${outcome}</p>
+            <p class="micro">${escapeHtml(detail)}</p>
+          </div>
         </div>
-        ${rollLine}
       </div>
-      <div class="card-row">${esc.threat ? cardHtml(esc.threat, { small: true }) : ''}</div>
+      <div class="card-row">${esc.threat ? cardHtml(esc.threat, { tableSmall: true }) : ''}</div>
     </div>
   `;
 }
@@ -294,8 +291,19 @@ function renderCombat(root) {
   const combat = state.combat;
   const totals = combat.totals;
   const threat = combat.threats[0];
+  const waiting = state.players.filter((p) => !combat.passes?.[p.id]);
+  const needsYou = waiting.some((p) => p.isYou);
+  const tableCopy = combat.backupRequest
+    ? `${playerName(combat.backupRequest.toPlayerId)} has a Backup request to answer.`
+    : needsYou
+      ? 'Your response is needed: play a card, request Backup, or pass.'
+      : waiting.length
+        ? `Waiting for ${waiting.map((p) => p.name).join(', ')}.`
+        : 'Everyone has passed. Combat will resolve.';
   root.innerHTML = `
-    <div class="zone-title"><h2>Combat Zone</h2><span class="micro">Passes: ${passSummary(combat.passes)}</span></div>
+    <div class="table-event"><strong>Combat:</strong> ${escapeHtml(tableCopy)}</div>
+    <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
+    <div class="zone-title"><h2>Combat Zone</h2><span class="micro">${escapeHtml(passSummary(combat.passes))}</span></div>
     <div class="combat-layout">
       <div class="combat-side">
         <h3>Player Side</h3>
@@ -307,13 +315,17 @@ function renderCombat(root) {
       <div class="vs">VS</div>
       <div class="combat-side">
         <h3>Foe Side</h3>
-        <div class="card-row">${cardHtml(threat, { small: true })}</div>
+        <div class="card-row">${cardHtml(threat, { tableSmall: true })}</div>
         <div class="total-big">${totals.threatTotal}</div>
         <div class="micro">Loot if defeated: ${threat.finalLoot}</div>
         <div class="modifier-list">${(threat.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)} / Loot ${signed(m.lootDelta)}</span>`).join('')}</div>
       </div>
     </div>
   `;
+}
+
+function passPill(p, passed) {
+  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Passed' : 'Waiting'}</span></div>`;
 }
 
 function passSummary(passes) {
@@ -370,18 +382,20 @@ function renderHand() {
   if (!you) { root.innerHTML = ''; return; }
   const over = you.handCount > you.handLimit;
   let html = `<div class="hand-header"><h3>Your Hand</h3><span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span></div>`;
+  html += `<p class="micro hand-help">Compact view: tap a card to expand details and show legal actions.</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
     html += `<p class="micro">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
-    html += `<div class="card-row">${myHand().map((c) => cardHtml(c, { small: true, selectableTribute: true })).join('')}</div>`;
+    html += `<div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, selectableTribute: true })).join('')}</div>`;
     html += tributeControls(need);
   } else {
-    html += `<div class="card-row">${myHand().map((c) => cardHtml(c, { small: true, playable: isCardPlayable(c) })).join('')}</div>`;
+    html += `<div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div>`;
   }
   root.innerHTML = html;
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
     cardEl.addEventListener('click', () => {
       const card = myHand().find((c) => c.instanceId === cardEl.dataset.cardId);
+      if (!card) return;
       if (state.phase === 'TRIBUTE' && isMyTurn()) toggleTribute(card.instanceId);
       else inspectCard(card);
     });
@@ -427,8 +441,9 @@ function isCardPlayable(card) {
 
 function cardHtml(card, opts = {}) {
   if (!card) return '';
+  if (opts.compact) return compactCardHtml(card, opts);
   const classes = ['card'];
-  if (opts.small) classes.push('small');
+  if (opts.tableSmall) classes.push('table-small');
   if (opts.playable) classes.push('playable');
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
@@ -441,6 +456,53 @@ function cardHtml(card, opts = {}) {
     ${card.flavorText ? `<div class="flavor">${escapeHtml(card.flavorText)}</div>` : ''}
     <div class="stats">${escapeHtml(bottom)}</div>
   </article>`;
+}
+
+function compactCardHtml(card, opts = {}) {
+  const classes = ['hand-card'];
+  if (opts.playable) classes.push('playable');
+  if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
+  if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
+  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
+    <div class="hand-card-type">${escapeHtml(typeLabel(card))}</div>
+    <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
+    <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
+    <div class="hand-card-sub">${escapeHtml(cardGlanceSub(card))}</div>
+  </article>`;
+}
+
+function cardGlance(card) {
+  if (card.type === 'THREAT') return `STR ${card.strength}`;
+  if (card.type === 'GEAR') return `+${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Foe ${signed(card.strengthDelta)}`;
+  if (card.type === 'TRICK') return trickGlance(card);
+  if (card.type === 'HEX') return hexGlance(card);
+  if (card.type === 'ROLE') return 'Calling';
+  if (card.type === 'ORIGIN') return 'Kin';
+  if (card.type === 'SPECIAL') return 'Special';
+  return card.type || 'Card';
+}
+
+function cardGlanceSub(card) {
+  if (card.type === 'THREAT') return `${card.renownReward} Glory · ${card.lootReward} Loot`;
+  if (card.type === 'GEAR') return `${card.slot || 'Gear'}${card.handsUsed ? ` · ${card.handsUsed}H` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Loot ${signed(card.lootDelta)}`;
+  if (card.type === 'TRICK') return (card.timing || []).map(prettyTiming).join(' / ') || 'Trick';
+  if (card.type === 'HEX') return (card.timing || []).map(prettyTiming).join(' / ') || 'Any time';
+  if (card.type === 'ROLE' || card.type === 'ORIGIN') return 'Play on your turn';
+  return (card.publicText || '').slice(0, 42);
+}
+
+function trickGlance(card) {
+  const e = card.effect || {};
+  if (typeof e.amount === 'number') return `${e.amount >= 0 ? '+' : ''}${e.amount} ${e.side === 'THREAT' ? 'Foe' : e.side === 'PLAYER' ? 'Player' : 'Side'}`;
+  if ((card.timing || []).includes('BEFORE_ESCAPE_ROLL')) return 'Flee help';
+  return 'One-use';
+}
+
+function hexGlance(card) {
+  const text = card.publicText || 'Bad thing';
+  return text.replace(/^Curse:?\s*/i, '').slice(0, 28);
 }
 
 function cardBottom(card) {
@@ -507,15 +569,32 @@ function inspectPlayer(p) {
   const gearCards = [...(p.equippedGear || []), ...(p.carriedGear || [])];
   root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Glory ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
     <p>Calling: ${p.role ? escapeHtml(p.role.publicName) : 'none'}<br>Kin: ${p.origin ? escapeHtml(p.origin.publicName) : 'none'}</p>
-    <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { small: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
+    <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
   $('inspectOverlay').classList.remove('hidden');
 }
 
-function renderLogAndChat() {
-  $('logBox').innerHTML = state.log.map((l) => `<div class="log-line">${escapeHtml(l.message)}</div>`).join('');
-  $('logBox').scrollTop = $('logBox').scrollHeight;
-  $('chatMessages').innerHTML = state.chat.map((m) => `<div class="chat-line"><strong>${escapeHtml(m.name)}:</strong> ${escapeHtml(m.message)}</div>`).join('');
-  $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
+function renderEventHistory() {
+  const logBox = $('logBox');
+  if (!logBox) return;
+  logBox.innerHTML = state.log.map((l) => `<div class="log-line">${escapeHtml(l.message)}</div>`).join('');
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function latestEvent() {
+  return state?.log?.length ? state.log[state.log.length - 1].message : 'Waiting for the first goblin mistake.';
+}
+
+function prettyTiming(t) {
+  const map = {
+    DURING_COMBAT: 'Combat',
+    BEFORE_ESCAPE_ROLL: 'Before Flee',
+    AFTER_ESCAPE_ROLL: 'After Flee',
+    ON_REVEAL: 'On reveal',
+    OWN_TURN_OUTSIDE_COMBAT: 'Own turn',
+    REACTION_TO_HEX: 'React Hex',
+    REACTION_TO_BAD_NEWS: 'Bad News'
+  };
+  return map[t] || String(t || '').replaceAll('_', ' ').toLowerCase();
 }
 
 function prettyPhase(phase) {

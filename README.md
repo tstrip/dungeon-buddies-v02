@@ -1,34 +1,32 @@
-# Loot Goblins v0.4.1 — Classic Rules Repair
+# Loot Goblins v0.4.2 — Table + Hand UX Repair
 
-A private three-player browser card-table prototype.
+A private three-player browser card-table prototype. This version keeps the v0.4.1 classic rules repair and focuses on making the game readable from the player perspective on iPhone and iPad.
 
-This update keeps the v0.4 card database, but repairs the rules skeleton toward classic Munchkin-style flow:
+## What changed
 
-- Classic starting hand: 4 Chamber + 4 Loot.
-- Classic turn wording: Open Chamber, Start Trouble / Loot the Room, Tribute.
-- Loot the Room draws a hidden Chamber card.
-- Added a serialized Flee state so the frontend can actually show who must roll.
-- Added a reusable d6 Flee roll foundation: raw roll + Flee bonus = final result, success on 5+.
-- Added a visible Roll to Flee button for the current fleeing player.
-- Added Flee result display in the table zone.
-- Added support for before-Flee Tricks such as Exit Strategy.
-- Added guided hand-discard prompts for Bad News that requires player choice.
-- Loosened Hex timing toward classic rules: Hexes in hand can be played broadly, with the active player as default target for now.
+- Removed the chat UI so the table gets more space.
+- Reworked the game screen toward a mobile card-game layout.
+- Compact player strip instead of giant stacked player cards.
+- Main table now visualizes the current moment instead of relying on the log.
+- Combat shows a pass tracker for every player.
+- Flee shows a visual dice stage with raw roll, bonus, final result, and success/failure.
+- Hand cards are compact glance cards. Tap a card to open the full inspector with rules, flavor, and legal actions.
+- Event History is collapsed and secondary.
 
-## Deploy settings
+## Render settings
 
-Build command:
+Build Command:
 
-```bash
+```txt
 npm install --package-lock=false
 ```
 
-Start command:
+Start Command:
 
-```bash
+```txt
 npm start
 ```
 
 ## Notes
 
-This is still not the full accurate card rework. The uploaded English card sheets should be used for the next larger pass, likely v0.5.
+This is still not the accurate full card-list rework. That should come next as v0.5 using the clearer English card sheets as the mechanical source of truth.
