@@ -1,32 +1,34 @@
-# Loot Goblins v0.4
+# Loot Goblins v0.4.1 — Classic Rules Repair
 
 A private three-player browser card-table prototype.
 
-## What changed in v0.4
+This update keeps the v0.4 card database, but repairs the rules skeleton toward classic Munchkin-style flow:
 
-- Renamed the public game language to **Loot Goblins**.
-- Added the v0.4 starter card database.
-- Added original rules text and flavor text to cards.
-- Added Foe / Hex / Calling / Kin / Gear / Trick / Foe Modifier / Special terminology.
-- Added visible card flavor text in hand, table, and inspector views.
-- Added basic Gear selling prompt for Junk Value → Glory.
-- Added basic Knockout and will-not-pursue handling.
-- Kept the simple one-service architecture: Node + Express + Socket.IO + plain browser JS.
+- Classic starting hand: 4 Chamber + 4 Loot.
+- Classic turn wording: Open Chamber, Start Trouble / Loot the Room, Tribute.
+- Loot the Room draws a hidden Chamber card.
+- Added a serialized Flee state so the frontend can actually show who must roll.
+- Added a reusable d6 Flee roll foundation: raw roll + Flee bonus = final result, success on 5+.
+- Added a visible Roll to Flee button for the current fleeing player.
+- Added Flee result display in the table zone.
+- Added support for before-Flee Tricks such as Exit Strategy.
+- Added guided hand-discard prompts for Bad News that requires player choice.
+- Loosened Hex timing toward classic rules: Hexes in hand can be played broadly, with the active player as default target for now.
 
-## Render settings
+## Deploy settings
 
-Build Command:
+Build command:
 
-```txt
+```bash
 npm install --package-lock=false
 ```
 
-Start Command:
+Start command:
 
-```txt
+```bash
 npm start
 ```
 
 ## Notes
 
-This is still a prototype. Some complex cards are intentionally manual-resolution cards so the table can keep playing while the engine grows.
+This is still not the full accurate card rework. The uploaded English card sheets should be used for the next larger pass, likely v0.5.

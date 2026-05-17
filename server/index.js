@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.4.0' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.4.1-classic-rules' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -26,6 +26,10 @@ const roomCode = () => randomId(ALPHABET, 5);
 const instanceId = () => randomId(ID_ALPHABET, 10);
 const playerId = () => `p_${randomId(ID_ALPHABET, 12)}`;
 const clone = (obj) => JSON.parse(JSON.stringify(obj));
+
+function rollD6() {
+  return Math.floor(Math.random() * 6) + 1;
+}
 
 function shuffle(arr) {
   const copy = arr.slice();
@@ -141,7 +145,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.4.0',
+    version: '0.4.1-classic-rules',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -159,6 +163,7 @@ function serializeRoom(room, viewerId) {
     },
     revealCard: publicCard(room.revealCard),
     combat: serializeCombat(room),
+    escape: serializeEscape(room),
     pendingPrompt: serializePrompt(room.pendingPrompt, viewerId),
     log: room.log.slice(-80),
     chat: room.chat.slice(-60),
@@ -179,6 +184,23 @@ function serializeCombat(room) {
     playedTricks: (room.combat.playedTricks || []).map(publicCard),
     passes: room.combat.passes,
     totals
+  };
+}
+
+function serializeEscape(room) {
+  if (!room.escape) return null;
+  const runner = getPlayer(room, room.escape.currentPlayerId);
+  const threat = room.escape.threat;
+  return {
+    runners: room.escape.runners || [],
+    index: room.escape.index || 0,
+    currentPlayerId: room.escape.currentPlayerId || null,
+    currentPlayerName: runner?.name || null,
+    threat: publicCard(threat),
+    targetNumber: 5,
+    fleeBonus: runner ? gearFleeBonus(runner) + originFleeBonus(runner) + temporaryFleeBonus(runner) : 0,
+    autoFlee: runner ? runner.temporaryEffects.some((e) => e.type === 'AUTO_ESCAPE') : false,
+    lastRoll: room.escape.lastRoll || null
   };
 }
 
@@ -368,6 +390,17 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
     }
     case 'DISCARD_FROM_HAND': {
       const count = Math.min(effect.count || 1, player.hand.length);
+      if (count <= 0) { log(room, `${player.name} had no cards to discard.`); return true; }
+      if (effect.method === 'PLAYER_CHOICE') {
+        createPrompt(room, {
+          type: 'DISCARD_HAND_CARDS',
+          playerId: player.id,
+          message: `${player.name} must discard ${count} card${count === 1 ? '' : 's'} from hand.`,
+          options: player.hand.slice(),
+          meta: { count, after: context.after || 'CONTINUE' }
+        });
+        return false;
+      }
       for (let i = 0; i < count; i++) {
         const idx = effect.method === 'RANDOM' ? Math.floor(Math.random() * player.hand.length) : 0;
         const [card] = player.hand.splice(idx, 1);
@@ -566,7 +599,7 @@ function setupGame(room) {
     drawMany(room, p, 'CHAMBER', 4);
     drawMany(room, p, 'LOOT', 4);
   }
-  log(room, `Game started. ${getActive(room).name} goes first.`);
+  log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. ${getActive(room).name} goes first.`);
 }
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
@@ -653,7 +686,7 @@ function rollFlee(room, player) {
     continueFlee(room);
     return;
   }
-  const raw = Math.ceil(Math.random() * 6);
+  const raw = rollD6();
   const bonus = gearFleeBonus(player) + originFleeBonus(player) + temporaryFleeBonus(player);
   const total = raw + bonus;
   player.temporaryEffects = player.temporaryEffects.filter((e) => e.duration !== 'NEXT_ESCAPE');
@@ -713,7 +746,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.4.0' });
+  socket.emit('ready', { version: '0.4.1-classic-rules' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -723,7 +756,7 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', ({ name, code }) => {
     const room = rooms.get(String(code || '').trim().toUpperCase());
     if (!room) return emitError(socket, 'Room not found.');
-    if (room.players.length >= 3) return emitError(socket, 'This v0.4 table is limited to 3 players.');
+    if (room.players.length >= 3) return emitError(socket, 'This v0.4.1 table is limited to 3 players.');
     const player = createPlayer(name, socket);
     room.players.push(player);
     attachSocketToPlayer(room, player, socket);
@@ -823,10 +856,10 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'SEARCH_ROOM') {
-    if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'Only the active player can Search Room in this phase.');
+    if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'Only the active player can Loot the Room in this phase.');
     const card = draw(room, 'CHAMBER');
     if (card) player.hand.push(card);
-    log(room, `${player.name} searched the room and drew a hidden Chamber card.`);
+    log(room, `${player.name} looted the room and drew a hidden Chamber card.`);
     room.revealCard = null;
     moveToTributeOrEnd(room);
     return;
@@ -964,6 +997,18 @@ function playCard(socket, room, player, card, payload) {
   }
 
   if (card.type === 'TRICK') {
+    if (room.phase === 'ESCAPE') {
+      const timing = card.timing || [];
+      const isRunner = room.escape?.currentPlayerId === player.id;
+      if (!isRunner) return emitError(socket, 'Only the current fleeing player can play Flee Tricks right now.');
+      if (!timing.includes('BEFORE_ESCAPE_ROLL')) return emitError(socket, 'That Trick is not playable before this Flee roll.');
+      const real = findAndRemoveFromHand(player, card.instanceId);
+      if (!real) return emitError(socket, 'Trick must be in your hand.');
+      applyEffect(room, player, real.effect, real);
+      discardCard(room, real);
+      log(room, `${player.name} played ${real.publicName} before Fleeing.`);
+      return;
+    }
     if (!room.combat || room.phase !== 'COMBAT') return emitError(socket, 'Tricks can only be played during combat unless their card says otherwise.');
     if (!(card.timing || []).includes('DURING_COMBAT')) return emitError(socket, 'That Trick is not playable in this combat window.');
     const real = findAndRemoveFromHand(player, card.instanceId);
@@ -988,15 +1033,19 @@ function playCard(socket, room, player, card, payload) {
   }
 
   if (card.type === 'HEX') {
-    if (room.phase === 'COMBAT' && (card.timing || []).includes('DURING_COMBAT')) {
-      const real = findAndRemoveFromHand(player, card.instanceId);
-      for (const effect of real.effects || []) applyEffect(room, player, effect, real);
-      discardCard(room, real);
-      resetCombatPasses(room);
-      log(room, `${player.name} played Hex: ${real.publicName}. Passes reset.`);
-      return;
+    // Classic rule: Hex/Curse cards in hand may be played on any player at almost any time.
+    const real = findAndRemoveFromHand(player, card.instanceId);
+    if (!real) return emitError(socket, 'Hex must be in your hand.');
+    const target = getPlayer(room, payload.targetPlayerId) || getActive(room) || player;
+    let complete = true;
+    for (const effect of real.effects || []) {
+      const ok = applyEffect(room, target, effect, real, { after: room.phase === 'ESCAPE' ? 'CONTINUE_ESCAPE' : 'CONTINUE' });
+      if (!ok) complete = false;
     }
-    return emitError(socket, 'This Hex is not playable right now in v0.4.');
+    discardCard(room, real);
+    if (room.phase === 'COMBAT') resetCombatPasses(room);
+    log(room, `${player.name} played Hex: ${real.publicName} on ${target.name}.${room.phase === 'COMBAT' ? ' Passes reset.' : ''}`);
+    return;
   }
 
   if (card.type === 'THREAT') return emitError(socket, 'Foes are played with Start Trouble after a non-Foe Chamber reveal.');
@@ -1060,6 +1109,21 @@ function resolvePrompt(socket, room, player, payload) {
     continueAfterPrompt(room, after);
     return;
   }
+  if (prompt.type === 'DISCARD_HAND_CARDS') {
+    const need = prompt.meta?.count || 1;
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
+    if (ids.length !== need) return emitError(socket, `Choose exactly ${need} card${need === 1 ? '' : 's'} to discard.`);
+    const valid = new Set((prompt.options || []).map((c) => c.instanceId));
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid cards from your hand.');
+    for (const id of ids) {
+      const card = findAndRemoveFromHand(player, id);
+      if (card) discardCard(room, card);
+    }
+    log(room, `${player.name} discarded ${ids.length} chosen card${ids.length === 1 ? '' : 's'} from hand.`);
+    continueAfterPrompt(room, after);
+    return;
+  }
+
   if (prompt.type === 'MANUAL') {
     log(room, `${player.name} confirmed manual resolution.`);
     continueAfterPrompt(room, after);
@@ -1100,5 +1164,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.4 listening on ${PORT}`);
+  console.log(`Loot Goblins v0.4.1 classic-rules repair listening on ${PORT}`);
 });

@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV04Session';
+const SESSION_KEY = 'lootGoblinsV041Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -163,10 +163,10 @@ function renderPhaseBanner() {
     if (isMyTurn()) buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
   } else if (state.phase === 'NO_THREAT_CHOICE') {
     title = isMyTurn() ? 'No Foe — Choose Your Move' : `${active()?.name} chooses next`;
-    copy = isMyTurn() ? 'Start Trouble with a Foe from hand, or Search Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Search Room.`;
+    copy = isMyTurn() ? 'Start Trouble with a Foe from hand, or Loot the Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Loot the Room.`;
     if (isMyTurn()) {
-      buttons.push(buttonHtml('Search Room', 'SEARCH_ROOM', 'primary'));
-      buttons.push(`<span class="micro">To Start Trouble, tap a Foe in your hand.</span>`);
+      buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
+      buttons.push(`<span class="micro">To Start Trouble, tap a Foe in your hand. Loot the Room draws a hidden Chamber card.</span>`);
     }
   } else if (state.phase === 'COMBAT') {
     const totals = state.combat?.totals;
@@ -175,9 +175,14 @@ function renderPhaseBanner() {
     copy = `${marginText}. Reaction window open.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
-    const runner = state.players.find((p) => p.id === state.combat?.activePlayerId) || state.players.find((p) => p.id === state?.escape?.currentPlayerId);
-    title = 'Flee';
-    copy = 'A losing fighter must roll to avoid the Bad News.';
+    const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
+    const foeName = state.escape?.threat?.publicName || 'the Foe';
+    const bonus = state.escape?.fleeBonus || 0;
+    title = runner?.isYou ? `Your Flee Roll — ${foeName}` : `${runner?.name || 'Someone'} must Flee`;
+    copy = runner?.isYou
+      ? `Roll 1d6. Target: 5+. Your current Flee bonus: ${signed(bonus)}.`
+      : `Waiting for ${runner?.name || 'the runner'} to roll 1d6 against ${foeName}. Target: 5+.`;
+    if (runner?.isYou) buttons.push(buttonHtml(state.escape?.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee', 'ROLL_ESCAPE', 'primary'));
   } else if (state.phase === 'TRIBUTE') {
     title = isMyTurn() ? 'Tribute Required' : `${active()?.name} must resolve Tribute`;
     copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose excess cards below.` : `Waiting for ${active()?.name} to give or discard excess cards.`;
@@ -249,6 +254,7 @@ function slotChips(p) {
 function renderActiveTable() {
   const root = $('activeTable');
   if (state.phase === 'COMBAT' && state.combat) return renderCombat(root);
+  if (state.phase === 'ESCAPE' && state.escape) return renderEscape(root);
   const reveal = state.revealCard;
   let html = `<div class="zone-title"><h2>Active Table</h2><span class="micro">${prettyPhase(state.phase)}</span></div>`;
   if (reveal) {
@@ -257,6 +263,31 @@ function renderActiveTable() {
     html += `<div class="empty-zone"><div><strong>No active card</strong><br><span>Cards revealed from the Chamber will appear here before moving zones.</span></div></div>`;
   }
   root.innerHTML = html;
+}
+
+function renderEscape(root) {
+  const esc = state.escape;
+  const runner = state.players.find((p) => p.id === esc.currentPlayerId);
+  const last = esc.lastRoll;
+  const rollLine = last
+    ? `<div class="roll-result"><strong>Last roll:</strong> ${last.raw} ${last.bonus ? signed(last.bonus) : '+0'} = <strong>${last.total}</strong> · ${last.total >= 5 ? 'escaped' : 'failed'}</div>`
+    : `<div class="roll-result">No roll yet. Target number is <strong>5+</strong>.</div>`;
+  root.innerHTML = `
+    <div class="zone-title"><h2>Flee Zone</h2><span class="micro">Classic d6 roll</span></div>
+    <div class="escape-layout">
+      <div>
+        <h3>${escapeHtml(runner?.name || 'Runner')} vs ${escapeHtml(esc.threat?.publicName || 'Foe')}</h3>
+        <p>Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
+        <div class="dice-breakdown">
+          <span>Target: <strong>5+</strong></span>
+          <span>Flee bonus: <strong>${signed(esc.fleeBonus || 0)}</strong></span>
+          <span>Runner ${Number(esc.index || 0) + 1}/${esc.runners?.length || 1}</span>
+        </div>
+        ${rollLine}
+      </div>
+      <div class="card-row">${esc.threat ? cardHtml(esc.threat, { small: true }) : ''}</div>
+    </div>
+  `;
 }
 
 function renderCombat(root) {
@@ -301,6 +332,18 @@ function renderPrompt() {
   if (p.type === 'DISCARD_GEAR') {
     root.innerHTML = `<h3>Choose Gear to discard</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)}</button>`).join('')}</div>`;
     root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+  if (p.type === 'DISCARD_HAND_CARDS') {
+    const need = p.meta?.count || 1;
+    const selected = selectedTribute;
+    root.innerHTML = `<h3>Choose cards to discard</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected ${selected.size}/${need}</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card ${selected.has(c.instanceId) ? 'selected' : ''}" data-discard-hand-card="${c.instanceId}">${escapeHtml(c.publicName)}</button>`).join('')}</div><button id="confirmHandDiscard" class="primary" ${selected.size !== need ? 'disabled' : ''}>Discard Selected</button>`;
+    root.querySelectorAll('[data-discard-hand-card]').forEach((btn) => btn.addEventListener('click', () => {
+      if (selected.has(btn.dataset.discardHandCard)) selected.delete(btn.dataset.discardHandCard);
+      else selected.add(btn.dataset.discardHandCard);
+      renderPrompt();
+    }));
+    $('confirmHandDiscard').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selected] }); selected.clear(); });
     return;
   }
   if (p.type === 'SELL_GEAR') {
@@ -441,7 +484,9 @@ function cardActions(card) {
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
-  if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER' || (card.type === 'HEX' && (card.timing || []).includes('DURING_COMBAT'))) && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
+  if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
+  if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
+  if (card.type === 'HEX') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Hex</button>`);
   if (card.type === 'SPECIAL' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
   if (!actions.length) actions.push(`<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`);
   return actions.join('');
@@ -450,7 +495,7 @@ function cardActions(card) {
 function whyNotPlayable(card) {
   if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase.';
   if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
-  if (card.type === 'TRICK') return 'This Trick is only available during its timing window.';
+  if (card.type === 'TRICK') return 'This Trick is only available during its timing window, such as combat or before a Flee roll.';
   if (card.type === 'THREAT') return 'Foes are played with Start Trouble after no Foe appears.';
   return 'The current phase does not allow this card.';
 }

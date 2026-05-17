@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v04",
-  "version": "0.4.0",
+  "name": "loot-goblins-v041",
+  "version": "0.4.1",
   "private": true,
-  "description": "Loot Goblins v0.4: a private three-player browser card-table prototype with card database and flavor text.",
+  "description": "Loot Goblins v0.4.1: classic-rules repair for the private three-player browser card-table prototype.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
