@@ -29,7 +29,7 @@ const gear = (id, publicName, publicText, flavorText, stats = {}) => ({
   isHeavy: Boolean(stats.isHeavy), extraHands: stats.extraHands || 0,
   usableByCallings: stats.usableByCallings || [], notUsableByCallings: stats.notUsableByCallings || [],
   usableByOrigins: stats.usableByOrigins || [], notUsableByOrigins: stats.notUsableByOrigins || [],
-  manualRestriction: Boolean(stats.manualRestriction), enforcement: stats.enforcement || 'AUTO', copies: stats.copies || 1
+  manualRestriction: Boolean(stats.manualRestriction), requiresNoKin: Boolean(stats.requiresNoKin), conditionalBonuses: stats.conditionalBonuses || [], enforcement: stats.enforcement || 'AUTO', copies: stats.copies || 1
 });
 const trick = (id, publicName, publicText, flavorText, effect, stats = {}) => ({
   id, deck: 'LOOT', type: 'TRICK', publicName, publicText, flavorText,
@@ -129,9 +129,9 @@ const chamberCards = [
 const lootCards = [
   // Persistent Gear / Items
   gear('GEAR_HELM_COURAGE', 'Bucket Helm', '+1 combat bonus. Head Gear.', 'Originally a bucket. Promoted during an emergency.', { slot: 'HEAD', combatBonus: 1, junkValue: 200, copies: 1 }),
-  gear('GEAR_BADASS_BANDANA', 'Bravery Bandana', '+3 combat bonus. Head Gear. Table restriction from source card; resolve manually.', 'A serious cloth for unserious confidence.', { slot: 'HEAD', combatBonus: 3, junkValue: 400, manualRestriction: true }),
+  gear('GEAR_BADASS_BANDANA', 'Bravery Bandana', '+3 combat bonus. Head Gear. Usable only if you have no Kin.', 'A serious cloth for unserious confidence.', { slot: 'HEAD', combatBonus: 3, junkValue: 400, requiresNoKin: true }),
   gear('GEAR_POINTY_HAT', 'Pointy Thinking Hat', '+3 combat bonus. Head Gear. Usable only by Hexhands.', 'The point helps ideas leave faster, which is not always ideal.', { slot: 'HEAD', combatBonus: 3, junkValue: 400, usableByCallings: ['CALLING_HEXHAND'] }),
-  gear('GEAR_HORNY_HELMET', 'Horned Panic Helm', '+1 combat bonus, or +3 if you are Brightkin. Head Gear. In this build, it gives +1; apply Brightkin bonus manually.', 'Elegant, dramatic, and best used in rooms with wide doorways.', { slot: 'HEAD', combatBonus: 1, junkValue: 600, enforcement: 'MANUAL' }),
+  gear('GEAR_HORNY_HELMET', 'Horned Panic Helm', '+1 combat bonus, or +3 if you are Brightkin. Head Gear.', 'Elegant, dramatic, and best used in rooms with wide doorways.', { slot: 'HEAD', combatBonus: 1, junkValue: 600, conditionalBonuses: [{ ifOrigin: 'KIN_BRIGHTKIN', combatBonus: 2 }] }),
   gear('GEAR_LEATHER_ARMOR', 'Questionable Armor', '+1 combat bonus. Body Gear.', 'Inspected, approved, and then quietly avoided by the inspector.', { slot: 'BODY', combatBonus: 1, junkValue: 200 }),
   gear('GEAR_SLIMY_ARMOR', 'Slimy Armor', '+1 combat bonus. Body Gear.', 'Hard to grab, easy to regret.', { slot: 'BODY', combatBonus: 1, junkValue: 200 }),
   gear('GEAR_FLAMING_ARMOR', 'Flaming Armor', '+2 combat bonus. Body Gear.', 'Keeps enemies back and conversations short.', { slot: 'BODY', combatBonus: 2, junkValue: 400 }),
@@ -141,7 +141,7 @@ const lootCards = [
   gear('GEAR_BOOTS_FAST', 'Boots of Leaving', '+2 to Flee. Foot Gear.', 'They know the way out and would love to discuss it.', { slot: 'FEET', escapeBonus: 2, junkValue: 400 }),
   gear('GEAR_BOOTS_KICKING', 'Boots of Bad Decisions', '+2 combat bonus. Foot Gear.', 'Comfortable, durable, and rarely pointed in the correct direction.', { slot: 'FEET', combatBonus: 2, junkValue: 400 }),
   gear('GEAR_SNEAKY_SWORD', 'Sneaky Little Sword', '+2 combat bonus. Uses 1 Hand.', 'Small enough to misplace. Sharp enough to become everyone’s business.', { slot: 'HAND', handsUsed: 1, combatBonus: 2, junkValue: 400 }),
-  gear('GEAR_BROAD_SWORD', 'Broad Sword', '+3 combat bonus. Uses 1 Hand. Table restriction from source card; resolve manually.', 'A classic shape with a lot of opinions.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, manualRestriction: true }),
+  gear('GEAR_BROAD_SWORD', 'Broad Sword', '+3 combat bonus. Uses 1 Hand.', 'A classic shape with a lot of opinions.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400 }),
   gear('GEAR_RAT_STICK', 'Rat on a Stick', '+1 combat bonus. Uses 1 Hand. May be discarded for automatic escape from very low Foes. Manual in this build.', 'Better than nothing, in the way stairs are better than falling.', { slot: 'HAND', handsUsed: 1, combatBonus: 1, junkValue: 0, enforcement: 'MANUAL' }),
   gear('GEAR_TUBA_CHARM', 'Tuba of Charm', '+3 to Flee. Uses 1 Hand. Heavy. If you escape, gain one hidden Loot on the way out. Manual treasure in this build.', 'Loud enough to count as a plan.', { slot: 'HAND', handsUsed: 1, escapeBonus: 3, junkValue: 300, isHeavy: true, enforcement: 'MANUAL' }),
   gear('GEAR_STAFF_NAPALM', 'Boomstick Wand', '+5 combat bonus. Uses 1 Hand. Usable only by Hexhands.', 'For spells that prefer making an entrance.', { slot: 'HAND', handsUsed: 1, combatBonus: 5, junkValue: 800, usableByCallings: ['CALLING_HEXHAND'] }),
@@ -153,10 +153,10 @@ const lootCards = [
   gear('GEAR_CHEESE_GRATER', 'Cheese Grater of Peace', '+3 combat bonus. Uses 1 Hand. Usable only by Gravefriends.', 'Ceremonial, technically. Very persuasive, practically.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, usableByCallings: ['CALLING_GRAVEFRIEND'] }),
   gear('GEAR_DAGGER_TREACHERY', 'Dagger of Treachery', '+3 combat bonus. Uses 1 Hand. Usable only by Cutpurses.', 'Small enough to hide. Petty enough to remember.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, usableByCallings: ['CALLING_CUTPURSE'] }),
   gear('GEAR_RAPIER_UNFAIRNESS', 'Rapier of Unfairness', '+3 combat bonus. Uses 1 Hand. Usable only by Brightkin.', 'Elegant enough to make everyone suspicious.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 600, usableByOrigins: ['KIN_BRIGHTKIN'] }),
-  gear('GEAR_SWISS_ARMY_POLEARM', 'Overprepared Polearm', '+4 combat bonus. Uses 2 Hands. Heavy. Table restriction from source card; resolve manually.', 'Keeps danger at a respectful distance.', { slot: 'HAND', handsUsed: 2, combatBonus: 4, junkValue: 600, isHeavy: true, manualRestriction: true }),
+  gear('GEAR_SWISS_ARMY_POLEARM', 'Overprepared Polearm', '+4 combat bonus. Uses 2 Hands. Heavy. Usable only if you have no Kin.', 'Keeps danger at a respectful distance.', { slot: 'HAND', handsUsed: 2, combatBonus: 4, junkValue: 600, isHeavy: true, requiresNoKin: true }),
   gear('GEAR_SHIELD_UBIQUITY', 'Shield of Ubiquity', '+4 combat bonus. Uses 1 Hand. Heavy. Usable only by Bruisers.', 'Always in the way, which is sometimes the point.', { slot: 'HAND', handsUsed: 1, combatBonus: 4, junkValue: 600, isHeavy: true, usableByCallings: ['CALLING_BRUISER'] }),
   gear('GEAR_HAMMER_KNEECAP', 'Hammer of Kneecapping', '+4 combat bonus. Uses 1 Hand. Usable only by Deepborn.', 'Short handle. Long consequences.', { slot: 'HAND', handsUsed: 1, combatBonus: 4, junkValue: 600, usableByOrigins: ['KIN_DEEPBORN'] }),
-  gear('GEAR_GENTLEMENS_CLUB', 'Gentleperson’s Club', '+3 combat bonus. Uses 1 Hand. Table restriction from source card; resolve manually.', 'Polite name. Blunt application.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400, manualRestriction: true }),
+  gear('GEAR_GENTLEMENS_CLUB', 'Gentleperson’s Club', '+3 combat bonus. Uses 1 Hand.', 'Polite name. Blunt application.', { slot: 'HAND', handsUsed: 1, combatBonus: 3, junkValue: 400 }),
   gear('GEAR_MACE_SHARPNESS', 'Mace of Sharpness', '+4 combat bonus. Uses 1 Hand. Usable only by Gravefriends.', 'Blessed by tradition. Applied with enthusiasm.', { slot: 'HAND', handsUsed: 1, combatBonus: 4, junkValue: 600, usableByCallings: ['CALLING_GRAVEFRIEND'] }),
   gear('GEAR_HUGE_ROCK', 'Huge Useless Rock', '+3 combat bonus. Uses 2 Hands. Heavy. No Junk Value.', 'Too important to leave behind, for reasons no one has successfully explained.', { slot: 'HAND', handsUsed: 2, combatBonus: 3, junkValue: 0, isHeavy: true }),
   gear('GEAR_STEPLADDER', 'Stepladder', '+3 combat bonus. Heavy. Usable only by Halfsteps.', 'A bold answer to a vertical problem.', { slot: 'NO_SLOT', combatBonus: 3, junkValue: 400, isHeavy: true, usableByOrigins: ['KIN_HALFSTEP'] }),

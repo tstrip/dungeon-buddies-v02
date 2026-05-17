@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV050Session';
+const SESSION_KEY = 'lootGoblinsV051Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -162,6 +162,7 @@ function deriveMovement() {
   if (/faces/i.test(msg)) return { from: 'REVEAL_ZONE', to: 'COMBAT_ZONE', label: 'Reveal Zone → Combat Zone', detail: msg };
   if (/played/i.test(msg) && /combat|Foe|side|modifier|Prepared|Puddle|Health|Confidence|Stair/i.test(msg)) return { from: 'PLAYER_HAND', to: 'COMBAT_ZONE', label: 'Hand → Combat Zone', detail: msg };
   if (/discarded|discard/i.test(msg)) return { from: 'TABLE', to: 'DISCARD', label: 'Card → Discard', detail: msg };
+  if (/rolled .*to see who goes first/i.test(msg)) return { from: 'DIE', to: 'TABLE', label: 'Die Roll → Opening Roll', detail: msg };
   if (/rolled Flee/i.test(msg)) return { from: 'DIE', to: 'FLEE_ZONE', label: 'Die Roll → Flee Zone', detail: msg };
   if (/escaped|failed to escape/i.test(msg)) return { from: 'FLEE_ZONE', to: 'RESULT', label: 'Flee Zone → Result', detail: msg };
   return { from: null, to: null, label: 'Latest table event', detail: msg };
@@ -206,6 +207,7 @@ function boardPile(key, label, sub, count, move) {
 }
 
 function centerZoneLabel() {
+  if (state.phase === 'ROLL_FOR_FIRST') return 'Opening Roll';
   if (state.phase === 'COMBAT') return 'Combat Zone';
   if (state.phase === 'ESCAPE') return 'Flee Zone';
   if (state.revealCard) return 'Reveal Zone';
@@ -214,6 +216,7 @@ function centerZoneLabel() {
 }
 
 function centerZoneSub() {
+  if (state.phase === 'ROLL_FOR_FIRST') return 'Every goblin rolls a d6. Highest starts. Ties reroll.';
   if (state.phase === 'COMBAT') return 'Foes, modifiers, and played Tricks live here.';
   if (state.phase === 'ESCAPE') return 'Dice rolls and Bad News resolve here.';
   if (state.revealCard) return `${state.revealCard.publicName} is being resolved.`;
@@ -222,6 +225,7 @@ function centerZoneSub() {
 }
 
 function centerZoneClass() {
+  if (state.phase === 'ROLL_FOR_FIRST') return 'roll-center';
   if (state.phase === 'COMBAT') return 'combat-center';
   if (state.phase === 'ESCAPE') return 'flee-center';
   if (state.revealCard) return 'reveal-center';
@@ -242,6 +246,13 @@ function renderPhaseBanner() {
   } else if (state.pendingPrompt) {
     title = state.pendingPrompt.requiresYou ? 'Your decision required' : 'Table prompt pending';
     copy = state.pendingPrompt.message;
+  } else if (state.phase === 'ROLL_FOR_FIRST') {
+    const first = state.firstRoll || {};
+    const rolled = first.rolls?.[me()?.id];
+    const eligibleNames = (first.eligible || []).map(playerName).join(', ');
+    title = first.requiresYou ? 'Roll to See Who Goes First' : 'Opening Roll';
+    copy = first.requiresYou ? 'Tap the die. Highest roll opens the first Chamber. Ties reroll.' : `Waiting for opening rolls from ${eligibleNames || 'the table'}.`;
+    if (first.requiresYou) buttons.push(buttonHtml('Roll d6', 'ROLL_FIRST', 'primary'));
   } else if (state.phase === 'START_TURN') {
     title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn — Open Chamber`;
     copy = isMyTurn() ? 'Step 1: open a Chamber. You may also play Calling, Kin, or Gear before opening.' : `Waiting for ${active()?.name} to open a Chamber.`;
@@ -257,7 +268,7 @@ function renderPhaseBanner() {
     const totals = state.combat?.totals;
     const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
     title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
-    copy = `${marginText}. Reaction window open.`;
+    copy = `${marginText}. Combat resolves only after every player confirms they are done playing combat cards. Player side must be higher than Foe side; ties lose unless a Calling says otherwise.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
@@ -302,7 +313,7 @@ function combatButtons() {
       buttons.push(`<button data-combat-action="REQUEST_BACKUP" data-target="${p.id}">Request Backup: ${escapeHtml(p.name)}</button>`);
     }
   }
-  buttons.push(`<button data-combat-action="PASS_COMBAT">Pass Combat</button>`);
+  buttons.push(`<button data-combat-action="PASS_COMBAT">No More Cards</button>`);
   return buttons;
 }
 
@@ -338,6 +349,7 @@ function slotChips(p) {
 
 function renderActiveTable() {
   const root = $('activeTable');
+  if (state.phase === 'ROLL_FOR_FIRST') return renderFirstRoll(root);
   if (state.phase === 'COMBAT' && state.combat) return renderCombat(root);
   if (state.phase === 'ESCAPE' && state.escape) return renderEscape(root);
   const reveal = state.revealCard;
@@ -371,7 +383,7 @@ function renderEscape(root) {
         <h3>${escapeHtml(runner?.name || 'Runner')} vs ${escapeHtml(esc.threat?.publicName || 'Foe')}</h3>
         <p class="micro">Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
         <div class="dice-stage">
-          <div class="die-face">${escapeHtml(raw)}</div>
+          ${dieHtml(raw, last ? 'rolled' : 'idle')}
           <div class="roll-result">
             <div class="dice-breakdown">
               <span>Target <strong>5+</strong></span>
@@ -389,6 +401,53 @@ function renderEscape(root) {
   `;
 }
 
+
+function renderFirstRoll(root) {
+  const first = state.firstRoll || { rolls: {}, eligible: [] };
+  const latest = first.latest;
+  const waiting = (first.eligible || []).filter((id) => !first.rolls?.[id]).map(playerName);
+  root.innerHTML = `
+    <div class="table-event"><strong>Opening Roll:</strong> ${escapeHtml(first.requiresYou ? 'Your roll is needed.' : waiting.length ? `Waiting for ${waiting.join(', ')}.` : 'Resolving first player.')}</div>
+    ${tableBoardHtml({ centerLabel: 'Opening Roll', centerSub: 'Highest d6 opens the first Chamber. Ties reroll.', centerClass: 'roll-center' })}
+    <div class="zone-title"><h2>Opening Roll</h2><span class="micro">Round ${Number(first.round || 1)}</span></div>
+    <div class="opening-roll-grid">
+      ${state.players.map((p) => {
+        const rolled = first.rolls?.[p.id];
+        const eligible = (first.eligible || []).includes(p.id);
+        return `<div class="roll-card ${eligible ? 'eligible' : ''} ${p.isYou ? 'you' : ''}">
+          <strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong>
+          ${dieHtml(rolled || '—', latest?.playerId === p.id ? 'rolled' : 'idle small')}
+          <span class="micro">${rolled ? `Rolled ${rolled}` : eligible ? 'Needs roll' : 'Waiting'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    ${first.previous?.length ? `<div class="micro previous-rolls">Previous: ${first.previous.map((r) => `Round ${r.round}: ${Object.entries(r.rolls).map(([id, val]) => `${playerName(id)} ${val}`).join(', ')}`).join(' · ')}</div>` : ''}
+  `;
+}
+
+function combatStatusText(totals) {
+  if (!totals) return { headline: 'Combat math pending.', detail: 'Waiting for totals.' };
+  const tieText = totals.tieWin ? 'Tie counts as a win because of Calling ability.' : 'Tie counts as a loss. Player side must be higher.';
+  if (totals.playerTotal > totals.threatTotal) return { headline: `Player side is winning: ${totals.playerTotal} vs ${totals.threatTotal}.`, detail: 'If everyone confirms no more cards, the Foe is defeated.' };
+  if (totals.playerTotal === totals.threatTotal) return { headline: `Combat is tied: ${totals.playerTotal} vs ${totals.threatTotal}.`, detail: tieText };
+  return { headline: `Player side is losing: ${totals.playerTotal} vs ${totals.threatTotal}.`, detail: 'Add help, play cards, or prepare to Flee after everyone confirms.' };
+}
+
+function dieHtml(value, cls = '') {
+  const n = Number(value);
+  const valid = Number.isInteger(n) && n >= 1 && n <= 6;
+  const spots = valid ? Array.from({ length: 6 }, (_, i) => `<span class="pip p${i + 1} ${pipOn(n, i + 1) ? 'on' : ''}"></span>`).join('') : `<b>${escapeHtml(String(value ?? '—'))}</b>`;
+  return `<div class="die-face ${escapeHtml(cls)}">${spots}</div>`;
+}
+
+function pipOn(n, pos) {
+  const map = { 1: [5], 2: [1,9], 3: [1,5,9], 4: [1,3,7,9], 5: [1,3,5,7,9], 6: [1,3,4,6,7,9] };
+  // logical positions 1,3,4,6,7,9 are mapped onto p1-p6 order below
+  const order = [1,3,4,6,7,9];
+  const logical = pos === 5 && n % 2 === 1 ? 5 : order[pos - 1];
+  return (map[n] || []).includes(logical);
+}
+
 function renderCombat(root) {
   const combat = state.combat;
   const totals = combat.totals;
@@ -398,12 +457,14 @@ function renderCombat(root) {
   const tableCopy = combat.backupRequest
     ? `${playerName(combat.backupRequest.toPlayerId)} has a Backup request to answer.`
     : needsYou
-      ? 'Your response is needed: play a card, request Backup, or pass.'
+      ? 'Your response is needed: play a card, request Backup, or tap No More Cards.'
       : waiting.length
-        ? `Waiting for ${waiting.map((p) => p.name).join(', ')}.`
-        : 'Everyone has passed. Combat will resolve.';
+        ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to play or confirm.`
+        : 'Everyone has confirmed. Combat resolves now.';
+  const status = combatStatusText(totals);
   root.innerHTML = `
     <div class="table-event"><strong>Combat:</strong> ${escapeHtml(tableCopy)}</div>
+    <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
     ${tableBoardHtml({ centerLabel: 'Combat Zone', centerSub: `${playerName(combat.activePlayerId)} is fighting ${threat?.publicName || 'a Foe'}.`, centerClass: 'combat-center' })}
     <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
     <div class="zone-title"><h2>Combat Zone</h2><span class="micro">${escapeHtml(passSummary(combat.passes))}</span></div>
@@ -412,7 +473,7 @@ function renderCombat(root) {
         <h3>Player Side</h3>
         <div>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
         <div class="total-big">${totals.playerTotal}</div>
-        <div class="micro">Glory + equipped Gear + Calling/Kin + Tricks</div>
+        <div class="micro">Glory + equipped Gear + Calling/Kin + Tricks. Must beat the Foe side.</div>
         <div class="modifier-list">${combat.playedTricks.filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('')}</div>
       </div>
       <div class="vs">VS</div>
@@ -428,11 +489,11 @@ function renderCombat(root) {
 }
 
 function passPill(p, passed) {
-  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Passed' : 'Waiting'}</span></div>`;
+  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'No more cards' : 'Needs response'}</span></div>`;
 }
 
 function passSummary(passes) {
-  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'passed' : 'waiting'}`).join(' · ');
+  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'confirmed' : 'deciding'}`).join(' · ');
 }
 
 function renderPrompt() {

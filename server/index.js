@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5-card-rework' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.1-ux-clarity' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -126,6 +126,8 @@ function publicCard(card) {
     strengthDelta: card.strengthDelta,
     lootDelta: card.lootDelta,
     enforcement: card.enforcement,
+    requiresNoKin: Boolean(card.requiresNoKin),
+    conditionalBonuses: card.conditionalBonuses || [],
     usableByCallings: card.usableByCallings || [],
     notUsableByCallings: card.notUsableByCallings || [],
     usableByOrigins: card.usableByOrigins || [],
@@ -158,7 +160,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.5-card-rework',
+    version: '0.5.1-ux-clarity',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -177,10 +179,27 @@ function serializeRoom(room, viewerId) {
     revealCard: publicCard(room.revealCard),
     combat: serializeCombat(room),
     escape: serializeEscape(room),
+    firstRoll: serializeFirstRoll(room, viewerId),
     pendingPrompt: serializePrompt(room.pendingPrompt, viewerId),
     log: room.log.slice(-80),
     chat: room.chat.slice(-60),
     legalActions: viewer ? legalActions(room, viewer) : []
+  };
+}
+
+
+function serializeFirstRoll(room, viewerId) {
+  if (!room.firstRoll) return null;
+  const rolls = room.firstRoll.rolls || {};
+  const previous = room.firstRoll.previous || [];
+  return {
+    round: room.firstRoll.round || 1,
+    eligible: room.firstRoll.eligible || [],
+    rolls,
+    previous,
+    latest: room.firstRoll.latest || null,
+    winnerId: room.firstRoll.winnerId || null,
+    requiresYou: room.phase === 'ROLL_FOR_FIRST' && (room.firstRoll.eligible || []).includes(viewerId) && !rolls[viewerId]
   };
 }
 
@@ -358,6 +377,15 @@ function canActOutsideCombat(room) {
   return ['START_TURN', 'NO_THREAT_CHOICE', 'END_TURN'].includes(room.phase);
 }
 
+function effectiveGearCombatBonus(player, card) {
+  let bonus = Number(card.combatBonus || 0);
+  for (const rule of card.conditionalBonuses || []) {
+    if (rule.ifOrigin && player.origin?.id === rule.ifOrigin) bonus += Number(rule.combatBonus || 0);
+    if (rule.ifCalling && player.role?.id === rule.ifCalling) bonus += Number(rule.combatBonus || 0);
+  }
+  return bonus;
+}
+
 function validateGearEquip(player, card) {
   if (card.type !== 'GEAR') return 'That is not Gear.';
   const roleId = player.role?.id;
@@ -366,7 +394,7 @@ function validateGearEquip(player, card) {
   if ((card.notUsableByCallings || []).length && roleId && card.notUsableByCallings.includes(roleId)) return `${card.publicName} cannot be equipped by your current Calling.`;
   if ((card.usableByOrigins || []).length && !card.usableByOrigins.includes(originId)) return `Only the right Kin can equip ${card.publicName}.`;
   if ((card.notUsableByOrigins || []).length && originId && card.notUsableByOrigins.includes(originId)) return `${card.publicName} cannot be equipped by your current Kin.`;
-  if (card.manualRestriction) return `${card.publicName} has a table restriction; resolve it manually before equipping.`;
+  if (card.requiresNoKin && player.origin) return `${card.publicName} is only usable if you have no Kin.`;
   const combinedHeavy = heavyCount(player) + (card.isHeavy && !player.carriedGear.some((g) => g.instanceId === card.instanceId) ? 1 : 0);
   if (combinedHeavy > heavyLimit(player)) return `You can only carry ${heavyLimit(player)} Heavy Gear right now.`;
   if (card.slot === 'HEAD' && player.equippedGear.some((g) => g.slot === 'HEAD')) return 'Your Head slot is already full.';
@@ -567,6 +595,7 @@ function legalActions(room, player) {
     return actions;
   }
   if (room.pendingPrompt?.playerId === player.id) actions.push('RESOLVE_PROMPT');
+  if (room.phase === 'ROLL_FOR_FIRST' && room.firstRoll?.eligible?.includes(player.id) && !room.firstRoll.rolls?.[player.id]) actions.push('ROLL_FIRST');
   if (room.phase === 'START_TURN' && activeId(room) === player.id) actions.push('OPEN_CHAMBER');
   if (canActOutsideCombat(room) && activeId(room) === player.id) actions.push('PLAY_TABLE_CARDS');
   if (room.phase === 'NO_THREAT_CHOICE' && activeId(room) === player.id) actions.push('SEARCH_ROOM', 'START_TROUBLE');
@@ -575,6 +604,43 @@ function legalActions(room, player) {
   if (room.phase === 'COMBAT') actions.push('COMBAT_ACTIONS', 'PASS_COMBAT');
   if (room.phase === 'ESCAPE' && room.escape?.currentPlayerId === player.id) actions.push('ROLL_ESCAPE');
   return actions;
+}
+
+
+function rollForFirst(room, player) {
+  if (!room.firstRoll) room.firstRoll = { round: 1, eligible: room.players.map((p) => p.id), rolls: {}, previous: [], latest: null, winnerId: null };
+  if (!room.firstRoll.eligible.includes(player.id)) return `${player.name} is not part of this tie-break roll.`;
+  if (room.firstRoll.rolls[player.id]) return `${player.name} has already rolled.`;
+  const raw = rollD6();
+  room.firstRoll.rolls[player.id] = raw;
+  room.firstRoll.latest = { playerId: player.id, playerName: player.name, raw, at: Date.now() };
+  log(room, `${player.name} rolled ${raw} to see who goes first.`);
+  resolveFirstRollIfReady(room);
+  return null;
+}
+
+function resolveFirstRollIfReady(room) {
+  const first = room.firstRoll;
+  if (!first) return;
+  const rolledIds = Object.keys(first.rolls || {});
+  if (rolledIds.length < first.eligible.length) return;
+  const max = Math.max(...first.eligible.map((id) => first.rolls[id] || 0));
+  const tied = first.eligible.filter((id) => first.rolls[id] === max);
+  first.previous.push({ round: first.round, rolls: { ...first.rolls }, tied });
+  if (tied.length > 1) {
+    first.round += 1;
+    first.eligible = tied;
+    first.rolls = {};
+    first.latest = null;
+    log(room, `Tie for first. ${tied.map((id) => getPlayer(room, id)?.name || 'Player').join(', ')} roll again.`);
+    return;
+  }
+  const winnerId = tied[0];
+  first.winnerId = winnerId;
+  room.activePlayerIndex = Math.max(0, room.players.findIndex((p) => p.id === winnerId));
+  room.turnNumber = 1;
+  room.phase = 'START_TURN';
+  log(room, `${getPlayer(room, winnerId)?.name || 'Someone'} goes first.`);
 }
 
 function moveToTributeOrEnd(room) {
@@ -597,8 +663,8 @@ function endTurn(room) {
 
 function setupGame(room) {
   room.status = 'GAME';
-  room.phase = 'START_TURN';
-  room.turnNumber = 1;
+  room.phase = 'ROLL_FOR_FIRST';
+  room.turnNumber = 0;
   room.activePlayerIndex = 0;
   room.chamberDeck = expandDeck(chamberCards);
   room.lootDeck = expandDeck(lootCards);
@@ -609,6 +675,7 @@ function setupGame(room) {
   room.escape = null;
   room.pendingPrompt = null;
   room.winnerId = null;
+  room.firstRoll = { round: 1, eligible: room.players.map((p) => p.id), rolls: {}, previous: [], latest: null, winnerId: null };
   for (const p of room.players) {
     p.renown = 1;
     p.hand = [];
@@ -621,7 +688,7 @@ function setupGame(room) {
     drawMany(room, p, 'CHAMBER', 4);
     drawMany(room, p, 'LOOT', 4);
   }
-  log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. ${getActive(room).name} goes first.`);
+  log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
 }
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
@@ -768,7 +835,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.5-card-rework' });
+  socket.emit('ready', { version: '0.5.1-ux-clarity' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -845,6 +912,13 @@ function handleAction(socket, room, player, payload) {
     return;
   }
 
+  if (type === 'ROLL_FIRST') {
+    if (room.phase !== 'ROLL_FOR_FIRST') return emitError(socket, 'The opening roll is not active.');
+    const err = rollForFirst(room, player);
+    if (err) return emitError(socket, err);
+    return;
+  }
+
   if (type === 'OPEN_CHAMBER') {
     if (room.phase !== 'START_TURN') return emitError(socket, 'You can only open a Chamber at the start of your turn.');
     if (!isOwnTurn(room, socket)) return emitError(socket, 'Only the active player can open a Chamber.');
@@ -916,7 +990,7 @@ function handleAction(socket, room, player, payload) {
   if (type === 'PASS_COMBAT') {
     if (room.phase !== 'COMBAT' || !room.combat) return emitError(socket, 'There is no combat to pass on.');
     room.combat.passes[player.id] = true;
-    log(room, `${player.name} passed in combat.`);
+    log(room, `${player.name} confirmed no more combat cards.`);
     if (allCombatPlayersPassed(room)) resolveCombat(room);
     return;
   }
@@ -1019,7 +1093,7 @@ function playCard(socket, room, player, card, payload) {
     const ok = applyEffect(room, player, real.effect, real, { after: room.phase === 'COMBAT' ? 'CONTINUE' : 'TO_TRIBUTE_OR_END' });
     discardCard(room, real);
     if (room.phase === 'COMBAT') resetCombatPasses(room);
-    log(room, `${player.name} played ${real.publicName}${room.phase === 'COMBAT' ? '. Passes reset.' : '.'}`);
+    log(room, `${player.name} played ${real.publicName}${room.phase === 'COMBAT' ? '. Everyone must confirm again.' : '.'}`);
     return;
   }
 
@@ -1043,7 +1117,7 @@ function playCard(socket, room, player, card, payload) {
     applyEffect(room, player, real.effect, real);
     room.combat.playedTricks.push(real);
     resetCombatPasses(room);
-    log(room, `${player.name} played ${real.publicName}. Passes reset.`);
+    log(room, `${player.name} played ${real.publicName}. Everyone must confirm again.`);
     return;
   }
 
@@ -1055,7 +1129,7 @@ function playCard(socket, room, player, card, payload) {
     threat.modifiers = threat.modifiers || [];
     threat.modifiers.push(real);
     resetCombatPasses(room);
-    log(room, `${player.name} attached ${real.publicName} to ${threat.publicName}. Passes reset.`);
+    log(room, `${player.name} attached ${real.publicName} to ${threat.publicName}. Everyone must confirm again.`);
     return;
   }
 
@@ -1071,7 +1145,7 @@ function playCard(socket, room, player, card, payload) {
     }
     discardCard(room, real);
     if (room.phase === 'COMBAT') resetCombatPasses(room);
-    log(room, `${player.name} played Hex: ${real.publicName} on ${target.name}.${room.phase === 'COMBAT' ? ' Passes reset.' : ''}`);
+    log(room, `${player.name} played Hex: ${real.publicName} on ${target.name}.${room.phase === 'COMBAT' ? ' Everyone must confirm again.' : ''}`);
     return;
   }
 
