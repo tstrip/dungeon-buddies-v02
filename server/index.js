@@ -14,7 +14,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.2-core-playability' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.5.3-table-hex-clarity' }));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -69,6 +69,10 @@ function expandDeck(defs) {
 function log(room, message) {
   room.log.push({ at: Date.now(), message });
   if (room.log.length > 180) room.log.shift();
+}
+
+function tableNotice(room, kind, title, detail, card = null) {
+  room.tableNotice = { at: Date.now(), kind, title, detail, card: publicCard(card) };
 }
 
 function emitError(socket, message) {
@@ -173,7 +177,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.5.2-core-playability',
+    version: '0.5.3-table-hex-clarity',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -190,6 +194,7 @@ function serializeRoom(room, viewerId) {
       lootDiscard: room.lootDiscard.length
     },
     revealCard: publicCard(room.revealCard),
+    tableNotice: room.tableNotice || null,
     combat: serializeCombat(room),
     escape: serializeEscape(room),
     firstRoll: serializeFirstRoll(room, viewerId),
@@ -373,6 +378,7 @@ function startCombat(room, threat) {
   resetCombatPasses(room);
   room.phase = 'COMBAT';
   room.revealCard = threat;
+  tableNotice(room, 'combat', 'Combat begins', `${getActive(room).name} faces ${threat.publicName}.`, threat);
   log(room, `${getActive(room).name} faces ${threat.publicName}.`);
 }
 
@@ -441,26 +447,30 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
     case 'LOSE_RENOWN': {
       const amount = effect.amount || 1;
       const min = effect.minimum ?? 1;
+      const before = player.renown;
       player.renown = Math.max(min, player.renown - amount);
+      tableNotice(room, 'effect', 'Glory changed', `${player.name}: ${before} → ${player.renown} Glory.`, sourceCard);
       log(room, `${player.name} lost ${amount} Glory.`);
       return true;
     }
     case 'LOSE_ROLE': {
-      if (player.role) { discardCard(room, player.role); log(room, `${player.name} lost ${player.role.publicName}.`); }
-      else log(room, `${player.name} had no Calling to lose.`);
-      player.role = null;
+      if (player.role) { const lost = player.role; discardCard(room, lost); player.role = null; tableNotice(room, 'effect', 'Calling lost', `${player.name} lost ${lost.publicName}.`, sourceCard); log(room, `${player.name} lost ${lost.publicName}.`); }
+      else {
+        if (sourceCard?.id === 'HEX_LOSE_CLASS') { const before = player.renown; player.renown = Math.max(1, player.renown - 1); tableNotice(room, 'effect', 'No Calling to lose', `${player.name} had no Calling, so Glory changed ${before} → ${player.renown}.`, sourceCard); log(room, `${player.name} had no Calling and lost 1 Glory instead.`); }
+        else { tableNotice(room, 'effect', 'No effect', `${player.name} had no Calling to lose.`, sourceCard); log(room, `${player.name} had no Calling to lose.`); }
+      }
       return true;
     }
     case 'LOSE_ORIGIN': {
-      if (player.origin) { discardCard(room, player.origin); log(room, `${player.name} lost ${player.origin.publicName}.`); }
-      else log(room, `${player.name} had no Kin to lose.`);
-      player.origin = null;
+      if (player.origin) { const lost = player.origin; discardCard(room, lost); player.origin = null; tableNotice(room, 'effect', 'Kin lost', `${player.name} lost ${lost.publicName}.`, sourceCard); log(room, `${player.name} lost ${lost.publicName}.`); }
+      else { tableNotice(room, 'effect', 'No effect', `${player.name} had no Kin to lose.`, sourceCard); log(room, `${player.name} had no Kin to lose.`); }
       return true;
     }
     case 'DISCARD_FROM_HAND': {
       const count = Math.min(effect.count || 1, player.hand.length);
-      if (count <= 0) { log(room, `${player.name} had no cards to discard.`); return true; }
+      if (count <= 0) { tableNotice(room, 'effect', 'No effect', `${player.name} had no cards to discard.`, sourceCard); log(room, `${player.name} had no cards to discard.`); return true; }
       if (effect.method === 'PLAYER_CHOICE') {
+        tableNotice(room, 'prompt', 'Choice required', `${player.name} must discard ${count} card${count === 1 ? '' : 's'} from hand.`, sourceCard);
         createPrompt(room, {
           type: 'DISCARD_HAND_CARDS',
           playerId: player.id,
@@ -475,19 +485,22 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
         const [card] = player.hand.splice(idx, 1);
         discardCard(room, card);
       }
+      tableNotice(room, 'effect', 'Cards discarded', `${player.name} discarded ${count} card${count === 1 ? '' : 's'}.`, sourceCard);
       log(room, `${player.name} discarded ${count} card${count === 1 ? '' : 's'}.`);
       return true;
     }
     case 'DISCARD_HAND': {
       const count = player.hand.length;
       while (player.hand.length) discardCard(room, player.hand.pop());
+      tableNotice(room, 'effect', 'Hand discarded', `${player.name} discarded their hand (${count} cards).`, sourceCard);
       log(room, `${player.name} discarded their hand (${count} cards).`);
       return true;
     }
     case 'DISCARD_GEAR': {
       const candidates = selectableGear(player, effect);
-      if (candidates.length === 0) { log(room, `${player.name} had no matching Gear to lose.`); return true; }
+      if (candidates.length === 0) { tableNotice(room, 'effect', 'No matching Gear', `${player.name} had no matching Gear, so the Hex had no effect.`, sourceCard); log(room, `${player.name} had no matching Gear to lose.`); return true; }
       if (effect.choice === 'PLAYER' || candidates.length > 1) {
+        tableNotice(room, 'prompt', 'Choose Gear to discard', `${player.name} must choose Gear for ${sourceCard?.publicName || 'the effect'}.`, sourceCard);
         createPrompt(room, { type: 'DISCARD_GEAR', playerId: player.id, message: `${player.name} must discard Gear.`, options: candidates, meta: { effect, after: context.after || 'CONTINUE' } });
         return false;
       }
@@ -496,11 +509,13 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
     }
     case 'DRAW_LOOT': {
       const drawn = drawMany(room, player, 'LOOT', effect.count || 1);
+      tableNotice(room, 'draw', 'Loot drawn', `${player.name} drew ${drawn} Loot.`, sourceCard);
       log(room, `${player.name} drew ${drawn} Loot.`);
       return true;
     }
     case 'DRAW_CHAMBER': {
       const drawn = drawMany(room, player, 'CHAMBER', effect.count || 1);
+      tableNotice(room, 'draw', 'Chamber drawn', `${player.name} drew ${drawn} Chamber.`, sourceCard);
       log(room, `${player.name} drew ${drawn} Chamber.`);
       return true;
     }
@@ -509,6 +524,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       const amount = effect.amount || 0;
       if (effect.side === 'THREAT') room.combat.threatDelta += amount;
       else room.combat.playerDelta += amount;
+      tableNotice(room, 'combat', 'Combat total changed', `${sourceCard?.publicName || 'A card'} changed ${effect.side === 'THREAT' ? 'Foe' : 'Player'} side by ${amount > 0 ? '+' : ''}${amount}.`, sourceCard);
       log(room, `${sourceCard?.publicName || 'A card'} changed ${effect.side === 'THREAT' ? 'Foe' : 'Player'} side by ${amount > 0 ? '+' : ''}${amount}.`);
       return true;
     }
@@ -689,6 +705,7 @@ function endTurn(room) {
   room.combat = null;
   room.escape = null;
   room.pendingPrompt = null;
+  room.tableNotice = null;
   room.activePlayerIndex = (room.activePlayerIndex + 1) % room.players.length;
   room.turnNumber += 1;
   room.phase = 'START_TURN';
@@ -708,6 +725,7 @@ function setupGame(room) {
   room.combat = null;
   room.escape = null;
   room.pendingPrompt = null;
+  room.tableNotice = null;
   room.winnerId = null;
   room.firstRoll = { round: 1, eligible: room.players.map((p) => p.id), rolls: {}, previous: [], latest: null, winnerId: null };
   for (const p of room.players) {
@@ -727,13 +745,21 @@ function setupGame(room) {
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
   log(room, `Hex revealed: ${card.publicName}.`);
+  tableNotice(room, 'hex', 'Hex revealed', `${card.publicName} affects ${targetPlayer.name}.`, card);
   let complete = true;
   for (const effect of card.effects || []) {
-    const ok = applyEffect(room, targetPlayer, effect, card, { after });
+    const ok = applyEffect(room, targetPlayer, effect, card, { after, revealedHex: true });
     if (!ok) complete = false;
   }
   discardCard(room, card);
-  if (complete) room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
+  if (complete) {
+    if (!room.tableNotice || room.tableNotice.kind === 'hex') {
+      tableNotice(room, 'hex', 'Hex resolved', `${card.publicName} finished resolving for ${targetPlayer.name}.`, card);
+    }
+    room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
+  } else {
+    tableNotice(room, 'prompt', 'Hex needs a choice', `${targetPlayer.name} must choose how ${card.publicName} resolves.`, card);
+  }
 }
 
 function canFoePursuePlayer(threat, player) {
@@ -814,8 +840,10 @@ function rollFlee(room, player) {
   const total = raw + bonus;
   player.temporaryEffects = player.temporaryEffects.filter((e) => e.duration !== 'NEXT_ESCAPE');
   room.escape.lastRoll = { raw, bonus, total };
+  tableNotice(room, 'roll', 'Flee roll', `${player.name} rolled ${raw}${bonus ? ` ${bonus > 0 ? '+' : ''}${bonus}` : ''} = ${total}.`, room.escape.threat);
   log(room, `${player.name} rolled Flee: ${raw}${bonus ? ` ${bonus > 0 ? '+' : ''}${bonus}` : ''} = ${total}.`);
   if (total >= 5) {
+    tableNotice(room, 'roll', 'Flee succeeded', `${player.name} escaped ${room.escape?.threat?.publicName || 'the Foe'}.`, room.escape?.threat);
     log(room, `${player.name} escaped.`);
     continueFlee(room);
   } else {
@@ -869,7 +897,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.5.2-core-playability' });
+  socket.emit('ready', { version: '0.5.3-table-hex-clarity' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -959,11 +987,13 @@ function handleAction(socket, room, player, payload) {
     const card = draw(room, 'CHAMBER');
     if (!card) return emitError(socket, 'The Chamber deck is empty.');
     room.revealCard = card;
+    tableNotice(room, 'reveal', 'Chamber opened', `${player.name} revealed ${card.publicName}.`, card);
     log(room, `${player.name} opened a Chamber: ${card.publicName}.`);
     if (card.type === 'THREAT') startCombat(room, card);
     else if (card.type === 'HEX') resolveHex(room, card, player, 'TO_NO_THREAT_CHOICE');
     else {
       player.hand.push(card);
+      tableNotice(room, 'draw', 'Card added to hand', `${card.publicName} went to ${player.name}'s hand.`, card);
       log(room, `${card.publicName} went to ${player.name}'s hand.`);
       room.phase = 'NO_THREAT_CHOICE';
     }
@@ -989,6 +1019,7 @@ function handleAction(socket, room, player, payload) {
     if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'Only the active player can Loot the Room in this phase.');
     const card = draw(room, 'CHAMBER');
     if (card) player.hand.push(card);
+    tableNotice(room, 'draw', 'Loot the Room', `${player.name} drew a hidden Chamber card into hand.`);
     log(room, `${player.name} looted the room and drew a hidden Chamber card.`);
     room.revealCard = null;
     moveToTributeOrEnd(room);
@@ -1024,6 +1055,7 @@ function handleAction(socket, room, player, payload) {
   if (type === 'PASS_COMBAT') {
     if (room.phase !== 'COMBAT' || !room.combat) return emitError(socket, 'There is no combat to pass on.');
     room.combat.passes[player.id] = true;
+    tableNotice(room, 'combat', 'No more cards', `${player.name} is done adding combat cards.`, null);
     log(room, `${player.name} confirmed no more combat cards.`);
     if (allCombatPlayersPassed(room)) resolveCombat(room);
     return;
@@ -1243,7 +1275,9 @@ function resolvePrompt(socket, room, player, payload) {
   if (prompt.type === 'DISCARD_GEAR') {
     const valid = (prompt.options || []).some((c) => c.instanceId === payload.cardId);
     if (!valid) return emitError(socket, 'Choose a valid Gear card.');
+    const chosen = (prompt.options || []).find((c) => c.instanceId === payload.cardId);
     discardSpecificGear(room, player, payload.cardId);
+    tableNotice(room, 'effect', 'Gear discarded', `${player.name} discarded ${chosen?.publicName || 'Gear'}.`, chosen);
     continueAfterPrompt(room, after);
     return;
   }
@@ -1257,6 +1291,7 @@ function resolvePrompt(socket, room, player, payload) {
       const card = findAndRemoveFromHand(player, id);
       if (card) discardCard(room, card);
     }
+    tableNotice(room, 'effect', 'Cards discarded', `${player.name} discarded ${ids.length} chosen card${ids.length === 1 ? '' : 's'} from hand.`);
     log(room, `${player.name} discarded ${ids.length} chosen card${ids.length === 1 ? '' : 's'} from hand.`);
     continueAfterPrompt(room, after);
     return;
@@ -1309,5 +1344,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.4.2 classic-rules repair listening on ${PORT}`);
+  console.log(`Loot Goblins v0.5.3 table/hex clarity listening on ${PORT}`);
 });

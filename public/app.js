@@ -170,29 +170,49 @@ function deriveMovement() {
 
 function tableBoardHtml(options = {}) {
   const move = deriveMovement();
+  const notice = state.tableNotice;
   const centerLabel = options.centerLabel || centerZoneLabel();
   const centerSub = options.centerSub || centerZoneSub();
   const centerClass = options.centerClass || centerZoneClass();
-  return `<div class="board-mat">
-    <div class="board-piles board-piles-left">
-      ${boardPile('CHAMBER_DECK', 'Chamber', 'Deck', state.decks?.chamber || 0, move)}
-      ${boardPile('CHAMBER_DISCARD', 'Chamber', 'Discard', state.decks?.chamberDiscard || 0, move)}
-    </div>
-    <div class="board-center">
-      <div class="movement-banner ${move?.from || move?.to ? 'active' : ''}">
-        <div class="movement-label">${escapeHtml(move?.label || 'Table ready')}</div>
-        <div class="movement-detail">${escapeHtml(move?.detail || 'Cards will move through the table here.')}</div>
+  const activeCard = options.activeCard || notice?.card || state.revealCard;
+  return `<div class="felt-table">
+    <div class="table-seats">${tableSeatsHtml()}</div>
+    <div class="table-core">
+      <div class="mini-deck-lane">
+        ${boardPile('CHAMBER_DECK', 'Chamber', 'Deck', state.decks?.chamber || 0, move)}
+        ${boardPile('CHAMBER_DISCARD', 'Chamber', 'Discard', state.decks?.chamberDiscard || 0, move)}
+        <div class="table-core-center">
+          <div class="movement-banner ${notice || move?.from || move?.to ? 'active' : ''}">
+            <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
+            <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the center of the table.')}</div>
+          </div>
+          <div class="center-zone ${centerClass}">
+            <strong>${escapeHtml(centerLabel)}</strong>
+            <span>${escapeHtml(centerSub)}</span>
+            ${activeCard ? `<div class="center-card-slot">${cardHtml(activeCard, { tableSmall: true })}</div>` : ''}
+          </div>
+        </div>
+        ${boardPile('LOOT_DECK', 'Loot', 'Deck', state.decks?.loot || 0, move)}
+        ${boardPile('LOOT_DISCARD', 'Loot', 'Discard', state.decks?.lootDiscard || 0, move)}
       </div>
-      <div class="center-zone ${centerClass}">
-        <strong>${escapeHtml(centerLabel)}</strong>
-        <span>${escapeHtml(centerSub)}</span>
-      </div>
-    </div>
-    <div class="board-piles board-piles-right">
-      ${boardPile('LOOT_DECK', 'Loot', 'Deck', state.decks?.loot || 0, move)}
-      ${boardPile('LOOT_DISCARD', 'Loot', 'Discard', state.decks?.lootDiscard || 0, move)}
     </div>
   </div>`;
+}
+
+function tableSeatsHtml() {
+  const positions = ['seat-left', 'seat-top', 'seat-right'];
+  return state.players.map((p, i) => `<button class="table-seat ${positions[i] || ''} ${p.id === state.activePlayerId ? 'active' : ''} ${p.isYou ? 'you' : ''} ${p.connected ? '' : 'offline'}" data-player-seat="${p.id}">
+    <span class="seat-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
+    <span class="seat-glory">${p.renown}/10 Glory</span>
+    <span class="seat-sub">Hand ${p.handCount} · Gear +${p.combatBonus} · Flee +${p.escapeBonus}</span>
+  </button>`).join('');
+}
+
+function attachTableSeatHandlers(root) {
+  root.querySelectorAll('[data-player-seat]').forEach((btn) => btn.addEventListener('click', () => {
+    const p = state.players.find((x) => x.id === btn.dataset.playerSeat);
+    if (p) inspectPlayer(p);
+  }));
 }
 
 function boardPile(key, label, sub, count, move) {
@@ -352,16 +372,8 @@ function renderActiveTable() {
   if (state.phase === 'ROLL_FOR_FIRST') return renderFirstRoll(root);
   if (state.phase === 'COMBAT' && state.combat) return renderCombat(root);
   if (state.phase === 'ESCAPE' && state.escape) return renderEscape(root);
-  const reveal = state.revealCard;
-  let html = `<div class="table-event"><strong>Latest:</strong> ${escapeHtml(latestEvent())}</div>`;
-  html += tableBoardHtml();
-  html += `<div class="zone-title"><h2>Active Table</h2><span class="micro">${prettyPhase(state.phase)}</span></div>`;
-  if (reveal) {
-    html += `<div class="reveal-zone"><h3>Reveal Zone</h3><p class="micro">This is the card currently being resolved.</p><div class="card-row">${cardHtml(reveal, { tableSmall: false })}</div></div>`;
-  } else {
-    html += `<div class="empty-zone"><div><strong>No active card</strong><br><span>Cards revealed from the Chamber will appear here before moving zones.</span></div></div>`;
-  }
-  root.innerHTML = html;
+  root.innerHTML = tableBoardHtml({ activeCard: state.revealCard || state.tableNotice?.card });
+  attachTableSeatHandlers(root);
 }
 
 function renderEscape(root) {
@@ -375,6 +387,7 @@ function renderEscape(root) {
     ? `Raw roll ${last.raw} ${signed(last.bonus || 0)} Flee bonus = ${last.total}`
     : `Target number is 5+. ${runner?.isYou ? 'Tap Roll to Flee above.' : `Waiting for ${escapeHtml(runner?.name || 'the runner')}.`}`;
   root.innerHTML = `
+    <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="table-event"><strong>Flee:</strong> ${escapeHtml(runner?.name || 'Runner')} must roll against ${escapeHtml(esc.threat?.publicName || 'the Foe')}.</div>
     <div class="escape-layout focus-layout">
       <div>
@@ -397,6 +410,7 @@ function renderEscape(root) {
       <div class="card-row">${esc.threat ? cardHtml(esc.threat, { tableSmall: true }) : ''}</div>
     </div>
   `;
+  attachTableSeatHandlers(root);
 }
 
 
@@ -405,6 +419,7 @@ function renderFirstRoll(root) {
   const latest = first.latest;
   const waiting = (first.eligible || []).filter((id) => !first.rolls?.[id]).map(playerName);
   root.innerHTML = `
+    <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="table-event"><strong>Opening Roll:</strong> ${escapeHtml(first.requiresYou ? 'Your roll is needed.' : waiting.length ? `Waiting for ${waiting.join(', ')}.` : 'Resolving first player.')}</div>
     <div class="opening-roll-grid focus-layout">
       ${state.players.map((p) => {
@@ -419,6 +434,7 @@ function renderFirstRoll(root) {
     </div>
     ${first.previous?.length ? `<div class="micro previous-rolls">Previous: ${first.previous.map((r) => `Round ${r.round}: ${Object.entries(r.rolls).map(([id, val]) => `${playerName(id)} ${val}`).join(', ')}`).join(' · ')}</div>` : ''}
   `;
+  attachTableSeatHandlers(root);
 }
 
 function combatStatusText(totals) {
@@ -459,6 +475,7 @@ function renderCombat(root) {
         : 'Everyone has confirmed. Combat resolves now.';
   const status = combatStatusText(totals);
   root.innerHTML = `
+    <div class="compact-table-frame">${tableSeatsHtml()}</div>
     <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
     <div class="table-event"><strong>Response window:</strong> ${escapeHtml(tableCopy)}</div>
     <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
@@ -480,6 +497,7 @@ function renderCombat(root) {
       </div>
     </div>
   `;
+  attachTableSeatHandlers(root);
 }
 
 function passPill(p, passed) {
@@ -604,7 +622,7 @@ function isCardPlayable(card) {
   }
   if (card.type === 'THREAT') return isMyTurn() && state.phase === 'NO_THREAT_CHOICE';
   if (card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') return state.phase === 'COMBAT';
-  if (card.type === 'HEX') return state.phase === 'COMBAT' && (card.timing || []).includes('DURING_COMBAT');
+  if (card.type === 'HEX') return true;
   return false;
 }
 
@@ -723,7 +741,9 @@ function cardActions(card) {
     actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Help Foe Side</button>`);
   } else if ((card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play in Combat</button>`);
   if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
-  if (card.type === 'HEX') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Hex</button>`);
+  if (card.type === 'HEX') {
+    for (const p of state.players) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Hex ${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</button>`);
+  }
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
     const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','END_TURN'].includes(state.phase));
