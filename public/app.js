@@ -203,16 +203,56 @@ function movementZoneLabel(zone) {
   return map[zone] || 'CARD';
 }
 
+function movementFace(move) {
+  if (!move) return 'down';
+  const from = String(move.from || '');
+  const to = String(move.to || '');
+  if (from.includes('DECK') || to === 'PLAYER_HAND' || to === 'BODY_LOOT') return 'down';
+  if (from === 'DIE') return 'die';
+  return 'up';
+}
+
+function movementCardTheme(move) {
+  const card = move?.card;
+  if (card?.type) return `type-${card.type}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  if (String(move?.from || '').includes('LOOT') || String(move?.to || '').includes('LOOT')) return 'type-loot';
+  if (String(move?.from || '').includes('CHAMBER') || String(move?.to || '').includes('CHAMBER')) return 'type-chamber';
+  if (String(move?.from || '') === 'DIE') return 'type-die';
+  return 'type-card';
+}
+
 function movementCardHtml(move) {
   if (!move || (!move.from && !move.to)) return '';
   const fromClass = `from-${movementZoneClass(move.from)}`;
   const toClass = `to-${movementZoneClass(move.to)}`;
   const fromLabel = movementZoneLabel(move.from);
   const toLabel = movementZoneLabel(move.to);
-  const cardName = move.card?.publicName || 'Card';
-  return `<div class="movement-card ${fromClass} ${toClass}" aria-label="${escapeHtml(fromLabel)} to ${escapeHtml(toLabel)}: ${escapeHtml(cardName)}" data-from="${escapeHtml(fromLabel)}" data-to="${escapeHtml(toLabel)}">
-    <div class="moving-card-back"><span>${escapeHtml(fromLabel)}</span></div>
+  const cardName = move.card?.publicName || (movementFace(move) === 'die' ? 'Die' : 'Card');
+  const face = movementFace(move);
+  const theme = movementCardTheme(move);
+  return `<div class="movement-card ${fromClass} ${toClass} face-${face} ${theme}" aria-label="${escapeHtml(fromLabel)} to ${escapeHtml(toLabel)}: ${escapeHtml(cardName)}" data-from="${escapeHtml(fromLabel)}" data-to="${escapeHtml(toLabel)}">
+    <div class="motion-trail"></div>
+    <div class="moving-card-object">
+      <div class="moving-card-face moving-card-back"><span>${escapeHtml(fromLabel)}</span></div>
+      <div class="moving-card-face moving-card-front">
+        <strong>${escapeHtml(cardName)}</strong>
+        <small>${escapeHtml(toLabel)}</small>
+      </div>
+      <div class="moving-die-face">⚄</div>
+    </div>
     <div class="movement-path-label">${escapeHtml(fromLabel)} → ${escapeHtml(toLabel)}</div>
+  </div>`;
+}
+
+function motionLayerHtml(move) {
+  if (!move || (!move.from && !move.to)) return '';
+  const source = movementZoneLabel(move.from);
+  const dest = movementZoneLabel(move.to);
+  return `<div class="v073-motion-layer active" aria-hidden="true">
+    <div class="motion-source-ping ${`from-${movementZoneClass(move.from)}`}"></div>
+    <div class="motion-destination-ping ${`to-${movementZoneClass(move.to)}`}"></div>
+    ${movementCardHtml(move)}
+    <div class="motion-caption">${escapeHtml(source)} → ${escapeHtml(dest)}</div>
   </div>`;
 }
 
@@ -243,7 +283,7 @@ function tableBoardHtml(options = {}) {
 
 function tableFrameHtml(centerHtml, options = {}) {
   const move = deriveMovement();
-  return `${announcementHtml()}<div class="felt-table v070-table ${escapeHtml(options.mode || '')}">
+  return `${announcementHtml()}<div class="felt-table v070-table v073-table ${escapeHtml(options.mode || '')}">
     <div class="table-seats v070-seats">${tableSeatsHtml()}</div>
     <div class="v070-surface">
       <div class="v070-deck-column chamber-column">
@@ -258,6 +298,7 @@ function tableFrameHtml(centerHtml, options = {}) {
         ${boardPile('LOOT_DISCARD', 'Loot', 'Discard', state.decks?.lootDiscard || 0, move)}
       </div>
     </div>
+    ${motionLayerHtml(move)}
   </div>`;
 }
 
@@ -273,7 +314,6 @@ function defaultCenterStageHtml(options = {}) {
       <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
       <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the middle of the table.')}</div>
     </div>
-    ${movementCardHtml(move)}
     <div class="center-zone ${centerClass}">
       <strong>${escapeHtml(centerLabel)}</strong>
       <span>${escapeHtml(centerSub)}</span>
@@ -935,7 +975,7 @@ function cardHtml(card, opts = {}) {
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   const bottom = cardBottom(card);
-  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
+  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
     <div class="type"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
     <div class="title">${escapeHtml(card.publicName)}</div>
     <div class="art"><span>${escapeHtml(cardTypeIcon(card))}</span></div>
@@ -952,7 +992,7 @@ function compactCardHtml(card, opts = {}) {
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   if (card.fresh) classes.push('new-card');
-  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
+  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
     ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
     <div class="hand-card-type"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
     <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
