@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV065Session';
+const SESSION_KEY = 'lootGoblinsV069Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -95,7 +95,9 @@ function hasPublicOrigin(player, name) { return player?.origin?.publicName === n
 function identityLine(p) {
   const roles = [p.role, ...(p.extraRoles || [])].filter(Boolean).map((c) => c.publicName);
   const origins = [p.origin, ...(p.extraOrigins || [])].filter(Boolean).map((c) => c.publicName);
-  return `${roles.join('+') || 'No Calling'} · ${origins.join('+') || 'No Kin'}`;
+  const roleSuffix = p.callingPermit ? (roles.length === 1 ? ' + Permit' : ' + Overqualified') : '';
+  const kinSuffix = p.kinPermit ? (origins.length === 1 ? ' + Permit' : ' + Mixed') : '';
+  return `${roles.join('+') || 'No Calling'}${roleSuffix} · ${origins.join('+') || 'No Kin'}${kinSuffix}`;
 }
 
 function render() {
@@ -194,6 +196,7 @@ function movementZoneLabel(zone) {
     FLEE_ZONE: 'FLEE',
     TABLE: 'TABLE',
     DISCARD: 'DISCARD',
+    BODY_LOOT: 'BODY',
     RESULT: 'RESULT',
     DIE: 'DIE'
   };
@@ -224,6 +227,7 @@ function deriveMovement() {
   if (/went to .* hand/i.test(msg)) return { from: 'REVEAL_ZONE', to: 'PLAYER_HAND', label: 'Reveal Zone → Hand', detail: msg };
   if (/faces/i.test(msg)) return { from: 'REVEAL_ZONE', to: 'COMBAT_ZONE', label: 'Reveal Zone → Combat Zone', detail: msg };
   if (/played/i.test(msg) && /combat|Foe|side|modifier|Prepared|Puddle|Health|Confidence|Stair/i.test(msg)) return { from: 'PLAYER_HAND', to: 'COMBAT_ZONE', label: 'Hand → Combat Zone', detail: msg };
+  if (/looted .* from/i.test(msg)) return { from: 'BODY_LOOT', to: 'PLAYER_HAND', label: 'Body Loot → Hand', detail: msg };
   if (/discarded|discard/i.test(msg)) return { from: 'TABLE', to: 'DISCARD', label: 'Card → Discard', detail: msg };
   if (/rolled .*to see who goes first/i.test(msg)) return { from: 'DIE', to: 'TABLE', label: 'Die Roll → Opening Roll', detail: msg };
   if (/rolled Flee/i.test(msg)) return { from: 'DIE', to: 'FLEE_ZONE', label: 'Die Roll → Flee Zone', detail: msg };
@@ -270,7 +274,15 @@ function tableSeatsHtml() {
     <span class="seat-glory">${p.renown}/10 Glory</span>
     <span class="seat-identity">${escapeHtml(identityLine(p))}</span>
     <span class="seat-sub">Hand ${p.handCount} · Gear +${p.combatBonus} · Flee +${p.escapeBonus}</span>
+    ${statusMiniHtml(p)}
   </button>`).join('');
+}
+
+
+function statusMiniHtml(p) {
+  const effects = (p.statusEffects || []).filter((e) => e.visible !== false);
+  if (!effects.length) return '';
+  return `<div class="status-mini">${effects.slice(0,3).map((e) => `<span class="status-chip" title="${escapeHtml(e.description || '')}">${escapeHtml(e.publicName || 'Effect')}</span>`).join('')}</div>`;
 }
 
 function attachTableSeatHandlers(root) {
@@ -296,6 +308,7 @@ function centerZoneLabel() {
   if (state.phase === 'COMBAT') return 'Combat Zone';
   if (state.phase === 'ESCAPE') return 'Flee Zone';
   if (state.revealCard) return 'Reveal Zone';
+  if (state.bodyLoot) return 'Body Loot';
   if (state.pendingPrompt) return 'Prompt Zone';
   return 'Table Center';
 }
@@ -305,6 +318,7 @@ function centerZoneSub() {
   if (state.phase === 'COMBAT') return 'Foes, modifiers, and played Tricks live here.';
   if (state.phase === 'ESCAPE') return 'Dice rolls and Bad News resolve here.';
   if (state.revealCard) return `${state.revealCard.publicName} is being resolved.`;
+  if (state.bodyLoot) return state.bodyLoot.requiresYou ? 'Choose one card from the fallen goblin.' : `Waiting for ${state.bodyLoot.currentLooterName || 'a player'} to loot the body.`;
   if (state.pendingPrompt) return state.pendingPrompt.message || 'Waiting for a player choice.';
   return 'Revealed cards will appear here.';
 }
@@ -314,6 +328,7 @@ function centerZoneClass() {
   if (state.phase === 'COMBAT') return 'combat-center';
   if (state.phase === 'ESCAPE') return 'flee-center';
   if (state.revealCard) return 'reveal-center';
+  if (state.bodyLoot) return 'body-loot-center';
   return '';
 }
 
@@ -495,6 +510,7 @@ function renderPlayers() {
       <div class="player-stats">Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Flee +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
       <div class="player-stats">${escapeHtml(identityLine(p))}</div>
       <div class="slot-line">${slotChips(p)}</div>
+      ${statusMiniHtml(p)}
     `;
     div.addEventListener('click', () => inspectPlayer(p));
     root.appendChild(div);
@@ -669,6 +685,15 @@ function hasLittleHelper(p) {
   if (!p) return false;
   return [...(p.equippedGear || []), ...(p.carriedGear || [])].some((g) => g.id === 'GEAR_HIRELING');
 }
+function hasLittleHelperCapacity(p) {
+  if (!p) return false;
+  return [...(p.equippedGear || []), ...(p.carriedGear || [])].some((g) => g.id === 'GEAR_HIRELING' && !(g.attachedCards || []).some((a) => a.type === 'GEAR'));
+}
+function ownsVisibleCard(card) {
+  const you = me();
+  if (!you || !card) return false;
+  return (state.you?.hand || []).some((c) => c.instanceId === card.instanceId) || [...(you.equippedGear || []), ...(you.carriedGear || [])].some((c) => c.instanceId === card.instanceId);
+}
 
 function passPill(p, passed) {
   return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Done' : 'Can buff/nerf'}</span></div>`;
@@ -685,6 +710,11 @@ function renderPrompt() {
   root.classList.remove('hidden');
   if (!p.requiresYou) {
     root.innerHTML = `<h3>Prompt pending</h3><p>${escapeHtml(p.message)}</p><p class="micro">Waiting for ${escapeHtml(playerName(p.playerId))}.</p>`;
+    return;
+  }
+  if (p.type === 'LOOT_BODY') {
+    root.innerHTML = `<h3>Loot the Body</h3><p>${escapeHtml(p.message)}</p><p class="micro">Choose one card. It will go directly to your hand.</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card body-loot-choice" data-body-loot-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))}</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-body-loot-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.bodyLootCard })));
     return;
   }
   if (p.type === 'DISCARD_GEAR') {
@@ -722,6 +752,13 @@ function renderPrompt() {
     return;
   }
 
+  if (p.type === 'LOSE_CALLING_CHOICE' || p.type === 'LOSE_KIN_CHOICE') {
+    const label = p.type === 'LOSE_CALLING_CHOICE' ? 'Calling' : 'Kin';
+    root.innerHTML = `<h3>Choose ${label} to lose</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-identity-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))}</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-identity-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.identityCard })));
+    return;
+  }
+
   if (p.type === 'DISCARD_OWNED_CARDS') {
     const need = p.meta?.count || 1;
     const selected = selectedTribute;
@@ -742,6 +779,25 @@ function renderPrompt() {
   }
   if (p.type === 'CHEAT_GEAR') {
     root.innerHTML = `<h3>Attach Fine Print</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(cardGlanceSub(c))}</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+
+
+  if (p.type === 'ADD_FOE_FROM_HAND') {
+    root.innerHTML = `<h3>Add a Foe</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">STR ${c.strength} · ${c.renownReward} Glory · ${c.lootReward} Loot</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+
+  if (p.type === 'ILLUSION_SWAP') {
+    root.innerHTML = `<h3>Choose replacement Foe</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">STR ${c.strength} · ${c.renownReward} Glory · ${c.lootReward} Loot</span></button>`).join('')}</div>`;
+    root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
+    return;
+  }
+
+  if (p.type === 'CHOOSE_DISCARD_CARD') {
+    root.innerHTML = `<h3>Choose a discard</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card" data-prompt-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))}</span></button>`).join('')}</div>`;
     root.querySelectorAll('[data-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.promptCard })));
     return;
   }
@@ -867,6 +923,7 @@ function compactCardHtml(card, opts = {}) {
     <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
     <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
     <div class="hand-card-sub">${escapeHtml(cardGlanceSub(card))}</div>
+    ${(card.attachmentNames || []).length ? `<div class="hand-card-sub attached-line">Carrying: ${escapeHtml(card.attachmentNames.join(', '))}</div>` : ''}
   </article>`;
 }
 
@@ -930,6 +987,7 @@ function inspectCard(card) {
     const a = btn.dataset.inspectAction;
     closeInspect();
     if (a === 'PLAY') emitAction('PLAY_CARD', { cardId: card.instanceId });
+    if (a === 'PLAY_TARGET_FOE') emitAction('PLAY_CARD', { cardId: card.instanceId, targetFoeInstanceId: btn.dataset.targetFoeId });
     if (a === 'PLAY_PLAYER_SIDE') emitAction('PLAY_CARD', { cardId: card.instanceId, side: 'PLAYER' });
     if (a === 'PLAY_FOE_SIDE') emitAction('PLAY_CARD', { cardId: card.instanceId, side: 'THREAT' });
     if (a === 'PLAY_TARGET') emitAction('PLAY_CARD', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
@@ -937,6 +995,7 @@ function inspectCard(card) {
     if (a === 'CARRY') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' });
     if (a === 'SELL_ONE') emitAction('SELL_GEAR', { cardIds: [card.instanceId] });
     if (a === 'GIVE_GEAR') emitAction('GIVE_GEAR', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
+    if (a === 'ASSIGN_HIRELING_GEAR') emitAction('ASSIGN_HIRELING_GEAR', { cardId: card.instanceId });
     if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
     if (a === 'USE_WISH_RING') emitAction('USE_WISH_RING');
     if (a === 'USE_LOADED_DIE') emitAction('USE_LOADED_DIE', { value: Number(btn.dataset.value) });
@@ -966,6 +1025,7 @@ function cardActions(card) {
     actions.push(`<button class="primary" data-inspect-action="EQUIP">Equip</button>`);
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
     actions.push(`<button data-inspect-action="SELL_ONE">Sell / cash in</button>`);
+    if (card.id !== 'GEAR_HIRELING' && ownsVisibleCard(card) && hasLittleHelperCapacity(me())) actions.push(`<button data-inspect-action="ASSIGN_HIRELING_GEAR">Give to Little Helper</button>`);
     for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button data-inspect-action="GIVE_GEAR" data-target-player-id="${p.id}">Give to ${escapeHtml(p.name)}</button>`);
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
@@ -979,7 +1039,12 @@ function cardActions(card) {
       actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Nerf Player Side ${signed(amt)}</button>`);
       actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Nerf Foe Side ${signed(amt)}</button>`);
     }
-  } else if (card.type === 'THREAT_MODIFIER' && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Attach to Foe</button>`);
+  } else if (card.type === 'THREAT_MODIFIER' && state.phase === 'COMBAT') {
+    const foes = state.combat?.threats || [];
+    if (foes.length > 1) {
+      for (const foe of foes) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET_FOE" data-target-foe-id="${foe.instanceId}">Attach to ${escapeHtml(foe.publicName)}</button>`);
+    } else actions.push(`<button class="primary" data-inspect-action="PLAY">Attach to Foe</button>`);
+  }
   else if (card.type === 'TRICK' && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Combat Trick</button>`);
   if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
   if (card.type === 'HEX') {
@@ -990,6 +1055,14 @@ function cardActions(card) {
     const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase));
     if (canSpecial && card.id === 'SPECIAL_STEAL_LEVEL') {
       for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Steal from ${escapeHtml(p.name)}</button>`);
+    } else if (canSpecial && state.phase === 'COMBAT' && ['SPECIAL_MAGIC_LAMP','SPECIAL_POLYMORPH','SPECIAL_MATCHING_PROBLEM','SPECIAL_ILLUSION'].includes(card.id)) {
+      const foes = state.combat?.threats || [];
+      if (foes.length > 1) {
+        const verb = card.id === 'SPECIAL_MATCHING_PROBLEM' ? 'Copy' : card.id === 'SPECIAL_ILLUSION' ? 'Replace' : 'Remove';
+        for (const foe of foes) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET_FOE" data-target-foe-id="${foe.instanceId}">${verb} ${escapeHtml(foe.publicName)}</button>`);
+      } else actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
+    } else if (canSpecial && state.phase === 'COMBAT' && card.id === 'SPECIAL_TRANSFERRAL') {
+      for (const p of state.players.filter((p) => !p.isYou && p.id !== state.combat?.activePlayerId)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Transfer to ${escapeHtml(p.name)}</button>`);
     } else if (canSpecial) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
   }
   if (!actions.length) actions.push(`<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`);
@@ -1009,8 +1082,11 @@ function closeInspect() { $('inspectOverlay').classList.add('hidden'); }
 function inspectPlayer(p) {
   const root = $('inspectContent');
   const gearCards = [...(p.equippedGear || []), ...(p.carriedGear || [])];
+  const effects = (p.statusEffects || []).filter((e) => e.visible !== false);
   root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Glory ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
     <p>Calling/Kin: ${escapeHtml(identityLine(p))}</p>
+    ${p.callingPermit || p.kinPermit ? `<h3>Permits</h3><div class="status-list">${p.callingPermit ? `<div class="status-detail"><strong>${escapeHtml(p.callingPermit.publicName)}</strong><span>Attached to ${escapeHtml(p.callingPermit.attachedToName || 'a Calling')}. ${((p.extraRoles || []).length) ? 'Two Callings: all normal advantages and disadvantages apply.' : 'One Calling: disadvantages are ignored.'}</span></div>` : ''}${p.kinPermit ? `<div class="status-detail"><strong>${escapeHtml(p.kinPermit.publicName)}</strong><span>Attached to ${escapeHtml(p.kinPermit.attachedToName || 'a Kin')}. ${((p.extraOrigins || []).length) ? 'Two Kin: all normal advantages and disadvantages apply.' : 'One Kin: disadvantages are ignored.'}</span></div>` : ''}</div>` : ''}
+    ${effects.length ? `<h3>Ongoing Effects</h3><div class="status-list">${effects.map((e) => `<div class="status-detail"><strong>${escapeHtml(e.publicName || 'Effect')}</strong><span>${escapeHtml(e.description || '')}</span></div>`).join('')}</div>` : ''}
     <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
     cardEl.addEventListener('click', () => {

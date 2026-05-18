@@ -1,4 +1,4 @@
-// Loot Goblins v0.6.5 — Reaction + Dice System
+// Loot Goblins v0.6.11 — Full Card Parity Regression / Mechanics Lock Audit
 // Mechanical baseline: classic Munchkin-style rules and the clearer English source card sheets provided by the user.
 // Names, rules wording, and flavor are original Loot Goblins presentation.
 
@@ -55,8 +55,8 @@ const chamberCards = [
   origin('KIN_HALFSTEP', 'Halfstep', 'Once each turn, one Gear you sell counts for double Junk Value. If you fail your first Flee roll, you may discard a card and try once more.', 'Small pockets, excellent receipts.', 'HALFLING_EQUIV', 3),
 
   // Role expanders and rule cards
-  special('SPECIAL_MIXED_KIN', 'Mixed Kin Permit', 'Play on your turn. You may keep one extra Kin.', 'Every branch of the family tree brought paperwork.', { type: 'ADD_EXTRA_KIN_SLOT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'AUTO', copies: 2 }),
-  special('SPECIAL_OVERQUALIFIED', 'Overqualified', 'Play on your turn. You may keep one extra Calling.', 'Twice the training. Half the schedule discipline.', { type: 'ADD_EXTRA_CALLING_SLOT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'AUTO', copies: 2 }),
+  special('SPECIAL_MIXED_KIN', 'Mixed Kin Permit', 'Play on your turn if you have a Kin. Attach this to your Kin. You may have one extra Kin. If you have only one Kin, you get its advantages but ignore its disadvantages.', 'Every branch of the family tree brought paperwork.', { type: 'ADD_EXTRA_KIN_SLOT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'AUTO', copies: 2 }),
+  special('SPECIAL_OVERQUALIFIED', 'Overqualified', 'Play on your turn if you have a Calling. Attach this to your Calling. You may have one extra Calling. If you have only one Calling, you get its advantages but ignore its disadvantages.', 'Twice the training. Half the schedule discipline.', { type: 'ADD_EXTRA_CALLING_SLOT' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'AUTO', copies: 2 }),
   special('SPECIAL_FINE_PRINT_PERMIT', 'Fine Print Permit', 'Attach this to one Gear you own. That Gear becomes legal for you even if it normally would not be.', 'It says “approved” in a font too small to challenge.', { type: 'CHEAT_GEAR' }, { deck: 'CHAMBER', timing: ['OWN_TURN_OUTSIDE_COMBAT'], enforcement: 'GUIDED' }),
   special('SPECIAL_UNEXPECTED_COMPANY_A', 'Unexpected Company', 'Play during combat with a Foe from your hand. That Foe joins the combat. Defeat the combined Foe side or Flee from each Foe.', 'The room was already full, but apparently had standards to lower.', { type: 'ADD_FOE_FROM_HAND' }, { deck: 'CHAMBER', timing: ['DURING_COMBAT'], enforcement: 'GUIDED', copies: 3 }),
   special('SPECIAL_MATCHING_PROBLEM', 'Matching Problem', 'A second copy of the current Foe appears. It has the same modifiers and rewards.', 'One problem became two and looked proud of itself.', { type: 'ADD_MATCHING_FOE' }, { deck: 'CHAMBER', timing: ['DURING_COMBAT'], enforcement: 'AUTO' }),
@@ -169,7 +169,7 @@ const lootCards = [
   gear('GEAR_PANTYHOSE', 'Potion-Belt of Giant Strength', '+3 combat bonus. No slot. Not usable by Bruisers.', 'Stretchy, supportive, and hard to explain.', { slot: 'NO_SLOT', combatBonus: 3, junkValue: 600, notUsableByCallings: ['CALLING_BRUISER'] }),
   gear('GEAR_KNEEPADS', 'Knees of Persuasion', 'Players with higher Glory cannot refuse your Backup request or ask for a reward. You cannot win with compelled Backup.', 'Not begging. Vertical diplomacy.', { slot: 'NO_SLOT', junkValue: 600, enforcement: 'AUTO' }),
   gear('GEAR_TITLE', 'Fancy Title', '+3 combat bonus. No slot.', 'The title is ceremonial. The confidence is real.', { slot: 'NO_SLOT', combatBonus: 3, junkValue: 0 }),
-  gear('GEAR_HIRELING', 'Little Helper', '+1 combat bonus. Gives you one extra Hand. You may discard it while Fleeing to escape automatically.', 'Helpful, punctual, and not interested in discussing its past.', { slot: 'NO_SLOT', combatBonus: 1, extraHands: 1, junkValue: 0, enforcement: 'AUTO' }),
+  gear('GEAR_HIRELING', 'Little Helper', '+1 combat bonus. May carry and use one extra Gear for you. You may discard Little Helper while Fleeing to escape automatically. If Little Helper leaves play, its carried Gear goes with it.', 'Helpful, punctual, and not interested in discussing its past.', { slot: 'NO_SLOT', combatBonus: 1, extraHands: 1, junkValue: 0, enforcement: 'AUTO' }),
 
 
   gear('GEAR_BOOTS_GENERIC', 'Scuffed Boots', '+1 combat bonus. Foot Gear.', 'Reliable, muddy, and somehow always near the door.', { slot: 'FEET', combatBonus: 1, junkValue: 200 }),
@@ -180,7 +180,7 @@ const lootCards = [
   trick('TRICK_NASTY_DRINK', 'Nasty Sports Drink', 'Use during any combat. +2 to either side. One-use.', 'It tastes like victory if victory was refrigerated badly.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 2 }, { junkValue: 200, enforcement: 'AUTO' }),
   trick('TRICK_FLAMING_POISON', 'Flaming Poison Potion', 'Use during any combat. +3 to either side. One-use.', 'A little bottle of absolutely not.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, { junkValue: 100, enforcement: 'AUTO' }),
   trick('TRICK_FREEZING_EXPLOSIVE', 'Freezing Explosive Potion', 'Use during any combat. +3 to either side. One-use.', 'It freezes first, explodes second, and explains never.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 3 }, { junkValue: 100, enforcement: 'AUTO' }),
-  trick('TRICK_MAGIC_MISSILE_A', 'Magic Missile', 'Use during any combat. +5 to either side. One-use.', 'Nobody knows what it does until someone confidently points it at a problem.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, { junkValue: 300, enforcement: 'AUTO', copies: 2 }),
+  trick('TRICK_MAGIC_MISSILE_A', 'Magic Missile', 'Use during any combat. +5 to either side. One-use.', 'Nobody knows what it does until someone confidently points it at a problem.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, { junkValue: 300, enforcement: 'AUTO' }),
   trick('TRICK_PRETTY_BALLOONS', 'Pretty Balloons', 'Use during any combat. +5 to either side. One-use.', 'A colorful distraction with surprisingly firm opinions.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 5 }, { junkValue: 0, enforcement: 'AUTO' }),
   trick('TRICK_HALITOSIS', 'Potion of Halitosis', 'Use during any combat. +2 to either side, or instantly defeats the Hovering Nose. One-use.', 'A tactical cloud with social consequences.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 2 }, { junkValue: 100, enforcement: 'AUTO' }),
   trick('TRICK_SLEEP_POTION', 'Sleep Potion', 'Use during any combat. +2 to either side. One-use.', 'A bedtime story in liquid form.', { type: 'MODIFY_COMBAT_TOTAL', side: 'PLAYER', amount: 2 }, { junkValue: 100, enforcement: 'AUTO' }),
@@ -194,7 +194,7 @@ const lootCards = [
 
   // Special treasures / rule-breakers / Go Up a Glory
   special('SPECIAL_GO_UP_GENERAL', 'Potion of General Studliness', 'Play at any time. Gain 1 Glory. Cannot give the final winning Glory.', 'Not heroic exactly, but everyone did look.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'], copies: 1 }),
-  special('SPECIAL_KILL_HIRELING', 'Dismiss the Helper', 'Play only if a player has a helper. Discard that helper. Gain 1 Glory.', 'A personnel decision with dramatic timing.', { type: 'KILL_HIRELING_GAIN_GLORY' }, { timing: ['ANY_TIME'], enforcement: 'AUTO' }),
+  special('SPECIAL_KILL_HIRELING', 'Dismiss the Helper', 'Choose a player with Little Helper. Discard that Little Helper and gain 1 Glory. Any Gear carried by that Helper is discarded too.', 'A personnel decision with dramatic timing.', { type: 'KILL_HIRELING_GAIN_GLORY' }, { timing: ['ANY_TIME'], target: 'ANY_PLAYER', enforcement: 'GUIDED' }),
   special('SPECIAL_INVOKE_RULES', 'Invoke Obscure Rules', 'Gain 1 Glory. Cannot give the final winning Glory.', 'A small legal door in a large illegal wall.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),
   special('SPECIAL_MUTILATE_BODIES', 'Check the Pockets', 'Play after any combat. Gain 1 Glory.', 'Archaeology, if the artifact is still warm.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'], enforcement: 'AUTO' }),
   special('SPECIAL_BOIL_ANTHILL', 'Boil an Anthill', 'Gain 1 Glory. Cannot give the final winning Glory.', 'The less said about the method, the better.', { type: 'GAIN_RENOWN', amount: 1, canWin: false }, { timing: ['ANY_TIME'] }),

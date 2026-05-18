@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v064",
-  "version": "0.6.4",
+  "name": "loot-goblins-v0610",
+  "version": "0.6.11",
   "private": true,
-  "description": "Loot Goblins v0.6.4: economy, Gear trading, attachments, and Little Helper escape support.",
+  "description": "Loot Goblins v0.6.11: full card parity regression with live deck audit, exact card-copy counts, and no-manual-resolution checks.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
