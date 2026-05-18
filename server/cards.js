@@ -1,4 +1,4 @@
-// Loot Goblins v0.7.3 — Full Animation / Motion Deep Dive
+// Loot Goblins v0.7.5 — Theme Skin / Heart & Soul Pass
 // Mechanical baseline: classic Munchkin-style rules and the clearer English source card sheets provided by the user.
 // Names, rules wording, and flavor are original Loot Goblins presentation.
 

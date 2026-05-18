@@ -1,15 +1,16 @@
-# Loot Goblins v0.7.4 — Combat Visualization + Compact Hand Clarity
+# Loot Goblins v0.7.5 — Theme Skin / Heart & Soul Pass
 
-This version keeps the v0.7 table, card identity, and motion direction, then makes combat easier to understand and makes the hand less busy.
+This version keeps the locked mechanics and the v0.7 table/card/motion direction, then pushes the whole app toward the Loot Goblins identity: a cozy-chaotic dungeon tavern table where greedy little adventurers take a stupidly dangerous card game very seriously.
 
-## Highlights
+## Main changes
 
-- Adds a live Combat Math panel during fights.
-- Shows player-side contributions: Glory, Gear/Calling, helper, and cards/abilities.
-- Shows foe-side contributions: each Foe's base strength, modifiers, special bonuses, and total.
-- Shows whether the player side is winning, losing, or tied and by how much.
-- Reworks compact hand cards into calmer glanceable tiles.
-- Removes the extra compact hand subtext row that made cards feel crowded.
-- Keeps tap-to-expand inspector for full rules, flavor, stats, and actions.
+- Themed the entry screen and lobby so they feel like part of the game world, not plain setup screens.
+- Added a tavern-table visual layer: wood, felt, candle glow, parchment panels, coin/torch accents, and stronger tabletop atmosphere.
+- Improved Chamber and Loot deck identities with distinct backs and stack treatments.
+- Added game-object icon language for Glory, Loot, Junk, Strength, Flee, and deck piles.
+- Themed player seats, table announcements, prompts, buttons, and hand panels.
+- Preserved v0.7.4 combat math and compact hand clarity.
 
-`/health` reports `0.7.4-combat-math-hand-redesign`.
+## Version
+
+`/health` reports `0.7.5-theme-skin-pass`.

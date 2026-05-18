@@ -98,7 +98,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
   ];
 
   return {
-    version: '0.7.3-full-motion-animation',
+    version: '0.7.5-theme-skin-pass',
     ok: gates.every((gate) => gate.ok),
     status: gates.every((gate) => gate.ok) ? 'MECHANICS_LOCK_CANDIDATE' : 'NEEDS_ATTENTION',
     gates,
@@ -109,7 +109,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
     },
     qaNotes: [
       'This endpoint is a static and runtime guardrail, not a substitute for full human playtesting.',
-      'The next milestone after a clean v0.7.3 test is combat visualization polish and math breakdowns.'
+      'The next milestone after a clean v0.7.5 test is visual readability cleanup and preparation for card-art systems.'
     ]
   };
 }
