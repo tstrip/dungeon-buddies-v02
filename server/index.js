@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.7.8-visual-cleanup-bad-news-audit' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.7.9-original-asset-kit' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -308,7 +308,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.7.8-visual-cleanup-bad-news-audit',
+    version: '0.7.9-original-asset-kit',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1959,7 +1959,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.7.8-visual-cleanup-bad-news-audit' });
+  socket.emit('ready', { version: '0.7.9-original-asset-kit' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2974,5 +2974,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.7.8 Visual Cleanup + Bad News Audit listening on ${PORT}`);
+  console.log(`Loot Goblins v0.7.9 Original Asset Kit Pass listening on ${PORT}`);
 });

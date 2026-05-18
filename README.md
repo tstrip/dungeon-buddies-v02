@@ -1,16 +1,23 @@
-# Loot Goblins v0.7.8 — Visual Cleanup + Bad News Audit
+# Loot Goblins v0.7.9 — Original Asset Kit Pass
 
-This build is the final pre-design-bible visual cleanup pass. It keeps the bolder goblin-table direction while removing the emoji-heavy look and broad crooked transforms that made parts of the UI feel messy.
+This build implements the first reusable Loot Goblins visual asset kit while preserving the locked classic-style card engine.
 
 ## Highlights
 
-- Replaced emoji-style UI marks with simple original monogram/sigil-style marks.
-- Reworked the splash/lobby logo treatment into a CSS-built Loot Goblins crest instead of a glyph-based placeholder.
-- Removed most broad askew/rotated styling from non-card UI elements.
-- Preserved the intentional slight table wobble for Foe cards during combat, where it actually works.
-- Added a stronger Bad News/effect audit to the rules-lock report so unsupported card effects are caught instead of silently slipping through.
-- Improved Insurance Salesman-style Bad News so Gear-payment effects clearly discard Gear from owned Gear and prompt when a choice is required.
-- Added a guided “discard Gear totaling X Junk” prompt.
+- Added a CSS-built Loot Goblins goblin crest for the splash/lobby screens.
+- Replaced letter/emoji-style card marks with original inline SVG sigils.
+- Added reusable sigils for Foe, Hex, Gear, Trick, Foe Modifier, Calling, Kin, Special, Chamber, Loot, Discard, Glory, Junk, Strength, Flee, die, prompt, backup, and turn states.
+- Reworked Chamber and Loot card backs into distinct original designs.
+- Improved deck/discard piles with original sigils and stronger physical table-prop styling.
+- Updated full-size cards, compact hand cards, announcements, and deck piles to use the same icon language.
+- Preserved the locked 168-card parity target and rules-lock checks.
 
-`/health` reports `0.7.8-visual-cleanup-bad-news-audit`.
-`/rules-lock` should report a clean mechanics-lock candidate.
+## Verification
+
+- `/health` reports `0.7.9-original-asset-kit`.
+- `/parity` should report 95 Chamber / 73 Loot / 168 total cards.
+- `/rules-lock` should report a clean mechanics-lock candidate.
+
+## Next visual milestone
+
+Next should be the expanded card-frame/table-prop pass, followed by the card-art preparation system.

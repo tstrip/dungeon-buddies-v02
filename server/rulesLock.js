@@ -127,7 +127,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
   ];
 
   return {
-    version: '0.7.8-visual-cleanup-bad-news-audit',
+    version: '0.7.9-original-asset-kit',
     ok: gates.every((gate) => gate.ok),
     status: gates.every((gate) => gate.ok) ? 'MECHANICS_LOCK_CANDIDATE' : 'NEEDS_ATTENTION',
     gates,
@@ -138,7 +138,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
     },
     qaNotes: [
       'This endpoint is a static and runtime guardrail, not a substitute for full human playtesting.',
-      'The next milestone after a clean v0.7.8 test is design-bible planning and preparation for card-art systems.'
+      'The next milestone after a clean v0.7.9 test is expanded card-frame/table-prop work and preparation for card-art systems.'
     ]
   };
 }

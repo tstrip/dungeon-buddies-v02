@@ -149,8 +149,8 @@ function announcementHtml() {
 }
 
 function announcementIcon(kind) {
-  const map = { roll: 'D6', combat: 'VS', hex: 'HX', draw: 'DR', effect: 'FX', card: 'CD', backup: '+', flee: 'FL', tribute: 'TR', turn: '→', game: 'WIN', reveal: 'RV', gear: 'GR', prompt: '!' };
-  return map[kind] || '•';
+  const map = { roll: 'die', combat: 'combat', hex: 'hex', draw: 'draw', effect: 'special', card: 'card', backup: 'backup', flee: 'flee', tribute: 'loot', turn: 'turn', game: 'glory', reveal: 'chamber', gear: 'gear', prompt: 'prompt', bad: 'hex' };
+  return assetIconHtml(map[kind] || 'special', 'event-sigil');
 }
 
 
@@ -357,7 +357,7 @@ function boardPile(key, label, sub, count, move) {
   if (Number(count || 0) <= 0) classes.push('empty');
   return `<div class="${classes.join(' ')}">
     <div class="table-stack"><span></span><span></span><span></span></div>
-    <div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(sub)} · ${Number(count || 0)}</small></div>
+    <div><strong>${deckPileIconHtml(key)}${escapeHtml(label)}</strong><small>${escapeHtml(sub)} · ${Number(count || 0)}</small></div>
   </div>`;
 }
 
@@ -1065,6 +1065,58 @@ function cardTypeIcon(card) {
   return '•';
 }
 
+function cardTypeKey(card) {
+  const t = String(card?.type || card || '').toUpperCase();
+  if (t === 'THREAT') return 'foe';
+  if (t === 'HEX') return 'hex';
+  if (t === 'GEAR') return 'gear';
+  if (t === 'TRICK') return 'trick';
+  if (t === 'THREAT_MODIFIER') return 'modifier';
+  if (t === 'ROLE') return 'calling';
+  if (t === 'ORIGIN') return 'kin';
+  if (t === 'SPECIAL') return 'special';
+  return 'card';
+}
+
+function cardTypeSigilHtml(card, cls = 'asset-sigil card-type-sigil') {
+  return assetIconHtml(cardTypeKey(card), cls);
+}
+
+function deckPileIconHtml(key) {
+  if (/CHAMBER/.test(key)) return assetIconHtml('chamber', 'asset-sigil pile-sigil');
+  if (/LOOT/.test(key)) return assetIconHtml('loot', 'asset-sigil pile-sigil');
+  if (/DISCARD/.test(key)) return assetIconHtml('discard', 'asset-sigil pile-sigil');
+  return assetIconHtml('card', 'asset-sigil pile-sigil');
+}
+
+function assetIconHtml(key, cls = 'asset-sigil') {
+  const k = String(key || 'special').toLowerCase().replace(/[^a-z0-9-]+/g, '');
+  const common = `class="${escapeHtml(cls)} sigil-${escapeHtml(k)}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"`;
+  const icons = {
+    foe: `<svg ${common}><path class="fill" d="M12 36c0-15 9-24 20-24s20 9 20 24c0 10-8 16-20 16S12 46 12 36Z"/><path class="cut" d="M22 38l6 9 4-8 4 8 6-9"/><path class="line" d="M19 28c5-5 9-5 13 0M32 28c4-5 8-5 13 0"/><circle class="ink" cx="25" cy="33" r="3"/><circle class="ink" cx="39" cy="33" r="3"/></svg>`,
+    hex: `<svg ${common}><path class="fill" d="M32 5l21 13-5 24-16 17-16-17-5-24L32 5Z"/><path class="line" d="M32 10l-5 14 9 6-11 4 8 19M20 20l12 9 11-9M44 42l-12-8"/></svg>`,
+    gear: `<svg ${common}><path class="fill" d="M20 18l9-9 8 8-9 9 17 17-8 8-17-17-4 4-6-6 4-4-5-5 6-6 5 5Z"/><path class="line" d="M39 11l14 14M43 15l-7 7M20 34l17 17"/></svg>`,
+    trick: `<svg ${common}><path class="fill" d="M43 8l6 13 13 6-13 6-6 13-6-13-13-6 13-6 6-13Z"/><path class="line" d="M12 51l17-17 6 6-17 17-10 3 4-9Z"/><path class="ink" d="M15 52l5 5-7 2 2-7Z"/></svg>`,
+    modifier: `<svg ${common}><path class="fill" d="M8 35l10-8 1-13 11 7 13-7 1 13 12 8-12 8-1 13-13-7-11 7-1-13-10-8Z"/><path class="line" d="M20 35h24M32 23v24M22 25l20 20M42 25L22 45"/></svg>`,
+    calling: `<svg ${common}><path class="fill" d="M14 10h29l7 8-7 8H14v27h-6V10h6Z"/><path class="line" d="M14 16h25M14 24h27M14 10v43"/></svg>`,
+    kin: `<svg ${common}><path class="fill" d="M32 7c8 0 14 6 14 14 0 5-3 10-7 12l11 19H14l11-19c-4-2-7-7-7-12 0-8 6-14 14-14Z"/><path class="line" d="M32 21v23M22 44h20M24 28c5 3 11 3 16 0M24 18c3-4 13-4 16 0"/></svg>`,
+    special: `<svg ${common}><path class="fill" d="M19 8h25l6 7v41H14V13l5-5Z"/><path class="line" d="M21 20h22M21 29h17M21 38h22M37 8v12h13"/><path class="ink" d="M43 42l4 4-8 8-6 1 1-6 9-7Z"/></svg>`,
+    chamber: `<svg ${common}><path class="fill" d="M16 56V29c0-13 7-21 16-21s16 8 16 21v27H16Z"/><path class="line" d="M22 56V30c0-9 4-15 10-15s10 6 10 15v26M32 16v40M24 33h16"/><circle class="ink" cx="38" cy="38" r="2.5"/></svg>`,
+    loot: `<svg ${common}><path class="fill" d="M10 25h44v28H10V25Z"/><path class="line" d="M15 25v-5c0-5 5-9 17-9s17 4 17 9v5M10 35h44M29 33h6v8h-6z"/><circle class="ink" cx="21" cy="45" r="3"/><circle class="ink" cx="44" cy="45" r="3"/></svg>`,
+    discard: `<svg ${common}><path class="fill" d="M17 13l31 8-8 31-31-8 8-31Z"/><path class="line" d="M25 11l28 14M15 24l25 7M22 37l18 5"/></svg>`,
+    glory: `<svg ${common}><path class="fill" d="M32 6l7 16 17 2-13 11 4 17-15-9-15 9 4-17L8 24l17-2 7-16Z"/><path class="line" d="M32 14v23M22 28h20"/></svg>`,
+    junk: `<svg ${common}><circle class="fill" cx="32" cy="32" r="24"/><path class="line" d="M24 20h16M24 44h16M32 17v30M22 29h20"/></svg>`,
+    strength: `<svg ${common}><path class="fill" d="M16 48l25-25 8 8-25 25H16v-8Z"/><path class="line" d="M37 19l8-8 8 8-8 8M21 45l-6 6"/></svg>`,
+    flee: `<svg ${common}><path class="fill" d="M16 45c13 0 21-4 28-13l8 7c-7 12-18 17-36 17H8V45h8Z"/><path class="line" d="M15 45l6-23h12l-3 15M34 20l7 7"/></svg>`,
+    die: `<svg ${common}><rect class="fill" x="11" y="11" width="42" height="42" rx="10"/><circle class="ink" cx="24" cy="24" r="3"/><circle class="ink" cx="40" cy="24" r="3"/><circle class="ink" cx="32" cy="32" r="3"/><circle class="ink" cx="24" cy="40" r="3"/><circle class="ink" cx="40" cy="40" r="3"/></svg>`,
+    backup: `<svg ${common}><path class="fill" d="M13 36c0-7 5-12 12-12s12 5 12 12v16H13V36Z"/><path class="line" d="M25 24V12h26v24H37M43 19v10M38 24h10"/></svg>`,
+    turn: `<svg ${common}><path class="fill" d="M14 16h26l10 16-10 16H14l10-16-10-16Z"/><path class="line" d="M23 32h23M38 22l10 10-10 10"/></svg>`,
+    prompt: `<svg ${common}><path class="fill" d="M32 8c12 0 21 8 21 19 0 14-16 17-16 17v8H27V39s16-3 16-12c0-5-4-9-11-9-6 0-10 3-13 7l-7-7c5-7 12-10 20-10Z"/><circle class="ink" cx="32" cy="57" r="4"/></svg>`,
+    card: `<svg ${common}><rect class="fill" x="17" y="8" width="30" height="48" rx="6"/><path class="line" d="M23 18h18M23 28h18M23 38h12"/></svg>`
+  };
+  return icons[k] || icons.special;
+}
+
 function cardHtml(card, opts = {}) {
   if (!card) return '';
   if (opts.compact) return compactCardHtml(card, opts);
@@ -1076,9 +1128,10 @@ function cardHtml(card, opts = {}) {
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   const bottom = cardBottom(card);
   return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
-    <div class="type"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
+    <div class="card-corner-sigil" aria-hidden="true">${cardTypeSigilHtml(card, 'asset-sigil corner-sigil')}</div>
+    <div class="type"><span class="inline-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil tiny-sigil')}</span>${escapeHtml(typeLabel(card))}</div>
     <div class="title">${escapeHtml(card.publicName)}</div>
-    <div class="art"><span>${escapeHtml(cardTypeIcon(card))}</span></div>
+    <div class="art"><span>${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</span></div>
     <div class="text">${escapeHtml(card.publicText || '')}</div>
     ${card.flavorText ? `<div class="flavor">${escapeHtml(card.flavorText)}</div>` : ''}
     ${card.attachmentNames?.length ? `<div class="micro attached-line">Attached: ${escapeHtml(card.attachmentNames.join(', '))}</div>` : ''}
@@ -1094,7 +1147,7 @@ function compactCardHtml(card, opts = {}) {
   if (card.fresh) classes.push('new-card');
   return `<article class="${classes.join(' ')} compact-v076" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
     ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
-    <div class="hand-card-sigil" aria-hidden="true">${escapeHtml(cardTypeIcon(card))}</div>
+    <div class="hand-card-sigil" aria-hidden="true">${cardTypeSigilHtml(card, 'asset-sigil hand-sigil')}</div>
     <div class="hand-card-copy">
       <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
       <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
@@ -1169,7 +1222,7 @@ function inspectCard(card) {
   root.innerHTML = `<div class="inspect-layout inspect-v071">
     <div class="inspect-preview">${cardHtml(card, { feature: true })}</div>
     <div class="inspect-copy">
-      <div class="inspect-kicker"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
+      <div class="inspect-kicker"><span class="inline-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil tiny-sigil')}</span>${escapeHtml(typeLabel(card))}</div>
       <h2>${escapeHtml(card.publicName)}</h2>
       ${statLine ? `<div class="inspect-stat-row"><span>${escapeHtml(statLine)}</span></div>` : ''}
       <section class="inspect-section"><h3>Rules</h3><p>${escapeHtml(card.publicText || 'No rules text.')}</p></section>
