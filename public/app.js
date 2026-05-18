@@ -149,7 +149,7 @@ function announcementHtml() {
 }
 
 function announcementIcon(kind) {
-  const map = { roll: '⚄', combat: '⚔', hex: '✦', draw: '▣', effect: '★', card: '◆', backup: '+', flee: '↗', tribute: '⇄', turn: '→', game: '♛', reveal: '▤', gear: '◈', prompt: '!' };
+  const map = { roll: 'D6', combat: 'VS', hex: 'HX', draw: 'DR', effect: 'FX', card: 'CD', backup: '+', flee: 'FL', tribute: 'TR', turn: '→', game: 'WIN', reveal: 'RV', gear: 'GR', prompt: '!' };
   return map[kind] || '•';
 }
 
@@ -238,7 +238,7 @@ function movementCardHtml(move) {
         <strong>${escapeHtml(cardName)}</strong>
         <small>${escapeHtml(toLabel)}</small>
       </div>
-      <div class="moving-die-face">⚄</div>
+      <div class="moving-die-face">D6</div>
     </div>
     <div class="movement-path-label">${escapeHtml(fromLabel)} → ${escapeHtml(toLabel)}</div>
   </div>`;
@@ -877,6 +877,19 @@ function renderPrompt() {
     $('confirmHandDiscard').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selected] }); selected.clear(); });
     return;
   }
+  if (p.type === 'DISCARD_GEAR_VALUE') {
+    const target = p.meta?.targetValue || 1000;
+    const total = p.options.filter((c) => selectedSell.has(c.instanceId)).reduce((sum, c) => sum + Number(c.junkValue || c.scrapValue || 0), 0);
+    root.innerHTML = `<h3>Choose Gear to lose</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected Junk Value: ${total}/${target}. Choose Gear totaling at least ${target} Junk.</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card ${selectedSell.has(c.instanceId) ? 'selected' : ''}" data-gear-value-card="${c.instanceId}">${escapeHtml(c.publicName)} · ${Number(c.junkValue || c.scrapValue || 0)} Junk</button>`).join('')}</div><button class="primary" id="confirmGearValue" ${total < target ? 'disabled' : ''}>Discard Selected Gear</button>`;
+    root.querySelectorAll('[data-gear-value-card]').forEach((btn) => btn.addEventListener('click', () => {
+      if (selectedSell.has(btn.dataset.gearValueCard)) selectedSell.delete(btn.dataset.gearValueCard);
+      else selectedSell.add(btn.dataset.gearValueCard);
+      renderPrompt();
+    }));
+    $('confirmGearValue').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] }); selectedSell.clear(); });
+    return;
+  }
+
   if (p.type === 'SELL_GEAR') {
     const total = p.options.filter((c) => selectedSell.has(c.instanceId)).reduce((sum, c) => sum + Number(c.junkValue || c.scrapValue || 0), 0);
     root.innerHTML = `<h3>Sell Gear</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected Junk Value: ${total}. Every 1000 Junk Value = +1 Glory. Selling cannot grant final Glory.</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card ${selectedSell.has(c.instanceId) ? 'selected' : ''}" data-sell-card="${c.instanceId}">${escapeHtml(c.publicName)} · ${Number(c.junkValue || c.scrapValue || 0)} Junk</button>`).join('')}</div><button class="primary" id="confirmSell" ${selectedSell.size ? '' : 'disabled'}>Sell Selected Gear</button>`;
@@ -1041,14 +1054,14 @@ function cardTypeClass(card) {
 
 function cardTypeIcon(card) {
   const t = String(card?.type || '').toUpperCase();
-  if (t === 'THREAT') return '☠';
-  if (t === 'HEX') return '✦';
-  if (t === 'GEAR') return '⚒';
-  if (t === 'TRICK') return '✹';
-  if (t === 'THREAT_MODIFIER') return '⬆';
-  if (t === 'ROLE') return '★';
-  if (t === 'ORIGIN') return '◆';
-  if (t === 'SPECIAL') return '✧';
+  if (t === 'THREAT') return 'F';
+  if (t === 'HEX') return 'X';
+  if (t === 'GEAR') return 'G';
+  if (t === 'TRICK') return 'T';
+  if (t === 'THREAT_MODIFIER') return 'M';
+  if (t === 'ROLE') return 'C';
+  if (t === 'ORIGIN') return 'K';
+  if (t === 'SPECIAL') return 'S';
   return '•';
 }
 

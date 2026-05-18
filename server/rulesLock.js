@@ -4,6 +4,23 @@ const REQUIRED_FIELDS = ['id', 'deck', 'type', 'publicName', 'publicText', 'flav
 const VALID_DECKS = new Set(['CHAMBER', 'LOOT']);
 const VALID_ENFORCEMENT = new Set(['AUTO', 'GUIDED']);
 
+const SUPPORTED_EFFECT_TYPES = new Set([
+  'GAIN_RENOWN', 'LOSE_RENOWN', 'LOSE_ROLE', 'LOSE_ORIGIN',
+  'DISCARD_FROM_HAND', 'DISCARD_HAND', 'DISCARD_GEAR', 'DRAW_LOOT', 'DRAW_CHAMBER',
+  'MODIFY_COMBAT_TOTAL', 'MODIFY_ESCAPE_ROLL', 'AUTO_ESCAPE', 'KNOCKOUT',
+  'TRANSFER_RENOWN', 'SELL_GEAR_FOR_RENOWN', 'ADD_EXTRA_CALLING_SLOT', 'ADD_EXTRA_KIN_SLOT',
+  'CHEAT_GEAR', 'ADD_FOE_FROM_HAND', 'ADD_MATCHING_FOE', 'REMOVE_FOE_LOOT_ONLY',
+  'OUT_TO_LUNCH', 'FRIENDSHIP_END', 'ILLUSION_SWAP', 'WAND_DOWSING', 'DIVINE_INTERVENTION',
+  'DOPPELGANGER', 'FORCE_REROLL_FLEE', 'NO_EFFECT', 'MULTI_EFFECT', 'CHANGE_ROLE',
+  'CHANGE_ORIGIN', 'NEXT_COMBAT_DELTA', 'ADD_DIE_PENALTY', 'ONLY_BODY_GEAR_NEXT_COMBAT',
+  'DISCARD_ALL_HEAVY_GEAR', 'DISCARD_HAND_AND_GEAR', 'DISCARD_ALL_IDENTITIES',
+  'CHOOSE_DISCARD_HAND_OR_LOSE_GLORY', 'ROLL_DISCARD_OWNED', 'ROLL_LOSE_GLORY',
+  'LOSE_HEAD_OR_GLORY', 'LOSE_ALL_ROLES_OR_GLORY', 'SET_TO_LOWEST_GLORY', 'LAWYERS_BAD_NEWS',
+  'ADJACENT_TAKE_GEAR', 'HIGHEST_TAKE_GEAR', 'DISCARD_GEAR_VALUE_OR_ALL', 'INCOME_TAX',
+  'YUPPIE_WATER', 'GAIN_IF_HIGHEST_OR_TIED', 'KILL_HIRELING_GAIN_GLORY',
+  'CANCEL_ACTIVE_HEX', 'TRANSFER_COMBAT', 'SET_DIE_ROLL'
+]);
+
 function cardCopies(cards) {
   return cards.reduce((sum, card) => sum + Number(card.copies || 1), 0);
 }
@@ -14,9 +31,14 @@ function asArray(value) {
 
 function collectEffects(card) {
   const effects = [];
-  if (card.effect) effects.push(card.effect);
-  for (const effect of asArray(card.effects)) effects.push(effect);
-  if (card.consequence) effects.push(card.consequence);
+  const push = (effect) => {
+    if (!effect) return;
+    effects.push(effect);
+    for (const inner of asArray(effect.effects)) push(inner);
+  };
+  push(card.effect);
+  for (const effect of asArray(card.effects)) push(effect);
+  push(card.consequence);
   return effects.filter(Boolean);
 }
 
@@ -55,8 +77,15 @@ function inspectCards(cards) {
       }
     }
 
+    const allEffects = collectEffects(card);
+    for (const effect of allEffects) {
+      if (!effect.type || !SUPPORTED_EFFECT_TYPES.has(effect.type)) {
+        issues.push({ id: card.id, severity: 'fail', area: 'Effects', message: `Unsupported effect type ${effect.type || '(missing)'}.` });
+      }
+    }
+
     if (card.type === 'TRICK' || card.type === 'SPECIAL') {
-      const effects = collectEffects(card);
+      const effects = allEffects;
       if (effects.length === 0 && !['ROLE', 'ORIGIN'].includes(card.type)) {
         issues.push({ id: card.id, severity: 'warn', area: 'Effects', message: 'Card has no explicit effect object.' });
       }
@@ -98,7 +127,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
   ];
 
   return {
-    version: '0.7.5-theme-skin-pass',
+    version: '0.7.8-visual-cleanup-bad-news-audit',
     ok: gates.every((gate) => gate.ok),
     status: gates.every((gate) => gate.ok) ? 'MECHANICS_LOCK_CANDIDATE' : 'NEEDS_ATTENTION',
     gates,
@@ -109,7 +138,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
     },
     qaNotes: [
       'This endpoint is a static and runtime guardrail, not a substitute for full human playtesting.',
-      'The next milestone after a clean v0.7.5 test is visual readability cleanup and preparation for card-art systems.'
+      'The next milestone after a clean v0.7.8 test is design-bible planning and preparation for card-art systems.'
     ]
   };
 }

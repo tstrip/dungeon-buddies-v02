@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.7.7-extreme-stylization-combat-overhaul' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.7.8-visual-cleanup-bad-news-audit' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -308,7 +308,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.7.7-extreme-stylization-combat-overhaul',
+    version: '0.7.8-visual-cleanup-bad-news-audit',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1272,11 +1272,30 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       return true;
     }
     case 'DISCARD_GEAR_VALUE_OR_ALL': {
-      const gear = [...player.carriedGear, ...player.equippedGear].sort((a,b)=>gearJunkValue(b)-gearJunkValue(a));
-      let total = 0, count = 0;
-      for (const g of gear) { if (total >= (effect.value || 1000)) break; total += gearJunkValue(g); discardSpecificGear(room, player, g.instanceId); count++; }
-      announce(room, 'effect', 'Gear Payment', `${player.name} discarded ${count} Gear worth ${total} Junk.`, sourceCard, { importance: 'major' });
-      return true;
+      const targetValue = effect.value || 1000;
+      const gear = ownedGearOptions(player).sort((a,b)=>gearJunkValue(b)-gearJunkValue(a));
+      const totalAvailable = gear.reduce((sum, g) => sum + gearJunkValue(g), 0);
+      if (!gear.length) {
+        announce(room, 'effect', 'No Gear to Pay', `${player.name} had no Gear to lose.`, sourceCard, { importance: 'major' });
+        log(room, `${player.name} had no Gear to lose for ${sourceCard?.publicName || 'Bad News'}.`);
+        return true;
+      }
+      if (totalAvailable < targetValue) {
+        let total = 0;
+        for (const g of [...gear]) { total += gearJunkValue(g); removeAndDiscardOwnedCard(room, player, g.instanceId); }
+        announce(room, 'effect', 'All Gear Lost', `${player.name} had less than ${targetValue} Junk in Gear and discarded all Gear (${total} Junk).`, sourceCard, { importance: 'major' });
+        log(room, `${player.name} discarded all Gear (${total} Junk).`);
+        return true;
+      }
+      createPrompt(room, {
+        type: 'DISCARD_GEAR_VALUE',
+        playerId: player.id,
+        message: `${player.name} must discard Gear totaling at least ${targetValue} Junk.`,
+        options: gear,
+        meta: { targetValue, after: context.after || 'CONTINUE' }
+      });
+      announce(room, 'prompt', 'Gear Payment Due', `${player.name} must choose Gear totaling at least ${targetValue} Junk.`, sourceCard, { importance: 'major' });
+      return false;
     }
     case 'INCOME_TAX': {
       for (const p of room.players) {
@@ -1940,7 +1959,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.7.7-extreme-stylization-combat-overhaul' });
+  socket.emit('ready', { version: '0.7.8-visual-cleanup-bad-news-audit' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2929,6 +2948,19 @@ function resolvePrompt(socket, room, player, payload) {
     return;
   }
 
+  if (prompt.type === 'DISCARD_GEAR_VALUE') {
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
+    const valid = new Map((prompt.options || []).map((c) => [c.instanceId, c]));
+    if (!ids.length || !ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid Gear cards.');
+    const total = ids.reduce((sum, id) => sum + gearJunkValue(valid.get(id)), 0);
+    const target = prompt.meta?.targetValue || 1000;
+    if (total < target) return emitError(socket, `Choose at least ${target} Junk Value in Gear.`);
+    for (const id of ids) removeAndDiscardOwnedCard(room, player, id);
+    announce(room, 'effect', 'Gear Payment Made', `${player.name} discarded ${ids.length} Gear worth ${total} Junk.`, null, { importance: 'major' });
+    continueAfterPrompt(room, after);
+    return;
+  }
+
   if (prompt.type === 'SELL_GEAR') {
     const ids = Array.isArray(payload.cardIds) ? payload.cardIds : [];
     const result = sellSpecificGear(room, player, ids, prompt.meta?.effect || {});
@@ -2942,5 +2974,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.7.7 Extreme Stylization + Combat Overhaul listening on ${PORT}`);
+  console.log(`Loot Goblins v0.7.8 Visual Cleanup + Bad News Audit listening on ${PORT}`);
 });

@@ -82,7 +82,7 @@ function buildParityReport(chamberCards, lootCards) {
   if (dupes.length) failures.push(`${dupes.length} duplicate card id issue(s) found.`);
 
   return {
-    version: '0.7.5-theme-skin-pass',
+    version: '0.7.8-visual-cleanup-bad-news-audit',
     ok: failures.length === 0,
     targets: TARGETS,
     counts: {

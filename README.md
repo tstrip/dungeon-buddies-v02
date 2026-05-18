@@ -1,15 +1,16 @@
-# Loot Goblins v0.7.7 — Extreme Stylization + Combat Overhaul
+# Loot Goblins v0.7.8 — Visual Cleanup + Bad News Audit
 
-This build pushes the visual direction much harder: chunky goblin tavern styling, a stronger splash/lobby logo treatment, more crooked hand-built UI shapes, and a combat layout where the Foe card is the centerpiece.
+This build is the final pre-design-bible visual cleanup pass. It keeps the bolder goblin-table direction while removing the emoji-heavy look and broad crooked transforms that made parts of the UI feel messy.
 
 ## Highlights
 
-- New bold Loot Goblins crest treatment on splash/resume/lobby screens.
-- Much more stylized goblin tavern table presentation.
-- Combat reworked so the Foe card sits front and center in larger card proportions.
-- Combat totals/details now sit beneath the Foe rather than competing with it.
-- Buff/Nerf explanatory panel removed from the combat table; action buttons carry the interaction.
-- Combat math is now tucked into a collapsible `View combat math` section.
-- Compact hand direction preserved and slightly pushed further into a physical goblin drawer/tray style.
+- Replaced emoji-style UI marks with simple original monogram/sigil-style marks.
+- Reworked the splash/lobby logo treatment into a CSS-built Loot Goblins crest instead of a glyph-based placeholder.
+- Removed most broad askew/rotated styling from non-card UI elements.
+- Preserved the intentional slight table wobble for Foe cards during combat, where it actually works.
+- Added a stronger Bad News/effect audit to the rules-lock report so unsupported card effects are caught instead of silently slipping through.
+- Improved Insurance Salesman-style Bad News so Gear-payment effects clearly discard Gear from owned Gear and prompt when a choice is required.
+- Added a guided “discard Gear totaling X Junk” prompt.
 
-`/health` reports `0.7.7-extreme-stylization-combat-overhaul`.
+`/health` reports `0.7.8-visual-cleanup-bad-news-audit`.
+`/rules-lock` should report a clean mechanics-lock candidate.
