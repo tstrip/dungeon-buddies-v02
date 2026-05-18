@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v0610",
-  "version": "0.6.11",
+  "name": "loot-goblins-v070",
+  "version": "0.7.0",
   "private": true,
-  "description": "Loot Goblins v0.6.11: full card parity regression with live deck audit, exact card-copy counts, and no-manual-resolution checks.",
+  "description": "Loot Goblins v0.7.0: table layout redesign while preserving the locked classic-style card engine.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

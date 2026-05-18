@@ -1,4 +1,4 @@
-// Loot Goblins v0.6.11 — Full Card Parity Regression / Mechanics Lock Audit
+// Loot Goblins v0.7.0 — Mechanical QA / Rules Lock / Mechanics Lock Audit
 // Mechanical baseline: classic Munchkin-style rules and the clearer English source card sheets provided by the user.
 // Names, rules wording, and flavor are original Loot Goblins presentation.
 

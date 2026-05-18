@@ -4,6 +4,7 @@ const express = require('express');
 const { Server } = require('socket.io');
 const { chamberCards, lootCards } = require('./cards');
 const { buildParityReport } = require('./parity');
+const { buildRulesLockReport } = require('./rulesLock');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,8 +16,10 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.6.11-full-parity-regression' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.7.0-table-layout-redesign' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
+app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
+app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 function randomId(alphabet, length) {
@@ -305,7 +308,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.6.11-full-parity-regression',
+    version: '0.7.0-table-layout-redesign',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1937,7 +1940,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.6.11-full-parity-regression' });
+  socket.emit('ready', { version: '0.7.0-table-layout-redesign' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -1947,7 +1950,7 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', ({ name, code }) => {
     const room = rooms.get(String(code || '').trim().toUpperCase());
     if (!room) return emitError(socket, 'Room not found.');
-    if (room.players.length >= 3) return emitError(socket, 'This v0.6 table is limited to 3 players.');
+    if (room.players.length >= 3) return emitError(socket, 'This table is limited to 3 players.');
     const player = createPlayer(name, socket);
     room.players.push(player);
     attachSocketToPlayer(room, player, socket);
@@ -2939,5 +2942,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.6.11 Full Card Parity Regression listening on ${PORT}`);
+  console.log(`Loot Goblins v0.7.0 Mechanical QA / Rules Lock listening on ${PORT}`);
 });

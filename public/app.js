@@ -1,5 +1,5 @@
 const socket = io();
-const SESSION_KEY = 'lootGoblinsV069Session';
+const SESSION_KEY = 'lootGoblinsV070Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
@@ -236,33 +236,48 @@ function deriveMovement() {
 }
 
 function tableBoardHtml(options = {}) {
+  const activeCard = options.activeCard || state.tableNotice?.card || state.revealCard;
+  const centerHtml = defaultCenterStageHtml({ ...options, activeCard });
+  return tableFrameHtml(centerHtml, { mode: options.mode || centerZoneClass() });
+}
+
+function tableFrameHtml(centerHtml, options = {}) {
+  const move = deriveMovement();
+  return `${announcementHtml()}<div class="felt-table v070-table ${escapeHtml(options.mode || '')}">
+    <div class="table-seats v070-seats">${tableSeatsHtml()}</div>
+    <div class="v070-surface">
+      <div class="v070-deck-column chamber-column">
+        ${boardPile('CHAMBER_DECK', 'Chamber', 'Deck', state.decks?.chamber || 0, move)}
+        ${boardPile('CHAMBER_DISCARD', 'Chamber', 'Discard', state.decks?.chamberDiscard || 0, move)}
+      </div>
+      <div class="v070-center-stage ${escapeHtml(options.stageClass || '')}">
+        ${centerHtml}
+      </div>
+      <div class="v070-deck-column loot-column">
+        ${boardPile('LOOT_DECK', 'Loot', 'Deck', state.decks?.loot || 0, move)}
+        ${boardPile('LOOT_DISCARD', 'Loot', 'Discard', state.decks?.lootDiscard || 0, move)}
+      </div>
+    </div>
+  </div>`;
+}
+
+function defaultCenterStageHtml(options = {}) {
   const move = deriveMovement();
   const notice = state.tableNotice;
   const centerLabel = options.centerLabel || centerZoneLabel();
   const centerSub = options.centerSub || centerZoneSub();
   const centerClass = options.centerClass || centerZoneClass();
   const activeCard = options.activeCard || notice?.card || state.revealCard;
-  return `${announcementHtml()}<div class="felt-table">
-    <div class="table-seats">${tableSeatsHtml()}</div>
-    <div class="table-core">
-      <div class="mini-deck-lane">
-        ${boardPile('CHAMBER_DECK', 'Chamber', 'Deck', state.decks?.chamber || 0, move)}
-        ${boardPile('CHAMBER_DISCARD', 'Chamber', 'Discard', state.decks?.chamberDiscard || 0, move)}
-        <div class="table-core-center">
-          <div class="movement-banner ${notice || move?.from || move?.to ? 'active' : ''}">
-            <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
-            <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the center of the table.')}</div>
-          </div>
-          ${movementCardHtml(move)}
-          <div class="center-zone ${centerClass}">
-            <strong>${escapeHtml(centerLabel)}</strong>
-            <span>${escapeHtml(centerSub)}</span>
-            ${activeCard ? `<div class="center-card-slot">${cardHtml(activeCard, { tableSmall: true })}</div>` : ''}
-          </div>
-        </div>
-        ${boardPile('LOOT_DECK', 'Loot', 'Deck', state.decks?.loot || 0, move)}
-        ${boardPile('LOOT_DISCARD', 'Loot', 'Discard', state.decks?.lootDiscard || 0, move)}
-      </div>
+  return `<div class="table-core-center v070-default-center">
+    <div class="movement-banner ${notice || move?.from || move?.to ? 'active' : ''}">
+      <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
+      <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the middle of the table.')}</div>
+    </div>
+    ${movementCardHtml(move)}
+    <div class="center-zone ${centerClass}">
+      <strong>${escapeHtml(centerLabel)}</strong>
+      <span>${escapeHtml(centerSub)}</span>
+      ${activeCard ? `<div class="center-card-slot">${cardHtml(activeCard, { tableSmall: true })}</div>` : ''}
     </div>
   </div>`;
 }
@@ -542,30 +557,28 @@ function renderEscape(root) {
   const detail = last
     ? `Raw roll ${last.raw} ${signed(last.bonus || 0)} Flee bonus = ${last.total}`
     : `Target number is 5+. ${runner?.isYou ? 'Tap Roll to Flee above.' : `Waiting for ${escapeHtml(runner?.name || 'the runner')}.`}`;
-  root.innerHTML = `${announcementHtml()}
-    <div class="compact-table-frame">${tableSeatsHtml()}</div>
-    <div class="table-event"><strong>Flee:</strong> ${escapeHtml(runner?.name || 'Runner')} must roll against ${escapeHtml(esc.threat?.publicName || 'the Foe')}.</div>
-    <div class="escape-layout focus-layout">
-      <div>
-        <h3>${escapeHtml(runner?.name || 'Runner')} vs ${escapeHtml(esc.threat?.publicName || 'Foe')}</h3>
-        <p class="micro">Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
-        <div class="dice-stage">
-          ${dieHtml(raw, last ? 'rolled' : 'idle')}
-          <div class="roll-result">
-            <div class="dice-breakdown">
-              <span>Target <strong>5+</strong></span>
-              <span>Flee bonus <strong>${signed(esc.fleeBonus || 0)}</strong></span>
-              <span>Runner <strong>${Number(esc.index || 0) + 1}/${esc.runners?.length || 1}</strong></span>
-            </div>
-            <p><strong>Final:</strong> ${escapeHtml(total)}</p>
-            <p>${outcome}</p>
-            <p class="micro">${escapeHtml(detail)}</p>
+  const centerHtml = `<div class="v070-stage flee-stage">
+    <div class="v070-stage-kicker">Flee Zone</div>
+    <h2>${escapeHtml(runner?.name || 'Runner')} vs ${escapeHtml(esc.threat?.publicName || 'Foe')}</h2>
+    <p>Roll 1d6. Add Flee bonuses and penalties. Final result of 5 or more escapes the Bad News.</p>
+    <div class="v070-flee-grid">
+      <div class="dice-stage">
+        ${dieHtml(raw, last ? 'rolled' : 'idle')}
+        <div class="roll-result">
+          <div class="dice-breakdown">
+            <span>Target <strong>5+</strong></span>
+            <span>Flee bonus <strong>${signed(esc.fleeBonus || 0)}</strong></span>
+            <span>Runner <strong>${Number(esc.index || 0) + 1}/${esc.runners?.length || 1}</strong></span>
           </div>
+          <p><strong>Final:</strong> ${escapeHtml(total)}</p>
+          <p>${outcome}</p>
+          <p class="micro">${escapeHtml(detail)}</p>
         </div>
       </div>
-      <div class="card-row">${esc.threat ? cardHtml(esc.threat, { tableSmall: true }) : ''}</div>
+      <div class="v070-foe-card">${esc.threat ? cardHtml(esc.threat, { tableSmall: true }) : ''}</div>
     </div>
-  `;
+  </div>`;
+  root.innerHTML = tableFrameHtml(centerHtml, { mode: 'flee-center', stageClass: 'flee-stage-wrap' });
   attachTableSeatHandlers(root);
 }
 
@@ -574,9 +587,10 @@ function renderFirstRoll(root) {
   const first = state.firstRoll || { rolls: {}, eligible: [] };
   const latest = first.latest;
   const waiting = (first.eligible || []).filter((id) => !first.rolls?.[id]).map(playerName);
-  root.innerHTML = `${announcementHtml()}
-    <div class="compact-table-frame">${tableSeatsHtml()}</div>
-    <div class="table-event"><strong>Opening Roll:</strong> ${escapeHtml(first.requiresYou ? 'Your roll is needed.' : waiting.length ? `Waiting for ${waiting.join(', ')}.` : 'Resolving first player.')}</div>
+  const centerHtml = `<div class="v070-stage opening-stage">
+    <div class="v070-stage-kicker">Opening Roll</div>
+    <h2>${escapeHtml(first.requiresYou ? 'Your roll is needed' : waiting.length ? `Waiting for ${waiting.join(', ')}` : 'Resolving first player')}</h2>
+    <p>Every goblin rolls a d6. Highest roll opens the first Chamber. Ties reroll.</p>
     <div class="opening-roll-grid focus-layout">
       ${state.players.map((p) => {
         const rolled = first.rolls?.[p.id];
@@ -589,7 +603,8 @@ function renderFirstRoll(root) {
       }).join('')}
     </div>
     ${first.previous?.length ? `<div class="micro previous-rolls">Previous: ${first.previous.map((r) => `Round ${r.round}: ${Object.entries(r.rolls).map(([id, val]) => `${playerName(id)} ${val}`).join(', ')}`).join(' · ')}</div>` : ''}
-  `;
+  </div>`;
+  root.innerHTML = tableFrameHtml(centerHtml, { mode: 'roll-center', stageClass: 'roll-stage' });
   attachTableSeatHandlers(root);
 }
 
@@ -638,45 +653,46 @@ function backupDealPanel(combat) {
 
 function renderCombat(root) {
   const combat = state.combat;
-  const totals = combat.totals;
-  const threat = combat.threats[0];
+  const totals = combat.totals || { playerTotal: 0, threatTotal: 0, margin: 0 };
   const waiting = state.players.filter((p) => !combat.passes?.[p.id]);
   const needsYou = waiting.some((p) => p.isYou);
   const youAreDone = Boolean(combat.passes?.[me()?.id]);
   const tableCopy = combat.backupRequest
     ? `${playerName(combat.backupRequest.toPlayerId)} has a Backup request to answer.`
     : youAreDone && waiting.length
-      ? `You are marked done. Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm they are done.`
+      ? `You are done. Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm.`
       : needsYou
         ? 'Your response is needed: buff, nerf, request Backup, or tap Done — No Buffs/Nerfs.'
         : waiting.length
-          ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm they are done.`
+          ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm.`
           : 'Everyone is done buffing/nerfing. Combat resolves now.';
   const status = combatStatusText(totals);
-  root.innerHTML = `${announcementHtml()}
-    <div class="compact-table-frame">${tableSeatsHtml()}</div>
+  const foeCards = (combat.threats || []).map((t) => `<div class="v070-foe-stack-card">${cardHtml(t, { tableSmall: true })}<div class="micro v070-foe-math">STR ${Number(t.finalStrength || t.strength || 0)} · Loot ${Number(t.finalLoot || t.lootReward || 0)}</div>${(t.modifiers || []).length ? `<div class="modifier-list v070-foe-mods">${(t.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)}</span>`).join('')}</div>` : ''}</div>`).join('');
+  const playerTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('');
+  const foeTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('');
+  const centerHtml = `<div class="v070-stage combat-stage">
+    <div class="v070-stage-kicker">Combat</div>
     <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
-    <div class="table-event"><strong>Buff/Nerf window:</strong> ${escapeHtml(tableCopy)}</div>
+    <div class="table-event compact-event"><strong>Buff/Nerf window:</strong> ${escapeHtml(tableCopy)}</div>
     ${backupDealPanel(combat)}
-    <div class="pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
-    <div class="combat-layout focus-layout">
-      <div class="combat-side">
+    <div class="combat-layout v070-combat-layout">
+      <div class="combat-side player-combat-side">
         <h3>Player Side</h3>
-        <div>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
+        <div class="micro">${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
         <div class="total-big">${totals.playerTotal}</div>
-        <div class="micro">Glory + equipped Gear + Calling/Kin + Tricks. Must beat the Foe side.</div>
-        <div class="modifier-list">${combat.playedTricks.filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('')}</div>
+        <div class="modifier-list">${playerTricks}</div>
       </div>
       <div class="vs">VS</div>
-      <div class="combat-side">
+      <div class="combat-side foe-combat-side">
         <h3>Foe Side</h3>
-        <div class="card-row">${cardHtml(threat, { tableSmall: true })}</div>
         <div class="total-big">${totals.threatTotal}</div>
-        <div class="micro">Loot if defeated: ${threat.finalLoot}</div>
-        <div class="modifier-list">${(threat.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)} / Loot ${signed(m.lootDelta)}</span>`).join('')}</div>
+        <div class="modifier-list">${foeTricks}</div>
       </div>
     </div>
-  `;
+    <div class="v070-foe-row">${foeCards}</div>
+    <div class="pass-tracker v070-pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
+  </div>`;
+  root.innerHTML = tableFrameHtml(centerHtml, { mode: 'combat-center', stageClass: 'combat-stage-wrap' });
   attachTableSeatHandlers(root);
 }
 
