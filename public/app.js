@@ -433,7 +433,7 @@ function renderPhaseBanner() {
     const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
     title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
     const done = Boolean(state.combat?.passes?.[you?.id]);
-    copy = done ? `${marginText}. You are done for this buff/nerf window. Waiting on the table unless someone plays a new card.` : `${marginText}. Buff, nerf, request Backup, or confirm you are done. Combat only resolves once everyone is done.`;
+    copy = done ? `${marginText}. You are locked in. Waiting on the table unless someone plays a new card.` : `${marginText}. Play a card, ask for Backup, or confirm you are done. Combat resolves once everyone is done.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
@@ -542,7 +542,7 @@ function combatButtons() {
     if (hasPublicRole(you, 'Hexhand') && combat.activePlayerId === you.id) buttons.push(`<button data-combat-action="HEXHAND_CHARM">Hexhand: charm Foe</button>`);
   }
   if (youAreDone) buttons.push(`<button class="selected-action" disabled>✓ Done — Waiting on Others</button>`);
-  else buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No Buffs/Nerfs</button>`);
+  else buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No More Plays</button>`);
   return buttons;
 }
 
@@ -768,40 +768,58 @@ function renderCombat(root) {
   const tableCopy = combat.backupRequest
     ? `${playerName(combat.backupRequest.toPlayerId)} has a Backup request to answer.`
     : youAreDone && waiting.length
-      ? `You are done. Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm.`
+      ? `You are locked in. Waiting for ${waiting.map((p) => p.name).join(', ')}.`
       : needsYou
-        ? 'Your response is needed: buff, nerf, request Backup, or tap Done — No Buffs/Nerfs.'
+        ? 'Play a card, request Backup, use an ability, or tap Done.'
         : waiting.length
-          ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to buff, nerf, or confirm.`
-          : 'Everyone is done buffing/nerfing. Combat resolves now.';
+          ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to act or confirm.`
+          : 'Everyone is done. Combat resolves now.';
   const status = combatStatusText(totals);
-  const foeCards = (combat.threats || []).map((t) => `<div class="v070-foe-stack-card">${cardHtml(t, { tableSmall: true })}<div class="micro v070-foe-math">STR ${Number(t.finalStrength || t.strength || 0)} · Loot ${Number(t.finalLoot || t.lootReward || 0)}</div>${(t.modifiers || []).length ? `<div class="modifier-list v070-foe-mods">${(t.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)}</span>`).join('')}</div>` : ''}</div>`).join('');
+  const resultClass = totals.wins ? 'winning' : 'losing';
+  const marginText = totals.wins ? `Winning by ${Math.abs(totals.margin || 0)}` : Number(totals.margin || 0) === 0 ? 'Tied — normally losing' : `Losing by ${Math.abs(totals.margin || 0)}`;
+  const foeCards = (combat.threats || []).map((t, idx) => `<div class="v077-foe-hero ${idx === 0 ? 'primary-foe' : 'extra-foe'}">
+      ${cardHtml(t, { feature: true })}
+      <div class="v077-foe-ribbon"><span>STR ${Number(t.finalStrength || t.strength || 0)}</span><span>${Number(t.finalLoot || t.lootReward || 0)} Loot</span></div>
+      ${(t.modifiers || []).length ? `<div class="modifier-list v077-foe-mods">${(t.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)}</span>`).join('')}</div>` : ''}
+    </div>`).join('');
   const playerTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('');
   const foeTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('');
-  const centerHtml = `<div class="v070-stage combat-stage">
-    <div class="v070-stage-kicker">Combat</div>
-    <div class="combat-status ${totals.wins ? 'winning' : 'losing'}"><strong>${escapeHtml(status.headline)}</strong><span>${escapeHtml(status.detail)}</span></div>
-    <div class="table-event compact-event"><strong>Buff/Nerf window:</strong> ${escapeHtml(tableCopy)}</div>
-    ${backupDealPanel(combat)}
-    <div class="combat-layout v070-combat-layout">
-      <div class="combat-side player-combat-side">
-        <h3>Player Side</h3>
-        <div class="micro">${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</div>
-        <div class="total-big">${totals.playerTotal}</div>
+  const centerHtml = `<div class="v077-combat-stage">
+    <div class="v077-combat-topper">
+      <span class="v077-kicker">Combat</span>
+      <strong class="${resultClass}">${escapeHtml(marginText)}</strong>
+      <span>${escapeHtml(tableCopy)}</span>
+    </div>
+    <div class="v077-foe-showcase ${combat.threats?.length > 1 ? 'multi' : 'single'}">
+      ${foeCards || '<div class="empty-zone">No Foes in combat.</div>'}
+    </div>
+    <div class="v077-combat-scoreboard ${resultClass}">
+      <div class="score-side player-score">
+        <span class="score-label">Player Side</span>
+        <b>${Number(totals.playerTotal || 0)}</b>
+        <small>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</small>
         <div class="modifier-list">${playerTricks}</div>
       </div>
-      <div class="vs">VS</div>
-      <div class="combat-side foe-combat-side">
-        <h3>Foe Side</h3>
-        <div class="total-big">${totals.threatTotal}</div>
+      <div class="v077-versus">VS</div>
+      <div class="score-side foe-score">
+        <span class="score-label">Foe Side</span>
+        <b>${Number(totals.threatTotal || 0)}</b>
+        <small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small>
         <div class="modifier-list">${foeTricks}</div>
       </div>
     </div>
-    ${combatBreakdownHtml(combat, totals)}
-    <div class="v070-foe-row">${foeCards}</div>
-    <div class="pass-tracker v070-pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
+    <div class="v077-combat-result ${resultClass}">
+      <strong>${escapeHtml(status.headline)}</strong>
+      <span>${escapeHtml(status.detail)}</span>
+    </div>
+    ${backupDealPanel(combat)}
+    <details class="v077-math-details">
+      <summary>View combat math</summary>
+      ${combatBreakdownHtml(combat, totals)}
+    </details>
+    <div class="pass-tracker v070-pass-tracker v077-pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
   </div>`;
-  root.innerHTML = tableFrameHtml(centerHtml, { mode: 'combat-center', stageClass: 'combat-stage-wrap' });
+  root.innerHTML = tableFrameHtml(centerHtml, { mode: 'combat-center v077-combat-mode', stageClass: 'combat-stage-wrap v077-combat-wrap' });
   attachTableSeatHandlers(root);
 }
 
@@ -821,11 +839,11 @@ function ownsVisibleCard(card) {
 }
 
 function passPill(p, passed) {
-  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Done' : 'Can buff/nerf'}</span></div>`;
+  return `<div class="pass-pill ${passed ? 'passed' : 'waiting'} ${p.isYou ? 'you' : ''}"><strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span class="micro">${passed ? 'Done' : 'Can play'}</span></div>`;
 }
 
 function passSummary(passes) {
-  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'done' : 'buff/nerf?' }`).join(' · ');
+  return state.players.map((p) => `${p.name}: ${passes?.[p.id] ? 'done' : 'play?' }`).join(' · ');
 }
 
 function renderPrompt() {

@@ -1,16 +1,15 @@
-# Loot Goblins v0.7.6 — Theme Skin / Heart & Soul Pass
+# Loot Goblins v0.7.7 — Extreme Stylization + Combat Overhaul
 
-This version keeps the locked mechanics and the v0.7 table/card/motion direction, then pushes the whole app toward the Loot Goblins identity: a cozy-chaotic dungeon tavern table where greedy little adventurers take a stupidly dangerous card game very seriously.
+This build pushes the visual direction much harder: chunky goblin tavern styling, a stronger splash/lobby logo treatment, more crooked hand-built UI shapes, and a combat layout where the Foe card is the centerpiece.
 
-## Main changes
+## Highlights
 
-- Themed the entry screen and lobby so they feel like part of the game world, not plain setup screens.
-- Added a tavern-table visual layer: wood, felt, candle glow, parchment panels, coin/torch accents, and stronger tabletop atmosphere.
-- Improved Chamber and Loot deck identities with distinct backs and stack treatments.
-- Added game-object icon language for Glory, Loot, Junk, Strength, Flee, and deck piles.
-- Themed player seats, table announcements, prompts, buttons, and hand panels.
-- Preserved v0.7.4 combat math and compact hand clarity.
+- New bold Loot Goblins crest treatment on splash/resume/lobby screens.
+- Much more stylized goblin tavern table presentation.
+- Combat reworked so the Foe card sits front and center in larger card proportions.
+- Combat totals/details now sit beneath the Foe rather than competing with it.
+- Buff/Nerf explanatory panel removed from the combat table; action buttons carry the interaction.
+- Combat math is now tucked into a collapsible `View combat math` section.
+- Compact hand direction preserved and slightly pushed further into a physical goblin drawer/tray style.
 
-## Version
-
-`/health` reports `0.7.6-stylization-hand-redesign`.
+`/health` reports `0.7.7-extreme-stylization-combat-overhaul`.

@@ -3378,3 +3378,441 @@ button:active { transform: translateY(2px); box-shadow: 0 5px 0 rgba(0,0,0,.16),
   .hand-card.compact-v076 .hand-card-name { font-size: .59rem; }
   .hand-card.compact-v076 .hand-card-main { font-size: .49rem; }
 }
+
+/* v0.7.7 — Extreme Stylization + Combat Layout Overhaul
+   More goblin-owned, chunky, crooked, toy-like, and less sterile. */
+:root {
+  --goblin-lime: #b8ff57;
+  --goblin-mint: #45f0b0;
+  --goblin-pink: #ff5fae;
+  --goblin-orange: #ff9b2f;
+  --goblin-purple: #7d4dff;
+  --goblin-ink: #190d08;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% 16%, rgba(184,255,87,.20), transparent 18rem),
+    radial-gradient(circle at 85% 10%, rgba(255,95,174,.18), transparent 20rem),
+    radial-gradient(circle at 55% 105%, rgba(255,155,47,.22), transparent 30rem),
+    repeating-linear-gradient(28deg, rgba(255,255,255,.025) 0 2px, transparent 2px 18px),
+    linear-gradient(135deg, #180b0a, #28100d 48%, #0b1415);
+}
+body::after {
+  content: '✦  ☠  ✧  ⚒  ✦';
+  position: fixed;
+  left: -8vw;
+  right: -8vw;
+  bottom: 1.5vh;
+  z-index: -1;
+  color: rgba(255,224,131,.045);
+  font-size: clamp(4rem, 14vw, 12rem);
+  font-weight: 1000;
+  letter-spacing: .25em;
+  transform: rotate(-4deg);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Big goofy logo crest */
+.brand-crest.loot-logo {
+  width: min(210px, 78vw);
+  height: auto;
+  min-height: 96px;
+  padding: 12px 18px 14px;
+  border-radius: 28px 18px 32px 20px;
+  grid-template-rows: auto auto auto;
+  gap: 0;
+  transform: rotate(-4deg);
+  background:
+    radial-gradient(circle at 20% 12%, rgba(255,255,255,.75), transparent 17%),
+    radial-gradient(circle at 85% 12%, rgba(184,255,87,.36), transparent 28%),
+    linear-gradient(145deg, #ffe077 0%, #ff9b2f 52%, #9c4a24 100%);
+  border: 5px solid #2a1408;
+  outline: 3px solid rgba(255,237,180,.75);
+  box-shadow: 0 22px 32px rgba(0,0,0,.42), 7px 8px 0 rgba(0,0,0,.22), inset 0 -9px 0 rgba(87,38,14,.24);
+  color: #230e06;
+  text-align: center;
+}
+.brand-crest.loot-logo .logo-horns {
+  display: block;
+  font-size: 1.15rem;
+  line-height: 1;
+  transform: rotate(8deg);
+  color: #35160a;
+}
+.brand-crest.loot-logo .logo-word,
+.brand-crest.loot-logo .logo-gob {
+  display: block;
+  font-weight: 1000;
+  letter-spacing: -.04em;
+  line-height: .82;
+  text-shadow: 2px 2px 0 rgba(255,255,255,.22), -2px 3px 0 rgba(0,0,0,.12);
+}
+.brand-crest.loot-logo .logo-word { font-size: clamp(2.35rem, 10vw, 4.2rem); }
+.brand-crest.loot-logo .logo-gob { font-size: clamp(1.35rem, 6vw, 2.4rem); color: #4f1a0f; }
+.lobby-mark.loot-logo { margin-inline: auto; transform: rotate(3deg); }
+
+.tavern-hero,
+.tavern-lobby {
+  border-width: 5px;
+  border-radius: 34px 24px 42px 22px;
+  border-color: rgba(255,224,131,.50);
+  background:
+    radial-gradient(circle at 16% 18%, rgba(184,255,87,.22), transparent 18rem),
+    radial-gradient(circle at 92% 15%, rgba(255,95,174,.17), transparent 16rem),
+    repeating-linear-gradient(-8deg, rgba(255,255,255,.032) 0 3px, transparent 3px 22px),
+    linear-gradient(145deg, #6b3a20, #2a1411 66%, #130b0b);
+  box-shadow: 0 26px 60px rgba(0,0,0,.48), 10px 12px 0 rgba(0,0,0,.16), inset 0 0 0 3px rgba(255,255,255,.06);
+}
+.tavern-hero h1,
+.tavern-lobby h1 {
+  color: #fff0b5;
+  text-shadow: 3px 4px 0 rgba(0,0,0,.26), 0 0 22px rgba(255,178,61,.18);
+  letter-spacing: -.055em;
+}
+.tavern-hero::after,
+.tavern-lobby::after {
+  content: 'goblin approved • probably safe • no refunds';
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(184,255,87,.16);
+  border: 2px dashed rgba(184,255,87,.42);
+  color: #dfff92;
+  font-size: .55rem;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transform: rotate(4deg);
+}
+
+/* Crooked, chunky table. */
+.felt-table.v070-table.v076-table {
+  border-radius: 42px 54px 38px 50px;
+  border: 10px solid #512a16;
+  outline: 4px solid rgba(255,224,131,.25);
+  background:
+    radial-gradient(ellipse at center, rgba(50, 158, 100, .96), rgba(17, 83, 61, .96) 52%, #6b351c 53%, #2d160e 100%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 2px, transparent 2px 18px);
+  box-shadow:
+    0 35px 80px rgba(0,0,0,.58),
+    9px 11px 0 rgba(0,0,0,.20),
+    inset 0 0 0 6px rgba(255,231,163,.10),
+    inset 0 0 0 17px rgba(24,11,6,.26),
+    inset 0 0 85px rgba(0,0,0,.48);
+}
+.felt-table.v070-table.v076-table::after {
+  content: '';
+  position: absolute;
+  inset: 18% 15%;
+  border-radius: 50%;
+  border: 3px dashed rgba(255,242,190,.13);
+  box-shadow: inset 0 0 40px rgba(255,232,146,.05);
+  pointer-events: none;
+}
+.v070-center-stage {
+  z-index: 1;
+  border-radius: 32px 24px 38px 26px;
+  border: 3px solid rgba(255,242,190,.14);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255,241,180,.09), transparent 32%),
+    radial-gradient(circle at 18% 90%, rgba(184,255,87,.08), transparent 22%),
+    rgba(0,0,0,.10);
+}
+
+/* Make props bigger/wackier but still secondary. */
+.v076-table .board-pile {
+  border-width: 3px;
+  border-radius: 18px 14px 20px 13px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12), transparent 34%),
+    rgba(25,12,9,.44);
+  box-shadow: 0 10px 0 rgba(0,0,0,.18), 0 16px 24px rgba(0,0,0,.25), inset 0 0 0 2px rgba(255,255,255,.045);
+}
+.v076-table .board-pile:nth-child(2) { transform: rotate(2.2deg); }
+.v076-table .table-stack span { border-width: 2px; border-radius: 7px; }
+
+/* Seats become goofy goblin coasters. */
+.v076-table .table-seat {
+  border-width: 3px;
+  border-radius: 18px 12px 20px 13px;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(184,255,87,.14), transparent 38%),
+    linear-gradient(180deg, rgba(255,255,255,.12), transparent 28%),
+    linear-gradient(145deg, rgba(95,55,27,.92), rgba(29,16,15,.88));
+  box-shadow: 6px 7px 0 rgba(0,0,0,.18), 0 10px 18px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.v076-table .table-seat::before {
+  content: '☞';
+  position: absolute;
+  right: 5px;
+  top: -8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #b8ff57, #39be71);
+  color: #13220a;
+  border: 2px solid rgba(255,255,255,.36);
+  box-shadow: 0 4px 8px rgba(0,0,0,.25);
+  transform: rotate(12deg);
+  opacity: .9;
+}
+.v076-table .table-seat.active::before { content: '★'; background: linear-gradient(135deg, #ffe077, #ff9b2f); }
+.v076-table .table-seat.dead::before { content: '☠'; background: linear-gradient(135deg, #73606e, #251520); color: #fff; }
+
+/* Physical, uneven buttons. */
+button {
+  border-width: 3px;
+  border-radius: 15px 11px 17px 10px;
+  font-weight: 1000;
+  letter-spacing: -.015em;
+  box-shadow: 5px 6px 0 rgba(0,0,0,.20), 0 9px 16px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.08);
+}
+button.primary {
+  border-color: #2e1608;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.35), transparent 34%),
+    linear-gradient(135deg, #ffef8b, #ff9b2f 58%, #ce522e);
+  color: #211005;
+}
+button.danger, button.bad { background: linear-gradient(135deg, #ff827a, #a72328); }
+
+/* Extreme combat layout: Foe is the stage. */
+.v077-combat-wrap { align-content: center; }
+.v077-combat-stage {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  align-content: start;
+  padding: 4px 2px;
+}
+.v077-combat-topper {
+  width: min(100%, 680px);
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 3px solid rgba(255,226,154,.18);
+  border-radius: 18px 12px 20px 13px;
+  background: rgba(23,12,12,.48);
+  box-shadow: 5px 6px 0 rgba(0,0,0,.14);
+}
+.v077-kicker {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff5fae, #7d4dff);
+  color: white;
+  font-weight: 1000;
+  font-size: .66rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  transform: rotate(-3deg);
+}
+.v077-combat-topper strong { color: #ffe077; font-size: .95rem; }
+.v077-combat-topper strong.winning { color: #b8ff57; }
+.v077-combat-topper strong.losing { color: #ff9b8e; }
+.v077-combat-topper span:last-child { color: rgba(255,242,211,.78); font-size: .78rem; line-height: 1.12; }
+
+.v077-foe-showcase {
+  width: 100%;
+  min-height: 285px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 4px 2px;
+  perspective: 900px;
+}
+.v077-foe-showcase.multi {
+  justify-content: flex-start;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-inline: 10px;
+}
+.v077-foe-showcase::-webkit-scrollbar { display: none; }
+.v077-foe-hero {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  scroll-snap-align: center;
+  transform: rotate(var(--foe-tilt, -1.5deg));
+}
+.v077-foe-hero:nth-child(2n) { --foe-tilt: 1.4deg; }
+.v077-foe-hero .card.feature-card {
+  width: min(52vw, 260px);
+  min-width: 190px;
+  max-width: 278px;
+  aspect-ratio: 2.5 / 3.5;
+  min-height: unset;
+  padding: 11px;
+  border-width: 5px;
+  border-radius: 22px 17px 24px 15px;
+  box-shadow: 11px 13px 0 rgba(0,0,0,.20), 0 25px 44px rgba(0,0,0,.38), inset 0 0 0 2px rgba(255,255,255,.25);
+}
+.v077-foe-hero.extra-foe .card.feature-card { width: min(42vw, 218px); min-width: 155px; }
+.v077-foe-hero .card.feature-card .title { font-size: clamp(1rem, 3.6vw, 1.45rem); line-height: .95; }
+.v077-foe-hero .card.feature-card .art {
+  min-height: 32%;
+  border-radius: 16px 12px 18px 12px;
+  font-size: 3.4rem;
+  background:
+    radial-gradient(circle at 50% 40%, var(--card-accent-soft), transparent 55%),
+    repeating-linear-gradient(-15deg, rgba(0,0,0,.05) 0 4px, transparent 4px 11px),
+    rgba(255,255,255,.18);
+}
+.v077-foe-hero .card.feature-card .text { font-size: .78rem; line-height: 1.08; }
+.v077-foe-hero .card.feature-card .flavor { font-size: .66rem; line-height: 1.05; }
+.v077-foe-ribbon {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: -16px;
+  z-index: 3;
+}
+.v077-foe-ribbon span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #281205;
+  background: linear-gradient(135deg, #fff0a2, #ff9b2f);
+  border: 2px solid rgba(42,18,5,.65);
+  font-weight: 1000;
+  font-size: .74rem;
+  box-shadow: 0 5px 0 rgba(0,0,0,.18);
+}
+.v077-foe-mods { max-width: min(80vw, 260px); justify-content: center; }
+
+.v077-combat-scoreboard {
+  width: min(100%, 640px);
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 4px solid rgba(255,226,154,.20);
+  border-radius: 24px 16px 26px 17px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,224,131,.12), transparent 60%),
+    rgba(10,8,8,.45);
+  box-shadow: 7px 8px 0 rgba(0,0,0,.18), inset 0 0 0 2px rgba(255,255,255,.04);
+}
+.score-side {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 7px;
+  border-radius: 18px 12px 20px 13px;
+  background: rgba(255,255,255,.07);
+  border: 2px solid rgba(255,255,255,.08);
+}
+.score-side b { font-size: clamp(2rem, 9vw, 4rem); line-height: .9; color: #fff2c5; text-shadow: 4px 4px 0 rgba(0,0,0,.22); }
+.score-label { font-size: .58rem; font-weight: 1000; letter-spacing: .12em; text-transform: uppercase; color: #ffd981; }
+.score-side small { color: rgba(255,242,211,.70); font-weight: 800; text-align: center; }
+.v077-versus {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #220f07;
+  background: linear-gradient(135deg, #b8ff57, #45f0b0);
+  border: 3px solid rgba(255,255,255,.48);
+  font-weight: 1000;
+  transform: rotate(-8deg);
+  box-shadow: 5px 6px 0 rgba(0,0,0,.20);
+}
+.v077-combat-scoreboard.winning .player-score { outline: 3px solid rgba(184,255,87,.35); }
+.v077-combat-scoreboard.losing .foe-score { outline: 3px solid rgba(255,95,95,.35); }
+
+.v077-combat-result {
+  width: min(100%, 640px);
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  padding: 8px 10px;
+  border-radius: 18px 12px 20px 13px;
+  border: 3px solid rgba(255,226,154,.16);
+  background: rgba(0,0,0,.22);
+}
+.v077-combat-result strong { color: #fff0bd; }
+.v077-combat-result.winning strong { color: #b8ff57; }
+.v077-combat-result.losing strong { color: #ff9b8e; }
+.v077-combat-result span { color: rgba(255,242,211,.75); font-size: .82rem; }
+
+.v077-math-details {
+  width: min(100%, 700px);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.v077-math-details summary {
+  cursor: pointer;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255,224,131,.14);
+  border: 2px solid rgba(255,224,131,.23);
+  color: #ffe4a3;
+  font-weight: 1000;
+  list-style: none;
+}
+.v077-math-details summary::-webkit-details-marker { display:none; }
+.v077-math-details[open] summary { margin-bottom: 8px; }
+.v077-math-details .combat-breakdown-panel { margin: 0; }
+.v077-pass-tracker { width: min(100%, 640px); justify-content: center; }
+.v077-pass-tracker .pass-pill { border-radius: 999px; transform: rotate(var(--pill-tilt, -.7deg)); }
+.v077-pass-tracker .pass-pill:nth-child(2n) { --pill-tilt: .9deg; }
+
+/* Hide old explanatory combat window clutter if any remains. */
+.v077-combat-stage .table-event.compact-event,
+.v077-combat-stage .combat-status,
+.v077-combat-stage .v070-combat-layout,
+.v077-combat-stage .v070-foe-row { display: none !important; }
+
+/* Keep hand direction, but make it feel more like a goblin drawer. */
+.v076-hand-tray {
+  border-width: 3px;
+  border-color: rgba(255,224,131,.22);
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.34), rgba(0,0,0,.12)),
+    repeating-linear-gradient(90deg, rgba(184,255,87,.035) 0 3px, transparent 3px 20px),
+    rgba(82,42,23,.34);
+  box-shadow: inset 0 11px 20px rgba(0,0,0,.32), 0 -8px 0 rgba(0,0,0,.13);
+}
+.hand-card.compact-v076 {
+  border-radius: 17px 11px 16px 10px;
+  box-shadow: 5px 6px 0 rgba(0,0,0,.18), 0 9px 15px rgba(0,0,0,.24), inset 0 0 0 2px rgba(255,255,255,.30);
+}
+.hand-card.compact-v076 .hand-card-name { letter-spacing: -.045em; }
+
+@media (max-width: 640px) {
+  .v077-combat-topper { grid-template-columns: 1fr; text-align:center; justify-items:center; gap: 5px; }
+  .v077-foe-showcase { min-height: 245px; }
+  .v077-foe-hero .card.feature-card { width: min(68vw, 235px); min-width: 176px; }
+  .v077-combat-scoreboard { grid-template-columns: minmax(0,1fr) 38px minmax(0,1fr); gap: 5px; }
+  .score-side { padding: 6px 5px; }
+  .score-side b { font-size: 2.25rem; }
+  .v077-versus { width: 38px; height: 38px; font-size: .8rem; }
+  .v077-combat-result span { font-size: .74rem; }
+}
+
+@media (max-width: 420px) {
+  .v077-foe-showcase { min-height: 220px; }
+  .v077-foe-hero .card.feature-card { width: min(74vw, 212px); min-width: 160px; padding: 8px; }
+  .v077-foe-hero .card.feature-card .text { display: none; }
+  .v077-foe-hero .card.feature-card .flavor { display: none; }
+  .v077-foe-ribbon span { font-size: .66rem; padding: 4px 6px; }
+  .v077-combat-scoreboard { padding: 6px; }
+  .score-label { font-size: .50rem; }
+  .score-side small { font-size: .62rem; }
+}
