@@ -907,19 +907,38 @@ function isCardPlayable(card) {
   return false;
 }
 
+
+function cardTypeClass(card) {
+  return `card-type-${String(card?.type || 'card').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
+function cardTypeIcon(card) {
+  const t = String(card?.type || '').toUpperCase();
+  if (t === 'THREAT') return '☠';
+  if (t === 'HEX') return '✦';
+  if (t === 'GEAR') return '⚒';
+  if (t === 'TRICK') return '✹';
+  if (t === 'THREAT_MODIFIER') return '⬆';
+  if (t === 'ROLE') return '★';
+  if (t === 'ORIGIN') return '◆';
+  if (t === 'SPECIAL') return '✧';
+  return '•';
+}
+
 function cardHtml(card, opts = {}) {
   if (!card) return '';
   if (opts.compact) return compactCardHtml(card, opts);
-  const classes = ['card'];
+  const classes = ['card', cardTypeClass(card)];
   if (opts.tableSmall) classes.push('table-small');
+  if (opts.feature) classes.push('feature-card');
   if (opts.playable) classes.push('playable');
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   const bottom = cardBottom(card);
   return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
-    <div class="type">${escapeHtml(typeLabel(card))}</div>
+    <div class="type"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
     <div class="title">${escapeHtml(card.publicName)}</div>
-    <div class="art">ART</div>
+    <div class="art"><span>${escapeHtml(cardTypeIcon(card))}</span></div>
     <div class="text">${escapeHtml(card.publicText || '')}</div>
     ${card.flavorText ? `<div class="flavor">${escapeHtml(card.flavorText)}</div>` : ''}
     ${card.attachmentNames?.length ? `<div class="micro attached-line">Attached: ${escapeHtml(card.attachmentNames.join(', '))}</div>` : ''}
@@ -928,14 +947,14 @@ function cardHtml(card, opts = {}) {
 }
 
 function compactCardHtml(card, opts = {}) {
-  const classes = ['hand-card'];
+  const classes = ['hand-card', cardTypeClass(card)];
   if (opts.playable) classes.push('playable');
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   if (card.fresh) classes.push('new-card');
   return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}">
     ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
-    <div class="hand-card-type">${escapeHtml(typeLabel(card))}</div>
+    <div class="hand-card-type"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
     <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
     <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
     <div class="hand-card-sub">${escapeHtml(cardGlanceSub(card))}</div>
@@ -998,7 +1017,19 @@ function inspectCard(card) {
   if (card.fresh) emitAction('MARK_CARD_SEEN', { cardId: card.instanceId });
   const root = $('inspectContent');
   const actions = cardActions(card);
-  root.innerHTML = `<div class="inspect-layout"><div>${cardHtml(card)}</div><div><h2>${escapeHtml(card.publicName)}</h2><p>${escapeHtml(card.publicText || '')}</p>${card.flavorText ? `<p class="inspect-flavor">${escapeHtml(card.flavorText)}</p>` : ''}<div class="action-list">${actions}</div></div></div>`;
+  const statLine = cardBottom(card);
+  root.innerHTML = `<div class="inspect-layout inspect-v071">
+    <div class="inspect-preview">${cardHtml(card, { feature: true })}</div>
+    <div class="inspect-copy">
+      <div class="inspect-kicker"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
+      <h2>${escapeHtml(card.publicName)}</h2>
+      ${statLine ? `<div class="inspect-stat-row"><span>${escapeHtml(statLine)}</span></div>` : ''}
+      <section class="inspect-section"><h3>Rules</h3><p>${escapeHtml(card.publicText || 'No rules text.')}</p></section>
+      ${card.flavorText ? `<section class="inspect-section flavor-section"><h3>Flavor</h3><p class="inspect-flavor">${escapeHtml(card.flavorText)}</p></section>` : ''}
+      ${(card.attachmentNames || []).length ? `<section class="inspect-section"><h3>Attached</h3><p>${escapeHtml(card.attachmentNames.join(', '))}</p></section>` : ''}
+      <section class="inspect-section"><h3>Actions</h3><div class="action-list inspect-actions">${actions}</div></section>
+    </div>
+  </div>`;
   root.querySelectorAll('[data-inspect-action]').forEach((btn) => btn.addEventListener('click', () => {
     const a = btn.dataset.inspectAction;
     closeInspect();

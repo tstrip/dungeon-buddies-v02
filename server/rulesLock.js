@@ -98,7 +98,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
   ];
 
   return {
-    version: '0.7.0-table-layout-redesign',
+    version: '0.7.1-card-frame-inspector',
     ok: gates.every((gate) => gate.ok),
     status: gates.every((gate) => gate.ok) ? 'MECHANICS_LOCK_CANDIDATE' : 'NEEDS_ATTENTION',
     gates,
@@ -109,7 +109,7 @@ function buildRulesLockReport(chamberCards, lootCards, rooms = new Map()) {
     },
     qaNotes: [
       'This endpoint is a static and runtime guardrail, not a substitute for full human playtesting.',
-      'The next milestone after a clean v0.7.0 test is visual/table overhaul, not additional core mechanics.'
+      'The next milestone after a clean v0.7.1 test is visual/table overhaul, not additional core mechanics.'
     ]
   };
 }

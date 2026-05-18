@@ -1,8 +1,8 @@
 {
   "name": "loot-goblins-v070",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
-  "description": "Loot Goblins v0.7.0: table layout redesign while preserving the locked classic-style card engine.",
+  "description": "Loot Goblins v0.7.1: card frame and inspector redesign while preserving the locked classic-style card engine.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

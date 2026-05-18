@@ -1453,3 +1453,263 @@ body {
   .hand-panel { border-radius: 15px; padding: 6px; }
   .hand-card { flex-basis: 72px; width: 72px; height: 98px; }
 }
+
+/* v0.7.1 — Card Frame + Inspector Redesign
+   Larger center-card presentation, clearer card-type framing, and a more readable bottom-sheet inspector. */
+.card,
+.hand-card {
+  --card-accent: rgba(245,189,88,.88);
+  --card-accent-soft: rgba(245,189,88,.18);
+  --card-ink: #291b17;
+}
+.card-type-threat, .hand-card.card-type-threat { --card-accent: #ff7f79; --card-accent-soft: rgba(255,127,121,.22); }
+.card-type-hex, .hand-card.card-type-hex { --card-accent: #b794ff; --card-accent-soft: rgba(183,148,255,.22); }
+.card-type-gear, .hand-card.card-type-gear { --card-accent: #d2a56a; --card-accent-soft: rgba(210,165,106,.24); }
+.card-type-trick, .hand-card.card-type-trick { --card-accent: #8fe3cf; --card-accent-soft: rgba(143,227,207,.22); }
+.card-type-threat-modifier, .hand-card.card-type-threat-modifier { --card-accent: #ffb86b; --card-accent-soft: rgba(255,184,107,.24); }
+.card-type-role, .hand-card.card-type-role { --card-accent: #ffe083; --card-accent-soft: rgba(255,224,131,.22); }
+.card-type-origin, .hand-card.card-type-origin { --card-accent: #9de37f; --card-accent-soft: rgba(157,227,127,.22); }
+.card-type-special, .hand-card.card-type-special { --card-accent: #f8f2df; --card-accent-soft: rgba(248,242,223,.20); }
+
+.card {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid color-mix(in srgb, var(--card-accent) 72%, #3d2a25);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.40), rgba(255,255,255,0) 18%),
+    radial-gradient(circle at 50% 0%, var(--card-accent-soft), transparent 46%),
+    linear-gradient(150deg, #fbedd2, #d8c2a0 58%, #b9956f);
+  color: var(--card-ink);
+  box-shadow: 0 12px 28px rgba(0,0,0,.32), inset 0 0 0 1px rgba(255,255,255,.44);
+}
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 8px;
+  background: linear-gradient(90deg, transparent, var(--card-accent), transparent);
+  opacity: .92;
+}
+.card .type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  color: #2f1d16;
+  background: var(--card-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--card-accent) 70%, transparent);
+  border-radius: 999px;
+  padding: 3px 7px;
+  line-height: 1;
+}
+.card .type span { font-size: .9em; }
+.card .title {
+  color: #261810;
+  text-shadow: 0 1px rgba(255,255,255,.25);
+  line-height: 1.02;
+}
+.card .art {
+  position: relative;
+  min-height: 54px;
+  border: 1px solid rgba(48,30,25,.23);
+  background:
+    radial-gradient(circle at 35% 25%, color-mix(in srgb, var(--card-accent) 46%, #fff0d6), transparent 26%),
+    linear-gradient(135deg, color-mix(in srgb, var(--card-accent) 55%, #705046), #4b3031);
+  color: rgba(255,255,255,.72);
+  box-shadow: inset 0 0 18px rgba(0,0,0,.24);
+}
+.card .art span {
+  font-size: 1.55rem;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
+}
+.card .text,
+.card .flavor,
+.card .stats,
+.card .micro {
+  color: #2b1e19;
+}
+.card .flavor {
+  border-top: 1px solid rgba(45,31,25,.18);
+  opacity: .82;
+}
+.card .stats {
+  background: rgba(255,255,255,.32);
+  border-top: 1px solid rgba(45,31,25,.16);
+  margin-inline: -2px;
+  padding-top: 4px;
+}
+
+/* Make the active/revealed card feel like the table's main object instead of a narrow thumbnail. */
+.v070-default-center .center-zone {
+  min-height: clamp(280px, 43vh, 440px);
+  padding: clamp(10px, 2.4vw, 18px);
+}
+.center-card-slot {
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  margin-top: 12px;
+}
+.center-card-slot .card.table-small {
+  transform: none;
+  width: min(62vw, 228px);
+  flex-basis: min(62vw, 228px);
+  min-height: clamp(250px, 40vh, 340px);
+  font-size: .92rem;
+  margin-bottom: 0;
+  border-radius: 18px;
+}
+.center-card-slot .card.table-small .art { min-height: clamp(72px, 13vh, 112px); }
+.center-card-slot .card.table-small .text {
+  font-size: .76rem;
+  line-height: 1.16;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+}
+.center-card-slot .card.table-small .flavor {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: .68rem;
+}
+
+/* Hand cards become clearer app tiles with type color and one-line glance info. */
+.hand-card {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--card-accent) 56%, rgba(255,255,255,.14));
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.36), rgba(255,255,255,0) 26%),
+    radial-gradient(circle at 50% -6%, var(--card-accent-soft), transparent 44%),
+    linear-gradient(145deg, #f3e2c4, #c8b28f);
+  color: #21150f;
+  box-shadow: 0 8px 18px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.38);
+}
+.hand-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: var(--card-accent);
+  opacity: .9;
+}
+.hand-card-type {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #402a1d;
+}
+.hand-card-type span { font-size: .9em; }
+.hand-card-name { color: #20140f; }
+.hand-card-main {
+  color: #20140f;
+  background: rgba(255,255,255,.28);
+  border-radius: 7px;
+  padding: 2px 3px;
+}
+.hand-card-sub { color: rgba(32,20,15,.76); }
+
+/* Inspector becomes a readable sheet instead of a cramped modal. */
+.inspect-overlay {
+  align-items: end;
+  padding: 10px;
+  background: rgba(5,4,7,.64);
+  backdrop-filter: blur(8px);
+}
+.inspect-card {
+  width: min(940px, 100%);
+  max-height: min(88vh, 820px);
+  border-radius: 26px 26px 18px 18px;
+  background: linear-gradient(160deg, rgba(33,26,35,.98), rgba(17,13,22,.99));
+  border-color: rgba(245,189,88,.20);
+  box-shadow: 0 -16px 42px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.04);
+}
+.inspect-v071 {
+  grid-template-columns: minmax(170px, 240px) minmax(0, 1fr);
+  gap: 18px;
+}
+.inspect-preview { display: grid; justify-items: center; align-content: start; }
+.inspect-preview .card.feature-card {
+  width: min(100%, 230px);
+  min-height: 322px;
+  border-radius: 20px;
+}
+.inspect-preview .card.feature-card .art { min-height: 98px; }
+.inspect-preview .card.feature-card .text { font-size: .78rem; line-height: 1.16; }
+.inspect-copy { min-width: 0; display: grid; gap: 10px; align-content: start; }
+.inspect-kicker {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(245,189,88,.10);
+  border: 1px solid rgba(245,189,88,.20);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 1000;
+  font-size: .68rem;
+}
+.inspect-copy h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 5vw, 2.25rem);
+  line-height: 1.02;
+}
+.inspect-stat-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.inspect-stat-row span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #1c1410;
+  background: linear-gradient(135deg, #ffe29a, #d9a851);
+  font-weight: 950;
+  font-size: .78rem;
+}
+.inspect-section {
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.045);
+  border-radius: 16px;
+  padding: 10px 11px;
+}
+.inspect-section h3 {
+  margin: 0 0 5px;
+  color: var(--accent-2);
+  font-size: .72rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.inspect-section p { margin: 0; line-height: 1.35; }
+.flavor-section { background: rgba(245,189,88,.055); }
+.inspect-flavor { border: 0; padding: 0; color: rgba(255,255,255,.78); }
+.inspect-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.inspect-actions button { flex: 1 1 auto; min-width: 120px; }
+
+@media (max-width: 560px) {
+  .v070-default-center .center-zone { min-height: 252px; }
+  .center-card-slot .card.table-small {
+    width: min(68vw, 186px);
+    flex-basis: min(68vw, 186px);
+    min-height: 246px;
+  }
+  .center-card-slot .card.table-small .art { min-height: 72px; }
+  .center-card-slot .card.table-small .text { -webkit-line-clamp: 4; font-size: .66rem; }
+  .center-card-slot .card.table-small .flavor { display: none; }
+  .inspect-overlay { padding: 6px; }
+  .inspect-card { max-height: 92vh; border-radius: 22px 22px 14px 14px; padding: 12px; }
+  .inspect-v071 { grid-template-columns: 1fr; gap: 10px; }
+  .inspect-layout > div:first-child { display: grid; }
+  .inspect-preview .card.feature-card {
+    width: min(62vw, 184px);
+    min-height: 250px;
+  }
+  .inspect-preview .card.feature-card .art { min-height: 68px; }
+  .inspect-preview .card.feature-card .flavor { display: none; }
+  .inspect-copy h2 { font-size: 1.35rem; }
+  .inspect-section { padding: 9px; border-radius: 14px; }
+  .inspect-actions button { min-width: 100%; }
+}
