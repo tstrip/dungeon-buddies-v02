@@ -283,7 +283,7 @@ function tableBoardHtml(options = {}) {
 
 function tableFrameHtml(centerHtml, options = {}) {
   const move = deriveMovement();
-  return `${announcementHtml()}<div class="felt-table v070-table v073-table ${escapeHtml(options.mode || '')}">
+  return `${announcementHtml()}<div class="felt-table v070-table v073-table v076-table ${escapeHtml(options.mode || '')}">
     <div class="table-seats v070-seats">${tableSeatsHtml()}</div>
     <div class="v070-surface">
       <div class="v070-deck-column chamber-column">
@@ -349,6 +349,9 @@ function attachTableSeatHandlers(root) {
 
 function boardPile(key, label, sub, count, move) {
   const classes = ['board-pile'];
+  if (/CHAMBER/.test(key)) classes.push('pile-chamber');
+  if (/LOOT/.test(key)) classes.push('pile-loot');
+  if (/DISCARD/.test(key)) classes.push('pile-discard');
   if (move?.from === key) classes.push('source');
   if (move?.to === key) classes.push('destination');
   if (Number(count || 0) <= 0) classes.push('empty');
@@ -936,15 +939,15 @@ function renderHand() {
   const you = me();
   if (!you) { root.innerHTML = ''; return; }
   const over = you.handCount > you.handLimit;
-  let html = `<div class="hand-header"><h3>Your Hand</h3><span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span></div>`;
-  html += `<p class="micro hand-help">Compact view: tap a card to expand details and show legal actions. New cards glow until opened.</p>`;
+  let html = `<div class="hand-header v076-hand-header"><div><span class="hand-eyebrow">Bottom Tray</span><h3>Your Hand</h3></div><span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span></div>`;
+  html += `<p class="micro hand-help">Tap a tucked card tab to pull it onto the table, read it, and choose an action.</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
     html += `<p class="micro">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
-    html += `<div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, selectableTribute: true })).join('')}</div>`;
+    html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, selectableTribute: true })).join('')}</div></div>`;
     html += tributeControls(need);
   } else {
-    html += `<div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div>`;
+    html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
   }
   root.innerHTML = html;
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
@@ -1058,11 +1061,14 @@ function compactCardHtml(card, opts = {}) {
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   if (card.fresh) classes.push('new-card');
-  return `<article class="${classes.join(' ')} compact-v074" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
+  return `<article class="${classes.join(' ')} compact-v076" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
     ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
-    <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
-    <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
-    <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
+    <div class="hand-card-sigil" aria-hidden="true">${escapeHtml(cardTypeIcon(card))}</div>
+    <div class="hand-card-copy">
+      <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
+      <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
+      <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
+    </div>
     ${(card.attachmentNames || []).length ? `<div class="hand-card-attach-dot" title="Has attached cards">+</div>` : ''}
   </article>`;
 }

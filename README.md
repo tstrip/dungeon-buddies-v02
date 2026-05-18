@@ -1,4 +1,4 @@
-# Loot Goblins v0.7.5 — Theme Skin / Heart & Soul Pass
+# Loot Goblins v0.7.6 — Theme Skin / Heart & Soul Pass
 
 This version keeps the locked mechanics and the v0.7 table/card/motion direction, then pushes the whole app toward the Loot Goblins identity: a cozy-chaotic dungeon tavern table where greedy little adventurers take a stupidly dangerous card game very seriously.
 
@@ -13,4 +13,4 @@ This version keeps the locked mechanics and the v0.7 table/card/motion direction
 
 ## Version
 
-`/health` reports `0.7.5-theme-skin-pass`.
+`/health` reports `0.7.6-stylization-hand-redesign`.
