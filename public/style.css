@@ -2254,3 +2254,197 @@ body {
   .hand-card.new-card,
   .table-announcement.major { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+
+/* v0.7.4 — Combat Visualization + Compact Hand Clarity
+   Combat now explains its math, and compact hand cards are calmer, less text-heavy tiles. */
+.combat-breakdown-panel {
+  margin-top: 8px;
+  padding: 9px;
+  border-radius: 18px;
+  background: rgba(12, 11, 18, .56);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
+}
+.breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: rgba(255,255,255,.84);
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .10em;
+  font-weight: 950;
+}
+.breakdown-header strong {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: .78rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+.breakdown-header strong.good { color: #baf09a; border: 1px solid rgba(157,227,127,.28); }
+.breakdown-header strong.bad { color: #ffaaa4; border: 1px solid rgba(255,127,121,.28); }
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.breakdown-column {
+  min-width: 0;
+  border-radius: 14px;
+  padding: 8px;
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.player-breakdown { border-color: rgba(143,227,207,.14); }
+.foe-breakdown { border-color: rgba(255,127,121,.14); }
+.breakdown-title,
+.foe-math-title,
+.math-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.breakdown-title {
+  color: var(--accent-2);
+  font-size: .76rem;
+  font-weight: 1000;
+  margin-bottom: 5px;
+}
+.breakdown-title b { font-size: 1.02rem; color: white; }
+.math-line {
+  padding: 4px 0;
+  border-top: 1px solid rgba(255,255,255,.055);
+  font-size: .72rem;
+  color: rgba(255,255,255,.74);
+}
+.math-line:first-child { border-top: 0; }
+.math-line span,
+.foe-math-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.math-line b { color: rgba(255,255,255,.94); }
+.helper-line b { color: #9de37f; }
+.swing-line b { color: #8fe3cf; }
+.modifier-line b,
+.special-line b { color: #ffcf86; }
+.foe-math-card {
+  border-radius: 12px;
+  padding: 6px 7px;
+  background: rgba(0,0,0,.16);
+  border: 1px solid rgba(255,255,255,.06);
+  margin-bottom: 6px;
+}
+.foe-math-card.compact { background: rgba(255,159,67,.08); }
+.foe-math-title {
+  font-size: .75rem;
+  font-weight: 1000;
+  color: #ffd3a3;
+  margin-bottom: 2px;
+}
+.foe-math-title b { color: white; font-size: .95rem; }
+.math-footnote {
+  margin-top: 5px;
+  color: rgba(255,255,255,.52);
+  font-size: .62rem;
+  line-height: 1.25;
+}
+
+.hand-help { display: none; }
+.hand-row { gap: 6px; }
+.hand-card.compact-v074 {
+  flex-basis: 82px;
+  width: 82px;
+  height: 104px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 4px;
+  padding: 9px 6px 7px;
+  border-width: 4px;
+  border-radius: 14px;
+}
+.hand-card.compact-v074::after {
+  width: 29px;
+  height: 29px;
+  top: -7px;
+  right: -7px;
+  font-size: .72rem;
+}
+.hand-card.compact-v074 .hand-card-type,
+.hand-card.compact-v074 .hand-card-sub { display: none; }
+.hand-card-topline {
+  display: flex;
+  min-width: 0;
+  padding-right: 20px;
+}
+.mini-type {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: #231811;
+  background: color-mix(in srgb, var(--card-accent) 33%, rgba(255,255,255,.44));
+  border: 1px solid color-mix(in srgb, var(--card-accent) 54%, rgba(0,0,0,.10));
+  font-size: .48rem;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  line-height: 1;
+}
+.hand-card.compact-v074 .hand-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: #20140f;
+  font-size: .68rem;
+  font-weight: 1000;
+  line-height: 1.03;
+  align-self: center;
+}
+.hand-card.compact-v074 .hand-card-main {
+  min-height: 20px;
+  display: grid;
+  place-items: center;
+  color: #1f150f;
+  background: rgba(255,255,255,.36);
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 8px;
+  padding: 3px 3px;
+  font-size: .59rem;
+  font-weight: 1000;
+  line-height: 1;
+}
+.hand-card-attach-dot {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #1d130d;
+  background: var(--card-accent);
+  font-size: .66rem;
+  font-weight: 1000;
+}
+@media (max-width: 760px) {
+  .breakdown-grid { grid-template-columns: 1fr; gap: 6px; }
+  .combat-breakdown-panel { padding: 7px; }
+  .breakdown-header { font-size: .62rem; }
+  .breakdown-header strong { font-size: .66rem; padding: 3px 6px; }
+}
+@media (max-width: 560px) {
+  .hand-card.compact-v074 { flex-basis: 70px; width: 70px; height: 94px; padding: 8px 5px 6px; border-width: 3px; }
+  .hand-card.compact-v074 .hand-card-name { font-size: .58rem; -webkit-line-clamp: 3; }
+  .hand-card.compact-v074 .hand-card-main { font-size: .51rem; min-height: 18px; }
+  .mini-type { font-size: .42rem; padding: 2px 4px; }
+  .combat-breakdown-panel { max-height: 210px; overflow: auto; }
+  .math-line { font-size: .64rem; }
+  .foe-math-title { font-size: .66rem; }
+}

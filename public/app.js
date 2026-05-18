@@ -691,6 +691,71 @@ function backupDealPanel(combat) {
   return '';
 }
 
+
+function findPlayer(id) {
+  return (state.players || []).find((p) => p.id === id) || null;
+}
+
+function combatBreakdownHtml(combat, totals) {
+  if (!combat || !totals) return '';
+  const active = findPlayer(combat.activePlayerId);
+  const helper = combat.helperPlayerId ? findPlayer(combat.helperPlayerId) : null;
+  const playerTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'PLAYER');
+  const foeTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT');
+  const playerDelta = Number(combat.playerDelta || 0);
+  const threatDelta = Number(combat.threatDelta || 0);
+  const playerRows = [];
+  if (active) {
+    playerRows.push(`<div class="math-line"><span>${escapeHtml(active.name)} Glory</span><b>+${Number(active.renown || 0)}</b></div>`);
+    playerRows.push(`<div class="math-line"><span>${escapeHtml(active.name)} Gear/Calling</span><b>${signed(Number(active.combatBonus || 0))}</b></div>`);
+  }
+  if (helper) {
+    playerRows.push(`<div class="math-line helper-line"><span>${escapeHtml(helper.name)} Glory</span><b>+${Number(helper.renown || 0)}</b></div>`);
+    playerRows.push(`<div class="math-line helper-line"><span>${escapeHtml(helper.name)} Gear/Calling</span><b>${signed(Number(helper.combatBonus || 0))}</b></div>`);
+  }
+  if (playerDelta || playerTricks.length) {
+    const label = playerTricks.length ? `Cards/abilities: ${playerTricks.map((c) => c.publicName).join(', ')}` : 'Cards/abilities';
+    playerRows.push(`<div class="math-line swing-line"><span>${escapeHtml(label)}</span><b>${signed(playerDelta)}</b></div>`);
+  }
+  const foeRows = (combat.threats || []).map((foe) => {
+    const base = Number(foe.strength || 0);
+    const modTotal = (foe.modifiers || []).reduce((sum, m) => sum + Number(m.strengthDelta || 0), 0);
+    const final = Number(foe.finalStrength || base + modTotal);
+    const special = final - base - modTotal;
+    const mods = (foe.modifiers || []).map((m) => `<div class="math-line modifier-line"><span>${escapeHtml(m.publicName)}</span><b>${signed(Number(m.strengthDelta || 0))}</b></div>`).join('');
+    return `<div class="foe-math-card">
+      <div class="foe-math-title"><span>${escapeHtml(foe.publicName)}</span><b>${final}</b></div>
+      <div class="math-line"><span>Base strength</span><b>+${base}</b></div>
+      ${mods}
+      ${special ? `<div class="math-line special-line"><span>Special bonus</span><b>${signed(special)}</b></div>` : ''}
+    </div>`;
+  }).join('');
+  const extraFoeRow = threatDelta || foeTricks.length ? `<div class="foe-math-card compact">
+    <div class="foe-math-title"><span>Foe-side cards/abilities</span><b>${signed(threatDelta)}</b></div>
+    ${foeTricks.length ? `<div class="math-footnote">${escapeHtml(foeTricks.map((c) => c.publicName).join(', '))}</div>` : ''}
+  </div>` : '';
+  const margin = Number(totals.margin || 0);
+  const resultClass = totals.wins ? 'good' : 'bad';
+  const resultText = totals.wins ? `Winning by ${Math.abs(margin)}` : margin === 0 ? 'Tied — normally losing' : `Losing by ${Math.abs(margin)}`;
+  return `<section class="combat-breakdown-panel">
+    <div class="breakdown-header">
+      <span>Combat Math</span>
+      <strong class="${resultClass}">${escapeHtml(resultText)}</strong>
+    </div>
+    <div class="breakdown-grid">
+      <div class="breakdown-column player-breakdown">
+        <div class="breakdown-title">Player Side <b>${Number(totals.playerTotal || 0)}</b></div>
+        ${playerRows.join('') || '<div class="math-footnote">No player-side details available.</div>'}
+      </div>
+      <div class="breakdown-column foe-breakdown">
+        <div class="breakdown-title">Foe Side <b>${Number(totals.threatTotal || 0)}</b></div>
+        ${foeRows}${extraFoeRow}
+      </div>
+    </div>
+    <div class="math-footnote">Totals update as Gear, Backup, Foe Modifiers, Tricks, and Calling/Kin effects change.</div>
+  </section>`;
+}
+
 function renderCombat(root) {
   const combat = state.combat;
   const totals = combat.totals || { playerTotal: 0, threatTotal: 0, margin: 0 };
@@ -729,6 +794,7 @@ function renderCombat(root) {
         <div class="modifier-list">${foeTricks}</div>
       </div>
     </div>
+    ${combatBreakdownHtml(combat, totals)}
     <div class="v070-foe-row">${foeCards}</div>
     <div class="pass-tracker v070-pass-tracker">${state.players.map((p) => passPill(p, combat.passes?.[p.id])).join('')}</div>
   </div>`;
@@ -992,13 +1058,12 @@ function compactCardHtml(card, opts = {}) {
   if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   if (card.fresh) classes.push('new-card');
-  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
+  return `<article class="${classes.join(' ')} compact-v074" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
     ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
-    <div class="hand-card-type"><span>${escapeHtml(cardTypeIcon(card))}</span>${escapeHtml(typeLabel(card))}</div>
+    <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
     <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
     <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
-    <div class="hand-card-sub">${escapeHtml(cardGlanceSub(card))}</div>
-    ${(card.attachmentNames || []).length ? `<div class="hand-card-sub attached-line">Carrying: ${escapeHtml(card.attachmentNames.join(', '))}</div>` : ''}
+    ${(card.attachmentNames || []).length ? `<div class="hand-card-attach-dot" title="Has attached cards">+</div>` : ''}
   </article>`;
 }
 
@@ -1050,6 +1115,12 @@ function cardBottom(card) {
 function typeLabel(card) {
   const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Foe Modifier' };
   return map[card.type] || card.type;
+}
+
+
+function shortTypeLabel(card) {
+  const map = { THREAT: 'FOE', HEX: 'HEX', ROLE: 'CALL', ORIGIN: 'KIN', GEAR: 'GEAR', TRICK: 'TRICK', SPECIAL: 'SPEC', THREAT_MODIFIER: 'MOD' };
+  return map[card?.type] || String(card?.type || 'CARD').slice(0, 5);
 }
 
 function inspectCard(card) {

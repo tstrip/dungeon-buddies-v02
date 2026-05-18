@@ -1,18 +1,15 @@
-# Loot Goblins v0.7.3 — Full Animation / Motion Deep Dive
+# Loot Goblins v0.7.4 — Combat Visualization + Compact Hand Clarity
 
-This version keeps the locked v0.6 mechanics and the v0.7 table/card identity work, then pushes motion much harder.
+This version keeps the v0.7 table, card identity, and motion direction, then makes combat easier to understand and makes the hand less busy.
 
-## Focus
+## Highlights
 
-- Table-wide directional card movement.
-- Face-down card-shaped draws from Chamber/Loot decks.
-- Face-up card play movement from hand/table zones.
-- Source and destination pings on the table.
-- Stronger deck/discard pile pulse feedback.
-- Bigger dice roll animation and result landing.
-- Animated combat total pulses and modifier tuck-ins.
-- Better movement labels for draw, play, discard, reward, body-loot, and die events.
+- Adds a live Combat Math panel during fights.
+- Shows player-side contributions: Glory, Gear/Calling, helper, and cards/abilities.
+- Shows foe-side contributions: each Foe's base strength, modifiers, special bonuses, and total.
+- Shows whether the player side is winning, losing, or tied and by how much.
+- Reworks compact hand cards into calmer glanceable tiles.
+- Removes the extra compact hand subtext row that made cards feel crowded.
+- Keeps tap-to-expand inspector for full rules, flavor, stats, and actions.
 
-## Version
-
-`/health` reports `0.7.3-full-motion-animation`.
+`/health` reports `0.7.4-combat-math-hand-redesign`.
