@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.8.4-app-first-mobile-shell-v04' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.9.0-magical-mobile-play-shell-v05' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -308,7 +308,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.8.4-app-first-mobile-shell-v04',
+    version: '0.9.0-magical-mobile-play-shell-v05',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1733,11 +1733,11 @@ function setupGame(room) {
     p.extraOrigins = [];
     p.callingPermit = null;
     p.kinPermit = null;
-    drawMany(room, p, 'CHAMBER', 4, false);
-    drawMany(room, p, 'LOOT', 4, false);
+    drawMany(room, p, 'CHAMBER', 2, false);
+    drawMany(room, p, 'LOOT', 2, false);
   }
-  announce(room, 'roll', 'Opening Roll', 'Each goblin draws 4 Chamber and 4 Loot cards. Roll a d6 to see who opens the first Chamber.', null, { importance: 'major' });
-  log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
+  announce(room, 'roll', 'Opening Roll', 'Each goblin draws 2 Chamber and 2 Loot cards. Roll a d6 to see who opens the first Chamber.', null, { importance: 'major' });
+  log(room, `Game started. Each goblin drew 2 Chamber and 2 Loot cards. Roll to see who goes first.`);
 }
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
@@ -1959,7 +1959,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.8.4-app-first-mobile-shell-v04' });
+  socket.emit('ready', { version: '0.9.0-magical-mobile-play-shell-v05' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);

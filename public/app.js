@@ -460,11 +460,11 @@ function renderPhaseBanner() {
     copy = first.requiresYou ? 'Tap the die. Highest roll opens the first Chamber. Ties reroll.' : `Waiting for opening rolls from ${eligibleNames || 'the table'}.`;
     if (first.requiresYou) buttons.push(buttonHtml('Roll d6', 'ROLL_FIRST', 'primary'));
   } else if (state.phase === 'START_TURN') {
-    title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn — Open Chamber`;
+    title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn`;
     copy = isMyTurn() ? 'Open a Chamber, or play setup cards first.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) { buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
   } else if (state.phase === 'NO_THREAT_CHOICE') {
-    title = isMyTurn() ? 'No Foe — Choose Your Move' : `${active()?.name} chooses next`;
+    title = isMyTurn() ? 'No Foe — Choose Move' : `${active()?.name} chooses`;
     copy = isMyTurn() ? 'Tap a Foe to Start Trouble, or draw a hidden Chamber.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) {
       buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
@@ -497,14 +497,15 @@ function renderPhaseBanner() {
     title = isMyTurn() ? 'Tribute Required' : `${active()?.name} must resolve Tribute`;
     copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose excess cards below.` : `Waiting for ${active()?.name} to give or discard excess cards.`;
   } else if (state.phase === 'END_TURN') {
-    title = isMyTurn() ? 'End Your Turn' : `${active()?.name}'s turn is wrapping up`;
-    copy = isMyTurn() ? 'Everything required is resolved. End your turn when ready.' : `Waiting for ${active()?.name} to end their turn.`;
-    if (isMyTurn()) { buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary')); }
+    title = isMyTurn() ? 'Turn Ending' : `${active()?.name}'s turn is wrapping up`;
+    copy = isMyTurn() ? 'Tap End Turn, or sell Gear first.' : `Waiting for ${active()?.name}.`;
+    if (isMyTurn()) { buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
   } else {
     title = `${prettyPhase(state.phase)}`;
     copy = 'Follow the table prompt.';
   }
 
+  buttons = ensureCriticalActionButtons(buttons);
   root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p><div class="primary-action">${buttons.join('')}</div>`;
   root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
@@ -512,6 +513,22 @@ function renderPhaseBanner() {
   root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
 }
 
+
+
+function ensureCriticalActionButtons(buttons) {
+  const legal = state?.legalActions || [];
+  const hasAction = (action) => buttons.some((html) => String(html).includes(`data-action="${action}"`));
+  if (legal.includes('END_TURN') && !hasAction('END_TURN')) {
+    buttons.unshift(buttonHtml('End Turn', 'END_TURN', 'primary'));
+  }
+  if (legal.includes('DONE_POST_COMBAT') && !hasAction('DONE_POST_COMBAT')) {
+    buttons.unshift(buttonHtml('Done with Loot → Tribute', 'DONE_POST_COMBAT', 'primary'));
+  }
+  if (legal.includes('OPEN_CHAMBER') && !hasAction('OPEN_CHAMBER')) {
+    buttons.unshift(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
+  }
+  return buttons;
+}
 
 function reactionButtons(r) {
   if (!r?.requiresYou) return [`<span class="micro">Waiting on ${escapeHtml((r.eligiblePlayerIds || []).map(playerName).join(', ') || 'the table')}.</span>`];
@@ -637,7 +654,8 @@ function renderActiveTable() {
 function renderMobilePlayShell(root) {
   const move = deriveMovement();
   const stage = mobileStageHtml();
-  root.innerHTML = `<div class="mobile-app-shell">
+  const phaseClass = `phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  root.innerHTML = `<div class="mobile-app-shell ${phaseClass}">
     ${mobilePlayerHudHtml()}
     ${mobileDeckStripHtml(move)}
     ${stage}
@@ -671,18 +689,74 @@ function mobileStageHtml() {
   if (state.phase === 'ESCAPE' && state.escape) return mobileFleeStageHtml(state.escape);
   if (state.phase === 'ROLL_FOR_FIRST') return mobileOpeningRollStageHtml();
   if (state.phase === 'TRIBUTE') return mobileTributeStageHtml();
+  if (state.phase === 'START_TURN') return mobileStartTurnStageHtml();
+  if (state.phase === 'NO_THREAT_CHOICE') return mobileNoFoeStageHtml();
+  if (state.phase === 'POST_COMBAT') return mobilePostCombatStageHtml();
+  if (state.phase === 'END_TURN') return mobileEndTurnStageHtml();
   if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
   if (state.phase === 'GAME_OVER') return mobileGameOverStageHtml();
   return mobileRevealOrWaitingStageHtml();
 }
 
 function mobileStageShell(kind, kicker, title, bodyHtml, options = {}) {
-  return `<section class="mobile-state-panel mobile-state-${escapeHtml(kind)}">
-    <div class="mobile-state-kicker">${escapeHtml(kicker)}</div>
+  const size = options.size || 'medium';
+  const icon = options.icon ? `<div class="mobile-state-icon">${assetIconHtml(options.icon, 'asset-sigil event-sigil')}</div>` : '';
+  return `<section class="mobile-state-panel mobile-state-${escapeHtml(kind)} mobile-state-size-${escapeHtml(size)}">
+    <div class="mobile-state-header">
+      ${icon}
+      <div class="mobile-state-kicker">${escapeHtml(kicker)}</div>
+    </div>
     <h2>${escapeHtml(title)}</h2>
     ${options.sub ? `<p class="mobile-state-sub">${escapeHtml(options.sub)}</p>` : ''}
     ${bodyHtml}
   </section>`;
+}
+
+function mobileStartTurnStageHtml() {
+  const mine = isMyTurn();
+  return mobileStageShell('start-turn', mine ? 'Your Turn' : 'Turn Start', mine ? 'Open a Chamber' : `${active()?.name || 'A goblin'} is up`, `
+    <div class="mobile-choice-card">
+      ${assetIconHtml('chamber', 'asset-sigil event-sigil')}
+      <div><strong>Chamber Deck</strong><span>${Number(state.decks?.chamber || 0)} cards remain</span></div>
+    </div>
+    <p class="mobile-state-hint">${mine ? 'Play setup cards first, or open the door.' : `Waiting for ${active()?.name || 'the active goblin'} to open a Chamber.`}</p>
+  `, { size: 'small', icon: 'chamber', sub: mine ? 'Choose when to open the door.' : 'Waiting for the active goblin.' });
+}
+
+function mobileNoFoeStageHtml() {
+  const mine = isMyTurn();
+  return mobileStageShell('no-foe', mine ? 'Choose Move' : 'No Foe', mine ? 'Start Trouble or Loot the Room' : `${active()?.name || 'A goblin'} chooses`, `
+    <div class="mobile-choice-grid">
+      <div class="mobile-choice-card">
+        ${assetIconHtml('strength', 'asset-sigil event-sigil')}
+        <div><strong>Start Trouble</strong><span>Tap a Foe in your hand.</span></div>
+      </div>
+      <div class="mobile-choice-card">
+        ${assetIconHtml('loot', 'asset-sigil event-sigil')}
+        <div><strong>Loot the Room</strong><span>Draw a hidden Chamber card.</span></div>
+      </div>
+    </div>
+  `, { size: 'small', icon: mine ? 'chamber' : 'loot', sub: mine ? 'Your move.' : `Waiting for ${active()?.name || 'the active goblin'}.` });
+}
+
+function mobilePostCombatStageHtml() {
+  const mine = isMyTurn();
+  return mobileStageShell('post-combat', mine ? 'Use Loot' : 'Loot Phase', mine ? 'Use Loot Before Tribute' : `${active()?.name || 'A goblin'} is using Loot`, `
+    <div class="mobile-choice-card">
+      ${assetIconHtml('loot', 'asset-sigil event-sigil')}
+      <div><strong>${mine ? 'Play, equip, carry, or sell' : 'Loot is being managed'}</strong><span>${mine ? 'When done, continue to Tribute.' : 'Waiting for the active goblin.'}</span></div>
+    </div>
+  `, { size: 'small', icon: 'loot', sub: mine ? 'Finish using new cards.' : 'Waiting.' });
+}
+
+function mobileEndTurnStageHtml() {
+  const mine = isMyTurn();
+  return mobileStageShell('end-turn', mine ? 'Turn Ending' : 'Turn Ending', mine ? 'End your turn when ready' : `${active()?.name || 'A goblin'} is wrapping up`, `
+    <div class="mobile-choice-card">
+      ${assetIconHtml('discard', 'asset-sigil event-sigil')}
+      <div><strong>${mine ? 'Ready to pass the torch?' : 'Waiting for End Turn'}</strong><span>${mine ? 'Tap End Turn above when everything is resolved.' : `${active()?.name || 'The active goblin'} needs to end their turn.`}</span></div>
+    </div>
+  `, { size: 'small', icon: 'discard', sub: mine ? 'You can still sell Gear first.' : 'Waiting.' });
 }
 
 function mobileRevealOrWaitingStageHtml() {
@@ -692,7 +766,7 @@ function mobileRevealOrWaitingStageHtml() {
     const sub = state.revealCard
       ? `${card.publicName} is being resolved.`
       : (state.tableNotice?.detail || 'A table event is resolving.');
-    return mobileStageShell('reveal', 'Current Table Card', card.publicName, `
+    return mobileStageShell('reveal', 'Revealed', card.publicName, `
       <div class="mobile-card-summary ${cardTypeClass(card)}">
         <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
         <div>
@@ -702,15 +776,17 @@ function mobileRevealOrWaitingStageHtml() {
         </div>
       </div>
       <button class="mobile-secondary-action" data-mobile-inspect-card="${card.instanceId}">View Full Card</button>
-    `, { sub });
+    `, { size: 'medium', icon: cardTypeKey(card), sub });
   }
-  const title = state.activePlayerName ? `Waiting on ${state.activePlayerName}` : 'Table Ready';
-  return mobileStageShell('waiting', 'Current State', title, `
+  const mine = isMyTurn();
+  const title = mine ? 'Your turn' : (state.activePlayerName ? `Waiting on ${state.activePlayerName}` : 'Table ready');
+  const hint = mine ? 'Choose the highlighted action above.' : centerZoneSub();
+  return mobileStageShell('waiting', mine ? 'Ready' : 'Current State', title, `
     <div class="mobile-wait-card">
-      ${assetIconHtml('chamber', 'asset-sigil event-sigil')}
-      <span>${escapeHtml(centerZoneSub())}</span>
+      ${assetIconHtml(mine ? 'die' : 'chamber', 'asset-sigil event-sigil')}
+      <span>${escapeHtml(hint)}</span>
     </div>
-  `);
+  `, { size: 'small', icon: mine ? 'die' : 'chamber' });
 }
 
 function mobileCombatStageHtml(combat) {
@@ -741,7 +817,7 @@ function mobileCombatStageHtml(combat) {
     </div>` : ''}
     <div class="mobile-pass-row">${passRow}</div>
     <details class="mobile-math-details"><summary>Combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
-  `, { sub: waiting.length ? `Waiting on: ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
+  `, { size: 'large', icon: 'strength', sub: waiting.length ? `Waiting on: ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
 }
 
 function combatNeedToWin(totals) {
@@ -762,7 +838,7 @@ function mobileTributeStageHtml() {
       <span>${isYours ? 'Use Inspect/Pick controls in your hand below.' : 'Waiting for the active player.'}</span>
     </div>
     ${isYours ? '<p class="mobile-state-sub">Selected cards glow green. Confirm Tribute appears in the hand drawer.</p>' : ''}
-  `, { sub: you ? `Hand ${you.handCount}/${you.handLimit}` : '' });
+  `, { size: 'medium', icon: 'trade-give', sub: you ? `Hand ${you.handCount}/${you.handLimit}` : '' });
 }
 
 function mobileFleeStageHtml(esc) {
@@ -777,13 +853,13 @@ function mobileFleeStageHtml(esc) {
       ${last ? `<b>${last.total >= 5 ? 'Escaped' : 'Failed'} · ${last.raw} ${signed(last.bonus || 0)} = ${last.total}</b>` : '<b>Waiting for roll</b>'}
     </div>
   </div>`;
-  return mobileStageShell('flee', 'Flee', title, body, { sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
+  return mobileStageShell('flee', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
 }
 
 function mobileOpeningRollStageHtml() {
   const first = state.firstRoll || { rolls: {}, eligible: [] };
   const rows = (first.eligible || []).map((id) => `<span class="mobile-pass-pill ${first.rolls?.[id] ? 'passed' : 'can-play'}">${escapeHtml(playerName(id))} · ${first.rolls?.[id] || '—'}</span>`).join('');
-  return mobileStageShell('opening-roll', 'Opening Roll', 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>`, { sub: 'Highest roll opens the first Chamber. Ties reroll.' });
+  return mobileStageShell('opening-roll', 'Opening Roll', 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>`, { size: 'medium', icon: 'die', sub: 'Highest roll opens the first Chamber. Ties reroll.' });
 }
 
 function mobilePromptStageHtml(prompt) {
@@ -792,7 +868,7 @@ function mobilePromptStageHtml(prompt) {
       ${assetIconHtml('special', 'asset-sigil event-sigil')}
       <span>${escapeHtml(prompt.message || 'A player decision is pending.')}</span>
     </div>
-  `);
+  `, { size: 'medium', icon: 'special' });
 }
 
 function mobileGameOverStageHtml() {
@@ -802,7 +878,7 @@ function mobileGameOverStageHtml() {
       ${assetIconHtml('glory', 'asset-sigil event-sigil')}
       <span>The final Glory came from a combat victory.</span>
     </div>
-  `);
+  `, { size: 'medium', icon: 'glory' });
 }
 
 function findVisibleCardByInstance(id) {
@@ -1217,7 +1293,9 @@ function renderHand() {
     html += `<div class="hand-tray v076-hand-tray tribute-tray"><div class="card-row hand-row tribute-card-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
     html += tributeControls(need);
   } else {
-    html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
+    const playableCount = playableHandCount();
+    if (state.phase === 'COMBAT' || state.reaction) html += `<p class="micro playable-now-label">${playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.'}</p>`;
+    html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
   }
   root.innerHTML = html;
   const toggle = $('handToggleBtn');
@@ -1251,6 +1329,19 @@ function renderHand() {
   if (confirm) confirm.addEventListener('click', () => confirmTribute());
 }
 
+
+
+function displayHandCards(cards) {
+  const list = [...(cards || [])];
+  if (state?.phase === 'COMBAT' || state?.reaction) {
+    return list.sort((a, b) => Number(isCardPlayable(b)) - Number(isCardPlayable(a)));
+  }
+  return list;
+}
+
+function playableHandCount() {
+  return (myHand() || []).filter((c) => isCardPlayable(c)).length;
+}
 
 function tributeCardHtml(card) {
   const selected = selectedTribute.has(card.instanceId);
