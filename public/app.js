@@ -668,6 +668,18 @@ function renderMobilePlayShell(root) {
       if (card) inspectCard(card);
     });
   });
+  root.querySelectorAll('[data-action]').forEach((btn) => {
+    btn.addEventListener('click', () => emitAction(btn.dataset.action));
+  });
+  root.querySelectorAll('[data-combat-action]').forEach((btn) => {
+    btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot));
+  });
+  root.querySelectorAll('[data-reaction-action]').forEach((btn) => {
+    btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value));
+  });
+  root.querySelectorAll('[data-mobile-tribute-confirm]').forEach((btn) => {
+    btn.addEventListener('click', () => confirmTribute());
+  });
 }
 
 function mobilePlayerHudHtml() {
@@ -712,50 +724,86 @@ function mobileStageShell(kind, kicker, title, bodyHtml, options = {}) {
   </section>`;
 }
 
+
+function mobileActionButtonsHtml(buttons, cls = '') {
+  const clean = (buttons || []).filter(Boolean);
+  if (!clean.length) return '';
+  return `<div class="mobile-center-actions ${escapeHtml(cls)}">${clean.join('')}</div>`;
+}
+
+function mobileLegalActionButton(label, action, cls = '') {
+  return buttonHtml(label, action, cls);
+}
+
+function mobileTributeConfirmButton(need, selected) {
+  const disabled = selected !== need || need <= 0 ? 'disabled' : '';
+  return `<button class="primary" data-mobile-tribute-confirm ${disabled}>Confirm Tribute</button>`;
+}
+
 function mobileStartTurnStageHtml() {
   const mine = isMyTurn();
+  const actions = mine ? mobileActionButtonsHtml([
+    mobileLegalActionButton('Open Chamber', 'OPEN_CHAMBER', 'primary'),
+    mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
+  ], 'start-turn-actions') : '';
   return mobileStageShell('start-turn', mine ? 'Your Turn' : 'Turn Start', mine ? 'Open a Chamber' : `${active()?.name || 'A goblin'} is up`, `
-    <div class="mobile-choice-card">
+    <button class="mobile-choice-card mobile-choice-button ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'}>
       ${assetIconHtml('chamber', 'asset-sigil event-sigil')}
-      <div><strong>Chamber Deck</strong><span>${Number(state.decks?.chamber || 0)} cards remain</span></div>
-    </div>
+      <div><strong>Chamber Deck</strong><span>${mine ? 'Tap here to open the door.' : `${Number(state.decks?.chamber || 0)} cards remain`}</span></div>
+    </button>
     <p class="mobile-state-hint">${mine ? 'Play setup cards first, or open the door.' : `Waiting for ${active()?.name || 'the active goblin'} to open a Chamber.`}</p>
+    ${actions}
   `, { size: 'small', icon: 'chamber', sub: mine ? 'Choose when to open the door.' : 'Waiting for the active goblin.' });
 }
 
 function mobileNoFoeStageHtml() {
   const mine = isMyTurn();
+  const actions = mine ? mobileActionButtonsHtml([
+    mobileLegalActionButton('Loot the Room', 'SEARCH_ROOM', 'primary'),
+    mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
+  ], 'no-foe-actions') : '';
   return mobileStageShell('no-foe', mine ? 'Choose Move' : 'No Foe', mine ? 'Start Trouble or Loot the Room' : `${active()?.name || 'A goblin'} chooses`, `
     <div class="mobile-choice-grid">
       <div class="mobile-choice-card">
         ${assetIconHtml('strength', 'asset-sigil event-sigil')}
         <div><strong>Start Trouble</strong><span>Tap a Foe in your hand.</span></div>
       </div>
-      <div class="mobile-choice-card">
+      <button class="mobile-choice-card mobile-choice-button ${mine ? '' : 'disabled'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
         ${assetIconHtml('loot', 'asset-sigil event-sigil')}
         <div><strong>Loot the Room</strong><span>Draw a hidden Chamber card.</span></div>
-      </div>
+      </button>
     </div>
+    ${actions}
   `, { size: 'small', icon: mine ? 'chamber' : 'loot', sub: mine ? 'Your move.' : `Waiting for ${active()?.name || 'the active goblin'}.` });
 }
 
 function mobilePostCombatStageHtml() {
   const mine = isMyTurn();
+  const actions = mine ? mobileActionButtonsHtml([
+    mobileLegalActionButton('Done with Loot → Tribute', 'DONE_POST_COMBAT', 'primary'),
+    mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
+  ], 'post-combat-actions') : '';
   return mobileStageShell('post-combat', mine ? 'Use Loot' : 'Loot Phase', mine ? 'Use Loot Before Tribute' : `${active()?.name || 'A goblin'} is using Loot`, `
     <div class="mobile-choice-card">
       ${assetIconHtml('loot', 'asset-sigil event-sigil')}
       <div><strong>${mine ? 'Play, equip, carry, or sell' : 'Loot is being managed'}</strong><span>${mine ? 'When done, continue to Tribute.' : 'Waiting for the active goblin.'}</span></div>
     </div>
+    ${actions}
   `, { size: 'small', icon: 'loot', sub: mine ? 'Finish using new cards.' : 'Waiting.' });
 }
 
 function mobileEndTurnStageHtml() {
   const mine = isMyTurn();
+  const actions = mine ? mobileActionButtonsHtml([
+    mobileLegalActionButton('End Turn', 'END_TURN', 'primary'),
+    mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
+  ], 'end-turn-actions') : '';
   return mobileStageShell('end-turn', mine ? 'Turn Ending' : 'Turn Ending', mine ? 'End your turn when ready' : `${active()?.name || 'A goblin'} is wrapping up`, `
     <div class="mobile-choice-card">
       ${assetIconHtml('discard', 'asset-sigil event-sigil')}
-      <div><strong>${mine ? 'Ready to pass the torch?' : 'Waiting for End Turn'}</strong><span>${mine ? 'Tap End Turn above when everything is resolved.' : `${active()?.name || 'The active goblin'} needs to end their turn.`}</span></div>
+      <div><strong>${mine ? 'Ready to pass the torch?' : 'Waiting for End Turn'}</strong><span>${mine ? 'End the turn from here, or sell Gear first.' : `${active()?.name || 'The active goblin'} needs to end their turn.`}</span></div>
     </div>
+    ${actions}
   `, { size: 'small', icon: 'discard', sub: mine ? 'You can still sell Gear first.' : 'Waiting.' });
 }
 
@@ -800,6 +848,7 @@ function mobileCombatStageHtml(combat) {
     return `<span class="mobile-pass-pill ${passed ? 'passed' : 'can-play'}">${escapeHtml(p.name)} · ${passed ? 'Passed' : 'Can play'}</span>`;
   }).join('');
   const foeText = primaryFoe ? `${primaryFoe.publicName}${(combat.threats || []).length > 1 ? ` + ${(combat.threats || []).length - 1}` : ''}` : 'Foe';
+  const actions = mobileActionButtonsHtml(combatButtons(), 'combat-actions');
   return mobileStageShell('combat', 'Combat', `${playerName(combat.activePlayerId)} vs ${foeText}`, `
     <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}">
       <strong>${escapeHtml(outcome.shortLabel)}</strong>
@@ -815,6 +864,7 @@ function mobileCombatStageHtml(combat) {
       <div><strong>${escapeHtml(primaryFoe.publicName)}</strong><span>STR ${Number(primaryFoe.finalStrength || primaryFoe.strength || 0)} · ${Number(primaryFoe.finalLoot || primaryFoe.lootReward || 0)} Loot</span></div>
       <button class="mobile-mini-button" data-mobile-inspect-card="${primaryFoe.instanceId}">View</button>
     </div>` : ''}
+    ${actions}
     <div class="mobile-pass-row">${passRow}</div>
     <details class="mobile-math-details"><summary>Combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
   `, { size: 'large', icon: 'strength', sub: waiting.length ? `Waiting on: ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
@@ -832,12 +882,14 @@ function mobileTributeStageHtml() {
   const need = Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0));
   const selected = selectedTribute.size;
   const isYours = isMyTurn();
+  const actions = isYours ? mobileActionButtonsHtml([mobileTributeConfirmButton(need, selected)], 'tribute-actions') : '';
   return mobileStageShell('tribute', isYours ? 'Tribute Required' : 'Tribute Pending', isYours ? `Pick ${need} card${need === 1 ? '' : 's'}` : `${active()?.name || 'A player'} must resolve Tribute`, `
     <div class="mobile-tribute-meter ${selected === need && need > 0 ? 'ready' : ''}">
       <b>${selected}/${need}</b>
       <span>${isYours ? 'Use Inspect/Pick controls in your hand below.' : 'Waiting for the active player.'}</span>
     </div>
-    ${isYours ? '<p class="mobile-state-sub">Selected cards glow green. Confirm Tribute appears in the hand drawer.</p>' : ''}
+    ${actions}
+    ${isYours ? '<p class="mobile-state-sub">Selected cards glow green. Confirm here or in the hand drawer.</p>' : ''}
   `, { size: 'medium', icon: 'trade-give', sub: you ? `Hand ${you.handCount}/${you.handLimit}` : '' });
 }
 
@@ -845,6 +897,11 @@ function mobileFleeStageHtml(esc) {
   const runner = state.players.find((p) => p.id === esc.currentPlayerId);
   const last = esc.lastRoll;
   const title = `${runner?.name || 'Runner'} vs ${esc.threat?.publicName || 'Foe'}`;
+  const buttons = [];
+  if (runner?.isYou) {
+    if (!esc.awaitingContinue && hasLittleHelper(me())) buttons.push(mobileLegalActionButton('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
+    buttons.push(mobileLegalActionButton(esc.awaitingContinue ? 'Continue' : (esc.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee'), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+  }
   const body = `<div class="mobile-flee-grid">
     <div class="mobile-die-wrap">${dieHtml(last?.raw ?? '—', last ? 'rolled' : 'idle')}</div>
     <div class="mobile-flee-copy">
@@ -852,14 +909,15 @@ function mobileFleeStageHtml(esc) {
       <span>Flee bonus ${signed(esc.fleeBonus || 0)}</span>
       ${last ? `<b>${last.total >= 5 ? 'Escaped' : 'Failed'} · ${last.raw} ${signed(last.bonus || 0)} = ${last.total}</b>` : '<b>Waiting for roll</b>'}
     </div>
-  </div>`;
+  </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
   return mobileStageShell('flee', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
 }
 
 function mobileOpeningRollStageHtml() {
   const first = state.firstRoll || { rolls: {}, eligible: [] };
   const rows = (first.eligible || []).map((id) => `<span class="mobile-pass-pill ${first.rolls?.[id] ? 'passed' : 'can-play'}">${escapeHtml(playerName(id))} · ${first.rolls?.[id] || '—'}</span>`).join('');
-  return mobileStageShell('opening-roll', 'Opening Roll', 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>`, { size: 'medium', icon: 'die', sub: 'Highest roll opens the first Chamber. Ties reroll.' });
+  const actions = first.requiresYou ? mobileActionButtonsHtml([mobileLegalActionButton('Roll d6', 'ROLL_FIRST', 'primary')], 'roll-actions') : '';
+  return mobileStageShell('opening-roll', 'Opening Roll', first.requiresYou ? 'Your roll is needed' : 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>${actions}`, { size: 'medium', icon: 'die', sub: 'Highest roll opens the first Chamber. Ties reroll.' });
 }
 
 function mobilePromptStageHtml(prompt) {

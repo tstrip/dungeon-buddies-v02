@@ -5986,3 +5986,105 @@ button[data-action="SELL_GEAR"]::before {
     font-size: .66rem;
   }
 }
+
+
+/* Loot Goblins v0.5.1 — Center Action Mobile Controls
+   Mobile actions now live in the center state panel, not the top banner. */
+@media (max-width: 760px) {
+  .phase-banner {
+    padding: 7px 10px !important;
+    gap: 2px !important;
+  }
+
+  .phase-banner .primary-action {
+    display: none !important;
+  }
+
+  .phase-banner p {
+    -webkit-line-clamp: 1;
+    font-size: .66rem;
+    opacity: .82;
+  }
+
+  .mobile-center-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 7px;
+    width: 100%;
+    margin-top: 2px;
+  }
+
+  .mobile-center-actions button {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 16px;
+    font-size: .82rem;
+    font-weight: 1000;
+    justify-content: center;
+    box-shadow: 0 8px 14px rgba(0,0,0,.22);
+  }
+
+  .mobile-center-actions button.primary {
+    min-height: 48px;
+    background:
+      radial-gradient(circle at 22% 18%, rgba(255,255,255,.35), transparent 30%),
+      linear-gradient(135deg, #ffe179, #f2853b 75%);
+    color: #211307;
+    border-color: rgba(255,238,165,.75);
+  }
+
+  .mobile-center-actions.combat-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-center-actions.combat-actions button {
+    min-height: 42px;
+  }
+
+  .mobile-center-actions.combat-actions button[data-combat-action="PASS_COMBAT"],
+  .mobile-center-actions.end-turn-actions button[data-action="END_TURN"],
+  .mobile-center-actions.roll-actions button,
+  .mobile-center-actions.flee-actions button.primary,
+  .mobile-center-actions.tribute-actions button.primary {
+    min-height: 50px;
+    font-size: .9rem;
+  }
+
+  .mobile-center-actions .action-note {
+    display: block;
+    grid-column: 1 / -1;
+    text-align: center;
+    color: rgba(255,246,214,.78);
+    font-size: .68rem;
+  }
+
+  .mobile-choice-button {
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .mobile-choice-button:not(.disabled) {
+    border-color: rgba(245,189,88,.36);
+    box-shadow: 0 8px 16px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.04);
+  }
+
+  .mobile-choice-button:not(.disabled):active {
+    transform: translateY(1px);
+  }
+
+  .mobile-choice-button.disabled {
+    opacity: .75;
+  }
+
+  .mobile-state-start-turn .mobile-choice-button,
+  .mobile-state-no-foe .mobile-choice-button {
+    background:
+      radial-gradient(circle at 0% 0%, rgba(245,189,88,.16), transparent 50%),
+      rgba(0,0,0,.26);
+  }
+
+  .mobile-state-panel .mobile-secondary-action {
+    min-height: 42px;
+  }
+}
