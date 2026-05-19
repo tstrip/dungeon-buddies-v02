@@ -652,3 +652,96 @@ Potions and potion-like cards should not behave like equipable Gear.
 ## Rule intent
 Potions/one-shots stay in hand until their timing window, then are played once and discarded.
 They are not equipped, carried as Gear, or assigned like normal Gear.
+
+
+---
+
+# Loot Goblins v0.6.3 — Themed State Polish
+
+This build intentionally implements only the requested theming options:
+
+1. In-universe UI concept naming
+2. State-specific button treatments using the existing palette
+3. Death as a mini-event
+4. Absurdly triumphant Victory
+
+No randomized flavor lines, narrator toasts, 0-Glory joke pass, or additional broader copy rewrites were added.
+
+## In-universe naming
+- Room language is softened toward Table/Table Code in the entry/lobby UI.
+- Lobby status uses Gathering language.
+- Start Game becomes Start the Table.
+- Copy Invite Link becomes Send Invite.
+- Resume Game becomes Return to Table.
+- Join as Someone Else becomes Choose Another Stool.
+
+## State-specific button treatments
+Existing button colors are now more deliberately mapped:
+- Open Chamber / opening roll: warm orange-gold
+- Loot the Room: gold-purple
+- End Turn: green/ready
+- Flee: teal/blue-green
+- Tribute confirm: gold/red urgency
+- Combat pass: purple/brown
+- Sell Gear: subdued brass/brown
+- Start the Table: warm orange-gold when ready, dimmed when disabled
+
+## Death mini-event
+- Death announcement copy is now GOBLIN DOWN — LOOT THE BODY.
+- Mobile death panel now frames death as a mini-event:
+  - Loot the Body
+  - cards left to loot
+  - current looter
+  - “Take one card in Glory order. Try not to make eye contact.”
+- This is separate from 0 Glory.
+
+## Victory
+- Game-over copy now uses VICTORY!
+- Winner line says the player reached 10 Glory.
+- Victory subcopy: History will exaggerate this.
+- First-place final standing gets a warmer victory treatment.
+
+## Not included by request
+- No random phase flavor lines
+- No narrator toast rewrite
+- No 0-Glory comedy pass
+- No new assets
+
+
+---
+
+# Loot Goblins v0.6.4 — Action-First Mobile Flow
+
+This build layers the action-first face-up reveal pass on top of v0.6.3.
+
+## Changed
+
+### Face-up non-Foe reveals
+When a non-Foe Chamber card is revealed and added to hand, the center panel now prioritizes the card name and gives direct actions where legal.
+
+Examples:
+- Calling / Kin: `Play [Card]` + `View Card`
+- Gear: `Equip` / `Carry` + `View Card`
+- eligible Special cards: `Play Special` + `View Card`
+
+### No Foe flow
+- The No Foe panel is shorter and less paragraph-heavy.
+- Card name comes first; “Face-Up Chamber” is secondary context.
+- Start Trouble is visually linked to the hand with clearer copy:
+  - “Tap a glowing Foe in your hand.”
+  - “Foe cards in your hand glow when they can Start Trouble.”
+
+### Top banner
+- On the No Foe choice state, the top banner is reduced further into a compact status strip.
+
+### Hand tray
+- Cleaner help text.
+- Hand limit now distinguishes:
+  - `6/6 Full`
+  - `7/6 Tribute`
+- Slightly more hand-tray breathing room.
+
+## Not changed
+- No new assets.
+- No random flavor-line system.
+- No broad gameplay rule rewrite.

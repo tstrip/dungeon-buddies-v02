@@ -6981,3 +6981,256 @@ button[data-action="SELL_GEAR"]::before {
 .hand-card.card-type-trick .hand-card-main {
   color: rgba(255, 231, 153, .95);
 }
+
+
+/* Loot Goblins v0.6.3 — Themed State Polish
+   Only implements: in-universe naming, state-specific button treatments, Death mini-event, and triumphant Victory. */
+
+/* State-specific button color language using existing palette */
+button[data-action="OPEN_CHAMBER"],
+.mobile-state-start-turn .mobile-primary-choice,
+button[data-action="ROLL_FIRST"] {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.36), transparent 30%),
+    linear-gradient(135deg, #ffe179, #f2853b 78%) !important;
+  color: #211307 !important;
+  border-color: rgba(255,238,165,.78) !important;
+}
+
+button[data-action="SEARCH_ROOM"],
+.mobile-state-no-foe .mobile-primary-choice {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.22), transparent 32%),
+    linear-gradient(135deg, #f5c764, #8e4ed2 92%) !important;
+  color: #211307 !important;
+  border-color: rgba(255,221,145,.58) !important;
+}
+
+button[data-action="END_TURN"],
+.mobile-center-actions.end-turn-actions button[data-action="END_TURN"] {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.26), transparent 31%),
+    linear-gradient(135deg, #b9ffe9, #57d18e 82%) !important;
+  color: #10240a !important;
+  border-color: rgba(185,255,233,.72) !important;
+}
+
+button[data-action="ROLL_ESCAPE"],
+button[data-action="CONTINUE_FLEE"],
+.mobile-center-actions.flee-actions button.primary {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.22), transparent 31%),
+    linear-gradient(135deg, #9debd2, #46aee8 85%) !important;
+  color: #071d1d !important;
+  border-color: rgba(157,235,210,.72) !important;
+}
+
+button[data-mobile-tribute-confirm],
+.mobile-center-actions.tribute-actions button.primary {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.25), transparent 31%),
+    linear-gradient(135deg, #ffe179, #ff8383 88%) !important;
+  color: #241008 !important;
+  border-color: rgba(255,210,120,.76) !important;
+}
+
+button[data-combat-action="PASS_COMBAT"],
+.mobile-center-actions.combat-actions button[data-combat-action="PASS_COMBAT"] {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.18), transparent 31%),
+    linear-gradient(135deg, #5a3828, #8e4ed2 92%) !important;
+  color: #fff6d6 !important;
+  border-color: rgba(203,132,255,.40) !important;
+}
+
+button[data-action="SELL_GEAR"],
+.mobile-center-actions.secondary-only button[data-action="SELL_GEAR"] {
+  background:
+    radial-gradient(circle at 16% 12%, rgba(255,255,255,.14), transparent 35%),
+    linear-gradient(135deg, rgba(92,55,34,.94), rgba(42,24,18,.96)) !important;
+  color: #fff1bd !important;
+  border-color: rgba(245,189,88,.25) !important;
+}
+
+#startGameBtn.table-ready,
+.lobby-actions #startGameBtn:not(:disabled) {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.35), transparent 30%),
+    linear-gradient(135deg, #ffe179, #f2853b 76%) !important;
+  color: #211307 !important;
+  border-color: rgba(255,238,165,.78) !important;
+  box-shadow: 0 10px 20px rgba(242,133,59,.25);
+}
+
+#startGameBtn:disabled {
+  background:
+    linear-gradient(135deg, rgba(86,59,43,.7), rgba(42,28,24,.78)) !important;
+  color: rgba(255,246,214,.58) !important;
+  border-color: rgba(255,255,255,.12) !important;
+}
+
+/* Option 7 — Death mini-event treatment */
+.mobile-death-turn {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 86, 86, .10);
+  border: 1px solid rgba(255,126,126,.24);
+}
+
+.mobile-death-turn strong {
+  color: #ffd8d8;
+  font-size: .86rem;
+}
+
+.mobile-death-turn span {
+  color: rgba(255,246,214,.70);
+  font-size: .70rem;
+}
+
+/* Option 8 — absurdly triumphant victory treatment */
+.mobile-state-game-over h2 {
+  text-shadow: 0 4px 0 rgba(0,0,0,.18), 0 0 22px rgba(255,225,121,.20);
+}
+
+.mobile-victory-card {
+  border-color: rgba(255,221,114,.36) !important;
+  background:
+    radial-gradient(circle at 0 0, rgba(255,221,114,.18), transparent 50%),
+    rgba(0,0,0,.24) !important;
+}
+
+.mobile-final-standings div:first-child {
+  border-color: rgba(255,221,114,.42);
+  background:
+    radial-gradient(circle at 0 0, rgba(255,221,114,.16), transparent 50%),
+    rgba(0,0,0,.24);
+}
+
+
+/* v0.6.4 — Action-First Reveal + Mobile Flow Polish */
+@media (max-width: 760px) {
+  .phase-banner.mobile-status-strip {
+    padding: 4px 9px !important;
+    gap: 1px !important;
+  }
+  .phase-banner.mobile-status-strip p,
+  .phase-banner.mobile-status-strip .primary-action {
+    display: none !important;
+  }
+  .phase-banner.mobile-status-strip .eyebrow {
+    font-size: .42rem !important;
+    opacity: .58 !important;
+  }
+  .phase-banner.mobile-status-strip h2 {
+    font-size: clamp(.84rem, 3.45vw, .98rem) !important;
+    line-height: 1.02 !important;
+  }
+
+  .mobile-state-no-foe.mobile-state-size-small {
+    min-height: 0 !important;
+    gap: 6px;
+    padding: 11px 11px 12px;
+  }
+
+  .mobile-trouble-hint {
+    margin-top: -2px;
+    color: rgba(255,234,159,.86);
+  }
+
+  .mobile-opened-door-action-first {
+    grid-template-columns: auto minmax(0,1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 11px;
+  }
+
+  .mobile-opened-door-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .mobile-opened-door-status {
+    color: rgba(255,246,214,.84) !important;
+    font-size: .69rem !important;
+    font-weight: 900;
+  }
+
+  .mobile-opened-door-action-first .mobile-mini-button {
+    justify-self: start;
+    min-width: 70px;
+  }
+
+  .mobile-reveal-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 7px;
+    margin-top: 2px;
+  }
+
+  .mobile-reveal-actions button {
+    min-height: 40px;
+    border-radius: 14px;
+    font-size: .76rem;
+    font-weight: 950;
+    justify-content: center;
+  }
+
+  .mobile-reveal-actions button.primary {
+    background:
+      radial-gradient(circle at 22% 18%, rgba(255,255,255,.35), transparent 30%),
+      linear-gradient(135deg, #ffe179, #f2853b 75%);
+    color: #211307;
+    border-color: rgba(255,238,165,.75);
+  }
+
+  .mobile-no-foe-grid {
+    gap: 7px;
+  }
+
+  .mobile-choice-linked-hand {
+    border-color: rgba(255,218,117,.28);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
+  }
+
+  .mobile-choice-linked-hand strong::after {
+    content: ' ↓';
+    color: rgba(255,218,117,.92);
+  }
+
+  .mobile-choice-grid.after-opened-door .mobile-choice-card {
+    padding: 9px 10px;
+  }
+
+  .mobile-center-actions.no-foe-actions {
+    margin-top: 0;
+  }
+
+  .hand-limit.full {
+    color: rgba(255,227,125,.96);
+  }
+
+  .hand-help {
+    margin: -1px 0 5px;
+    font-size: .60rem;
+    opacity: .76;
+  }
+
+  .playable-now-label {
+    margin: 0 0 5px;
+    font-size: .62rem;
+    opacity: .88;
+  }
+
+  .hand-tray {
+    padding-right: 8px;
+  }
+
+  .hand-row {
+    padding-right: 14px;
+    scroll-padding-right: 14px;
+  }
+}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Loot Goblins One-Use Trick Hotfix v0.6.2</title>
+  <title>Loot Goblins Action-First Mobile Flow v0.6.4</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -23,7 +23,7 @@
 
         <div class="saved-session-plaque">
           <div>
-            <span>Room</span>
+            <span>Table Code</span>
             <strong id="resumeRoomCode">—</strong>
           </div>
           <div>
@@ -37,8 +37,8 @@
         </div>
 
         <div class="entry-actions">
-          <button id="resumeBtn" class="primary">Resume Game</button>
-          <button id="clearSessionBtn">Join as Someone Else</button>
+          <button id="resumeBtn" class="primary">Return to Table</button>
+          <button id="clearSessionBtn">Choose Another Stool</button>
         </div>
       </section>
     </section>
@@ -52,7 +52,7 @@
       </header>
 
       <section class="entry-hero-copy">
-        <div class="eyebrow">Loot Goblins v0.6.2</div>
+        <div class="eyebrow">Loot Goblins v0.6.4.3</div>
         <h1>Get loot. Gain glory. Betray responsibly.</h1>
         <p>A cozy-chaotic dungeon tavern table for three goblins with private hands, dice, negotiation, and terrible ideas.</p>
       </section>
@@ -60,7 +60,7 @@
       <section class="tavern-main-card choose-table-card">
         <div class="entry-kicker">Tavern Entry</div>
         <h2>Choose Your Table</h2>
-        <p>Start a new room or sneak into an existing one.</p>
+        <p>Start a new table or sneak into an existing one.</p>
 
         <label for="nameInput">Your goblin name</label>
         <input id="nameInput" placeholder="Trey" maxlength="24" />
@@ -72,8 +72,8 @@
             </div>
             <div class="entry-choice-copy">
               <h3>Start a New Table</h3>
-              <p>Create a private room for three goblins.</p>
-              <button id="createBtn" class="primary">Create Room</button>
+              <p>Set a private table for three goblins.</p>
+              <button id="createBtn" class="primary">Start New Table</button>
             </div>
           </article>
 
@@ -83,9 +83,9 @@
             </div>
             <div class="entry-choice-copy">
               <h3>Join a Table</h3>
-              <p>Enter a room code from a friend.</p>
-              <input id="codeInput" placeholder="ABCDE" maxlength="5" autocapitalize="characters" />
-              <button id="joinBtn">Join Room</button>
+              <p>Enter a table code from a friend.</p>
+              <input id="codeInput" placeholder="TABLE" maxlength="5" autocapitalize="characters" />
+              <button id="joinBtn">Join Table</button>
             </div>
           </article>
         </div>
@@ -104,12 +104,12 @@
 
       <section class="tavern-main-card lobby-main-card">
         <div class="entry-kicker">Goblin Tavern Lobby</div>
-        <h1>Room <span id="lobbyRoomCode">—</span></h1>
-        <p id="lobbyStatusCopy">Waiting for goblins to gather.</p>
+        <h1>Table <span id="lobbyRoomCode">—</span></h1>
+        <p id="lobbyStatusCopy">Goblins are gathering.</p>
 
         <div class="invite-code-row">
           <div>
-            <span>Invite Code</span>
+            <span>Table Code</span>
             <strong id="lobbyInviteCode">—</strong>
           </div>
           <button id="copyRoomCodeBtn">Copy Code</button>
@@ -118,16 +118,16 @@
         <section class="lobby-table-module" aria-label="Lobby table seats">
           <div class="lobby-table-header">
             <span>The Table</span>
-            <strong id="lobbyTableState">Waiting</strong>
+            <strong id="lobbyTableState">Gathering</strong>
           </div>
           <div id="lobbySeats" class="seat-list lobby-seat-list"></div>
         </section>
 
         <div class="entry-actions lobby-actions">
-          <button id="startGameBtn" class="primary">Start Game</button>
-          <button id="copyInviteBtn">Copy Invite Link</button>
+          <button id="startGameBtn" class="primary">Start the Table</button>
+          <button id="copyInviteBtn">Send Invite</button>
         </div>
-        <p id="startGameHint" class="micro lobby-hint">Waiting for 3 goblins.</p>
+        <p id="startGameHint" class="micro lobby-hint">Gathering 3 goblins.</p>
       </section>
     </section>
   </main>

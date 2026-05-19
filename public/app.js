@@ -36,7 +36,7 @@ function maybeShowResume() {
     if ($('resumeCopy')) $('resumeCopy').textContent = 'Your stool is still warm.';
     if ($('resumeRoomCode')) $('resumeRoomCode').textContent = saved.roomCode || '—';
     if ($('resumePlayerName')) $('resumePlayerName').textContent = saved.playerName || '—';
-    if ($('resumeState')) $('resumeState').textContent = 'Saved session';
+    if ($('resumeState')) $('resumeState').textContent = 'Stool reserved';
     showScreen('resumeScreen');
   }
 }
@@ -140,10 +140,10 @@ function renderLobby() {
   $('lobbyRoomCode').textContent = roomCode;
   if ($('lobbyInviteCode')) $('lobbyInviteCode').textContent = roomCode;
 
-  let status = 'Waiting for goblins to gather.';
-  if (playerCount === 1) status = 'Waiting for 2 more goblins.';
-  else if (playerCount === 2) status = 'Waiting for 1 more goblin.';
-  else if (playerCount >= 3) status = isHost ? 'Everyone’s here. Start when ready.' : `Everyone’s here. Waiting for ${state.players[0]?.name || 'Host'} to start.`;
+  let status = 'Goblins are gathering.';
+  if (playerCount === 1) status = 'Gathering 2 more goblins.';
+  else if (playerCount === 2) status = 'Gathering 1 more goblin.';
+  else if (playerCount >= 3) status = isHost ? 'The table is full. Start when ready.' : `The table is full. Waiting for ${state.players[0]?.name || 'Host'} to start.`;
   if ($('lobbyStatusCopy')) $('lobbyStatusCopy').textContent = status;
   if ($('lobbyTableState')) $('lobbyTableState').textContent = playerCount >= 3 ? 'Full Table' : `${missing} Empty Stool${missing === 1 ? '' : 's'}`;
 
@@ -155,7 +155,7 @@ function renderLobby() {
     div.className = `lobby-seat ${p ? 'occupied' : 'empty'} ${p?.isYou ? 'you' : ''} ${i === 0 ? 'host-seat' : ''}`;
     div.innerHTML = p
       ? `<div class="seat-token">${p.isYou ? 'YOU' : (i === 0 ? 'HOST' : 'IN')}</div>
-         <div class="seat-copy"><strong>${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</strong><span>${i === 0 ? 'Host' : 'Joined'} · ${p.connected ? 'online' : 'offline'}</span></div>`
+         <div class="seat-copy"><strong>${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</strong><span>${i === 0 ? 'Host' : 'At table'} · ${p.connected ? 'online' : 'offline'}</span></div>`
       : `<div class="seat-token">+</div>
          <div class="seat-copy"><strong>Empty Stool</strong><span>Invite a goblin</span></div>`;
     seats.appendChild(div);
@@ -163,11 +163,12 @@ function renderLobby() {
 
   const start = $('startGameBtn');
   start.disabled = !(isHost && playerCount === 3);
-  start.textContent = playerCount === 3 ? 'Start Game' : `Needs ${missing} More`;
+  start.textContent = playerCount === 3 ? 'Start the Table' : `Needs ${missing} More`;
+  start.classList.toggle('table-ready', Boolean(isHost && playerCount === 3));
   if ($('startGameHint')) {
     $('startGameHint').textContent = isHost
-      ? (playerCount === 3 ? 'The table is full. Start when ready.' : `Start Game unlocks at 3 goblins.`)
-      : `Waiting for ${state.players[0]?.name || 'Host'} to start the game.`;
+      ? (playerCount === 3 ? 'Everyone has a stool. Start the table when ready.' : `Start unlocks at 3 goblins.`)
+      : `Waiting for ${state.players[0]?.name || 'Host'} to start the table.`;
   }
 }
 
@@ -483,8 +484,8 @@ function renderPhaseBanner() {
     buttons = reactionButtons(r);
   } else if (state.phase === 'GAME_OVER') {
     const winner = state.players.find((p) => p.id === state.winnerId);
-    title = `${winner?.name || 'Someone'} wins!`;
-    copy = 'The final Glory came from a combat victory.';
+    title = `VICTORY — ${winner?.name || 'Someone'} reached 10 Glory`;
+    copy = 'History will exaggerate this.';
   } else if (state.pendingPrompt) {
     title = state.pendingPrompt.requiresYou ? 'Your decision required' : 'Table prompt pending';
     copy = state.pendingPrompt.message;
@@ -500,8 +501,8 @@ function renderPhaseBanner() {
     copy = isMyTurn() ? 'Open a Chamber, or play setup cards first.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) { buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
   } else if (state.phase === 'NO_THREAT_CHOICE') {
-    title = isMyTurn() ? 'No Foe — Choose Move' : `${active()?.name} chooses`;
-    copy = isMyTurn() ? 'Tap a Foe to Start Trouble, or draw a hidden Chamber.' : `Waiting for ${active()?.name}.`;
+    title = isMyTurn() ? 'Your Turn · Choose Move' : `${active()?.name} chooses`;
+    copy = isMyTurn() ? 'Use the center panel or a glowing Foe in hand.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) {
       buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
       buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
@@ -542,8 +543,9 @@ function renderPhaseBanner() {
   }
 
   buttons = ensureCriticalActionButtons(buttons);
-  root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-  root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p><div class="primary-action">${buttons.join('')}</div>`;
+  const compactStatusStrip = window.innerWidth <= 760 && ['NO_THREAT_CHOICE'].includes(state.phase);
+  root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${compactStatusStrip ? 'mobile-status-strip' : ''}`;
+  root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2>${copy ? `<p>${escapeHtml(copy)}</p>` : ''}<div class="primary-action">${buttons.join('')}</div>`;
   root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
   root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot)));
   root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
@@ -705,6 +707,16 @@ function renderMobilePlayShell(root) {
       if (card) inspectCard(card);
     });
   });
+  root.querySelectorAll('[data-mobile-card-action]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const cardId = btn.dataset.cardId;
+      const action = btn.dataset.mobileCardAction;
+      if (!cardId || !action) return;
+      if (action === 'PLAY') emitAction('PLAY_CARD', { cardId });
+      if (action === 'EQUIP') emitAction('PLAY_CARD', { cardId, mode: 'EQUIP' });
+      if (action === 'CARRY') emitAction('PLAY_CARD', { cardId, mode: 'CARRY' });
+    });
+  });
   root.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', () => emitAction(btn.dataset.action));
   });
@@ -807,26 +819,49 @@ function mobileStartTurnStageHtml() {
 }
 
 
+function mobileQuickRevealButtons(card) {
+  if (!card || !isMyTurn()) return '';
+  const phaseOk = ['NO_THREAT_CHOICE','POST_COMBAT','END_TURN','START_TURN'].includes(state.phase);
+  const buttons = [];
+  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && phaseOk) {
+    buttons.push(`<button class="primary" data-mobile-card-action="PLAY" data-card-id="${card.instanceId}">Play ${escapeHtml(card.publicName)}</button>`);
+  } else if (card.type === 'GEAR' && !isOneUseConsumableCard(card) && phaseOk) {
+    buttons.push(`<button class="primary" data-mobile-card-action="EQUIP" data-card-id="${card.instanceId}">Equip</button>`);
+    buttons.push(`<button data-mobile-card-action="CARRY" data-card-id="${card.instanceId}">Carry</button>`);
+  } else if (card.type === 'SPECIAL') {
+    const timing = card.timing || [];
+    const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && phaseOk);
+    const needsTarget = ['SPECIAL_STEAL_LEVEL', 'SPECIAL_TRANSFERRAL'].includes(card.id);
+    if (canSpecial && !needsTarget) {
+      buttons.push(`<button class="primary" data-mobile-card-action="PLAY" data-card-id="${card.instanceId}">Play Special</button>`);
+    }
+  }
+  buttons.push(`<button data-mobile-inspect-card="${card.instanceId}">View Card</button>`);
+  return `<div class="mobile-reveal-actions">${buttons.join('')}</div>`;
+}
+
 function mobileOpenedDoorResultHtml(mine, actor) {
   const card = state.revealCard || state.tableNotice?.card || null;
   if (!card || card.type === 'THREAT') return '';
   const isHex = card.type === 'HEX';
-  const title = isHex ? 'Hex Resolved' : 'Face-Up Chamber';
-  const detail = isHex
-    ? `${card.publicName} affected ${mine ? 'you' : actor}. No Foe was found.`
-    : `${mine ? 'You revealed' : `${actor} revealed`} ${card.publicName}. It went to ${mine ? 'your' : 'their'} hand.`;
-  const next = isHex
-    ? (mine ? 'Now Start Trouble or Loot the Room.' : `${actor} can Start Trouble or Loot the Room.`)
-    : (mine ? 'You may play it now from your hand, then choose your move.' : `${actor} may play it now, then choose their move.`);
-  return `<div class="mobile-opened-door-card ${cardTypeClass(card)}">
+  const typeName = typeLabel(card);
+  const contextLine = isHex ? 'Hex · Resolved immediately' : `${typeName} · Face-Up Chamber`;
+  const statusLine = isHex
+    ? `${mine ? 'You were hit' : `${actor} was hit`} by ${card.publicName}.`
+    : 'Added to your hand';
+  const subLine = isHex
+    ? (mine ? 'No Foe appeared. Choose your next move.' : `${actor} can now choose a move.`)
+    : (isCardPlayable(card) ? 'Playable now' : 'Choose whether to use it now or keep it in hand.');
+  return `<div class="mobile-opened-door-card mobile-opened-door-action-first ${cardTypeClass(card)}">
     <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
-    <div>
-      <div class="mobile-card-type">${escapeHtml(title)}</div>
+    <div class="mobile-opened-door-copy">
       <strong>${escapeHtml(card.publicName)}</strong>
-      <span>${escapeHtml(detail)}</span>
-      <small>${escapeHtml(next)}</small>
+      <div class="mobile-card-type">${escapeHtml(contextLine)}</div>
+      <span class="mobile-opened-door-status">${escapeHtml(statusLine)}</span>
+      <small>${escapeHtml(subLine)}</small>
     </div>
-    <button class="mobile-mini-button" data-mobile-inspect-card="${card.instanceId}">View</button>
+    ${isHex ? `<button class="mobile-mini-button" data-mobile-inspect-card="${card.instanceId}">View</button>` : ''}
+    ${isHex ? '' : mobileQuickRevealButtons(card)}
   </div>`;
 }
 
@@ -837,21 +872,25 @@ function mobileNoFoeStageHtml() {
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'no-foe-actions secondary-only') : '';
-  const heading = openedDoor ? 'No Foe Revealed' : (mine ? 'Start Trouble or Loot the Room' : `Waiting on ${actor}`);
+  const heading = openedDoor ? 'Choose your move' : (mine ? 'Choose your move' : `Waiting on ${actor}`);
+  const troubleHint = mine
+    ? `<p class="mobile-state-hint mobile-trouble-hint">Foe cards in your hand glow when they can Start Trouble.</p>`
+    : `<p class="mobile-state-hint">${escapeHtml(actor)} can Start Trouble or Loot the Room.</p>`;
   return mobileStageShell('no-foe', mine ? 'Choose Move' : `${actor} chooses`, heading, `
     ${openedDoor}
-    <div class="mobile-choice-grid ${openedDoor ? 'after-opened-door' : ''}">
-      <div class="mobile-choice-card ${mine ? '' : 'is-observer'}">
+    ${troubleHint}
+    <div class="mobile-choice-grid mobile-no-foe-grid ${openedDoor ? 'after-opened-door' : ''}">
+      <div class="mobile-choice-card mobile-choice-linked-hand ${mine ? '' : 'is-observer'}">
         ${assetIconHtml('strength', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${mine ? 'Tap a Foe in your hand.' : 'They may play a Foe from hand.'}</span></div>
+        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${mine ? 'Tap a glowing Foe in your hand.' : 'They may play a Foe from hand.'}</span></div>
       </div>
       <button class="mobile-choice-card mobile-choice-button mobile-primary-choice ${mine ? '' : 'disabled is-observer'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
         ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Tap here to draw a hidden Chamber card.' : 'They may draw a hidden Chamber card.'}</span></div>
+        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw a hidden Chamber card.' : 'They may draw a hidden Chamber card.'}</span></div>
       </button>
     </div>
     ${actions}
-  `, { size: openedDoor ? 'medium' : 'small', icon: openedDoor ? cardTypeKey(state.revealCard || state.tableNotice?.card) : (mine ? 'chamber' : 'loot'), sub: openedDoor ? 'The opened Chamber card was shown to everyone.' : (mine ? 'Your move.' : `${actor} can Start Trouble or Loot the Room.`) });
+  `, { size: 'small', icon: openedDoor ? null : (mine ? 'chamber' : 'loot'), sub: '' });
 }
 
 function mobilePostCombatStageHtml() {
@@ -1004,17 +1043,21 @@ function mobileBodyLootStageHtml() {
   const victimName = loot?.victimName || 'A goblin';
   const current = loot?.requiresYou ? 'You are looting now.' : `${loot?.currentLooterName || 'A player'} is looting now.`;
   const cards = Number(loot?.cardCount || 0);
-  return mobileStageShell('death', 'Goblin Down', `${victimName} is down`, `
+  return mobileStageShell('death', 'GOBLIN DOWN', `Loot ${victimName}'s body`, `
     <div class="mobile-death-card">
       ${assetIconHtml('death', 'asset-sigil event-sigil')}
       <div>
-        <strong>Body Looting</strong>
+        <strong>Loot the Body</strong>
         <span>${cards} card${cards === 1 ? '' : 's'} left to loot.</span>
-        <small>${escapeHtml(current)} Looting proceeds in Glory order.</small>
+        <small>Take one card in Glory order. Try not to make eye contact.</small>
       </div>
     </div>
+    <div class="mobile-death-turn">
+      <strong>${escapeHtml(current)}</strong>
+      <span>Death is separate from losing Glory.</span>
+    </div>
     ${loot?.requiresYou ? '<p class="mobile-state-hint">Choose one card from the prompt below.</p>' : ''}
-  `, { size: 'medium', icon: 'death', sub: 'Death is separate from losing Glory.' });
+  `, { size: 'medium', icon: 'death', sub: 'A tragic opportunity.' });
 }
 
 function mobilePromptStageHtml(prompt) {
@@ -1028,12 +1071,12 @@ function mobilePromptStageHtml(prompt) {
 
 function mobileGameOverStageHtml() {
   const winner = state.players.find((p) => p.id === state.winnerId);
-  return mobileStageShell('game-over', 'Victory', `${winner?.name || 'Someone'} wins!`, `
+  return mobileStageShell('game-over', 'VICTORY!', `${winner?.name || 'Someone'} reached 10 Glory`, `
     <div class="mobile-victory-card">
       ${assetIconHtml('glory', 'asset-sigil event-sigil')}
       <div>
-        <strong>10 Glory reached</strong>
-        <span>The winning Glory came from combat or a win-legal effect.</span>
+        <strong>History will exaggerate this.</strong>
+        <span>The table will never recover from this level of glory.</span>
       </div>
     </div>
     <div class="mobile-final-standings">
@@ -1442,14 +1485,16 @@ function renderHand() {
   const toggleLabel = forceOpen ? 'Tribute' : ((handExpanded || forceOpen) ? 'Collapse' : 'Expand');
   const handTitle = forceOpen ? 'Tribute Required' : 'Your Hand';
   const handEyebrow = over ? 'Over Limit' : (state.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards');
+  const handStateClass = over ? 'bad' : (you.handCount === you.handLimit ? 'full' : '');
+  const handStateText = over ? `${you.handCount}/${you.handLimit} Tribute` : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
   let html = `<div class="hand-header v076-hand-header mobile-hand-header">
     <div><span class="hand-eyebrow">${escapeHtml(handEyebrow)}</span><h3>${escapeHtml(handTitle)}</h3></div>
     <div class="hand-header-actions">
-      <span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}${over ? '!' : ''}</span>
+      <span class="hand-limit ${handStateClass}">${handStateText}</span>
       <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'tribute-mode' : ''}" type="button" aria-expanded="${handExpanded || forceOpen}" ${forceOpen ? 'disabled' : ''}>${toggleLabel}</button>
     </div>
   </div>`;
-  html += `<p class="micro hand-help">Tap a card to read it and choose an action. Expand the tray when you need more room.</p>`;
+  html += `<p class="micro hand-help">Tap cards to inspect. Expand only when you need more room.</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
     html += `<p class="micro tribute-instruction">Tribute: inspect cards first, then use Pick to choose exactly ${need} card${need === 1 ? '' : 's'}.</p>`;
@@ -1460,7 +1505,8 @@ function renderHand() {
     if (['START_TURN','NO_THREAT_CHOICE','COMBAT','POST_COMBAT','END_TURN'].includes(state.phase) || state.reaction) {
       let phaseHint = playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.';
       if (state.phase === 'START_TURN' && playableCount) phaseHint = `${playableCount} setup card${playableCount === 1 ? '' : 's'} can be played before opening.`;
-      if (state.phase === 'NO_THREAT_CHOICE' && playableCount) phaseHint = `Playable cards glow. Tap a Foe to Start Trouble.`;
+      if (state.phase === 'NO_THREAT_CHOICE' && playableCount) phaseHint = `Foe cards glow — tap one to Start Trouble.`;
+      if (state.phase === 'NO_THREAT_CHOICE' && !playableCount) phaseHint = `No Foe ready — Loot the Room or play a setup card first.`;
       html += `<p class="micro playable-now-label">${phaseHint}</p>`;
     }
     html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;

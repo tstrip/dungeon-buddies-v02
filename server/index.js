@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.2-one-use-trick-hotfix-v062' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.4-action-first-mobile-flow-v064' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -310,7 +310,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.2-one-use-trick-hotfix-v062',
+    version: '0.10.4-action-first-mobile-flow-v064',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1087,7 +1087,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
         }
       }
       announce(room, 'effect', 'Divine Scheduling Conflict', winners.length ? `${winners.map((p) => p.name).join(', ')} reached 10 Glory!` : `All Gravefriends gained 1 Glory.`, sourceCard, { importance: 'major' });
-      if (winners.length) { room.phase = 'GAME_OVER'; room.status = 'GAME_OVER'; room.winnerId = winners[0].id; announce(room, 'game', 'Victory — 10 Glory!', `${winners[0].name} reached 10 Glory and wins the game.`, sourceCard, { importance: 'major' }); }
+      if (winners.length) { room.phase = 'GAME_OVER'; room.status = 'GAME_OVER'; room.winnerId = winners[0].id; announce(room, 'game', 'VICTORY!', `${winners[0].name} reached 10 Glory. History will exaggerate this.`, sourceCard, { importance: 'major' }); }
       return true;
     }
     case 'DOPPELGANGER': {
@@ -1410,7 +1410,7 @@ function startDeathLooting(room, victim, sourceCard, context = {}) {
   const detail = lootable.length
     ? `${victim.name} died. ${lootable.length} card${lootable.length === 1 ? '' : 's'} are laid out for body looting. ${ordered.map((p) => p.name).join(' → ') || 'No one'} chooses in Glory order.${tieRolls.length ? ' ' + tieRolls.join(' ') : ''}`
     : `${victim.name} died, but had no cards to loot.`;
-  announce(room, 'death', 'Goblin Down — Loot the Body', detail, sourceCard, { importance: 'major' });
+  announce(room, 'death', 'GOBLIN DOWN — LOOT THE BODY', `${detail} Take one card in Glory order. Try not to make eye contact.`, sourceCard, { importance: 'major' });
   log(room, `${victim.name} died. ${lootable.length} card${lootable.length === 1 ? '' : 's'} laid out for body looting.`);
   if (!lootable.length || !ordered.length) {
     finishBodyLooting(room);
@@ -1750,7 +1750,7 @@ function setupGame(room) {
     drawMany(room, p, 'LOOT', 4, false);
   }
   announce(room, 'roll', 'Opening Roll', 'Each goblin draws 4 Chamber and 4 Loot cards. Roll a d6 to see who opens the first Chamber.', null, { importance: 'major' });
-  log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
+  log(room, `The table started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
 }
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
@@ -1830,7 +1830,7 @@ function resolveCombat(room) {
       room.phase = 'GAME_OVER';
       room.status = 'GAME_OVER';
       room.winnerId = active.id;
-      announce(room, 'game', 'Victory — 10 Glory!', `${active.name} reached 10 Glory by combat and wins the game.`, null, { importance: 'major' });
+      announce(room, 'game', 'VICTORY!', `${active.name} reached 10 Glory. History will exaggerate this.`, null, { importance: 'major' });
       log(room, `${active.name} wins by combat!`);
     } else moveToPostCombat(room);
   } else {
@@ -1972,7 +1972,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.2-one-use-trick-hotfix-v062' });
+  socket.emit('ready', { version: '0.10.4-action-first-mobile-flow-v064' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
