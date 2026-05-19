@@ -3,6 +3,7 @@ const SESSION_KEY = 'lootGoblinsV070Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
+let handExpanded = false;
 
 const $ = (id) => document.getElementById(id);
 const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
@@ -295,6 +296,7 @@ function tableFrameHtml(centerHtml, options = {}) {
   const move = deriveMovement();
   return `${announcementHtml()}<div class="felt-table v070-table v073-table v076-table ${escapeHtml(options.mode || '')}">
     <div class="table-seats v070-seats">${tableSeatsHtml()}</div>
+    ${mobileDeckStripHtml(move)}
     <div class="v070-surface">
       <div class="v070-deck-column chamber-column">
         ${boardPile('CHAMBER_DECK', 'Chamber', 'Deck', state.decks?.chamber || 0, move)}
@@ -312,6 +314,26 @@ function tableFrameHtml(centerHtml, options = {}) {
   </div>`;
 }
 
+
+function mobileDeckStripHtml(move) {
+  const piles = [
+    { key: 'CHAMBER_DECK', label: 'Chamber', sub: 'Deck', count: state.decks?.chamber || 0 },
+    { key: 'CHAMBER_DISCARD', label: 'Chamber', sub: 'Discard', count: state.decks?.chamberDiscard || 0 },
+    { key: 'LOOT_DECK', label: 'Loot', sub: 'Deck', count: state.decks?.loot || 0 },
+    { key: 'LOOT_DISCARD', label: 'Loot', sub: 'Discard', count: state.decks?.lootDiscard || 0 }
+  ];
+  return `<div class="mobile-deck-strip" aria-label="Deck and discard counts">${piles.map((p) => {
+    const classes = ['mobile-deck-chip'];
+    if (move?.from === p.key) classes.push('source');
+    if (move?.to === p.key) classes.push('destination');
+    if (Number(p.count || 0) <= 0) classes.push('empty');
+    return `<div class="${classes.join(' ')}">
+      ${deckPileImageHtml({ key: p.key }, 'mobile-deck-art')}
+      <span><strong>${escapeHtml(p.label)}</strong><small>${escapeHtml(p.sub)} · ${Number(p.count || 0)}</small></span>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 function defaultCenterStageHtml(options = {}) {
   const move = deriveMovement();
   const notice = state.tableNotice;
@@ -320,7 +342,7 @@ function defaultCenterStageHtml(options = {}) {
   const centerClass = options.centerClass || centerZoneClass();
   const activeCard = options.activeCard || notice?.card || state.revealCard;
   return `<div class="table-core-center v070-default-center">
-    <div class="movement-banner ${notice || move?.from || move?.to ? 'active' : ''}">
+    <div class="movement-banner ${state?.announcement ? 'is-duplicate-event' : ''} ${notice || move?.from || move?.to ? 'active' : ''}">
       <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
       <div class="movement-detail">${escapeHtml(notice?.detail || move?.detail || 'Cards and dice will resolve in the middle of the table.')}</div>
     </div>
@@ -980,17 +1002,32 @@ function renderHand() {
   const you = me();
   if (!you) { root.innerHTML = ''; return; }
   const over = you.handCount > you.handLimit;
-  let html = `<div class="hand-header v076-hand-header"><div><span class="hand-eyebrow">Bottom Tray</span><h3>Your Hand</h3></div><span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span></div>`;
-  html += `<p class="micro hand-help">Tap a tucked card tab to pull it onto the table, read it, and choose an action.</p>`;
+  const forceOpen = state.phase === 'TRIBUTE' && isMyTurn();
+  root.classList.toggle('hand-expanded', handExpanded || forceOpen);
+  root.classList.toggle('hand-over-limit', over);
+  const toggleLabel = (handExpanded || forceOpen) ? 'Collapse' : 'Expand';
+  let html = `<div class="hand-header v076-hand-header mobile-hand-header">
+    <div><span class="hand-eyebrow">Bottom Tray</span><h3>Your Hand</h3></div>
+    <div class="hand-header-actions">
+      <span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span>
+      <button id="handToggleBtn" class="hand-toggle-btn" type="button" aria-expanded="${handExpanded || forceOpen}">${toggleLabel}</button>
+    </div>
+  </div>`;
+  html += `<p class="micro hand-help">Tap a card to read it and choose an action. Expand the tray when you need more room.</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
-    html += `<p class="micro">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
+    html += `<p class="micro tribute-instruction">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
     html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, selectableTribute: true })).join('')}</div></div>`;
     html += tributeControls(need);
   } else {
     html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
   }
   root.innerHTML = html;
+  const toggle = $('handToggleBtn');
+  if (toggle && !forceOpen) toggle.addEventListener('click', () => {
+    handExpanded = !handExpanded;
+    renderHand();
+  });
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
     cardEl.addEventListener('click', () => {
       const card = myHand().find((c) => c.instanceId === cardEl.dataset.cardId);
