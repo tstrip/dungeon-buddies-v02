@@ -351,7 +351,7 @@ function defaultCenterStageHtml(options = {}) {
   const centerLabel = options.centerLabel || centerZoneLabel();
   const centerSub = options.centerSub || centerZoneSub();
   const centerClass = options.centerClass || centerZoneClass();
-  const activeCard = options.activeCard || notice?.card || state.revealCard;
+  const activeCard = options.activeCard || state.revealCard || notice?.card;
   return `<div class="table-core-center v070-default-center">
     <div class="movement-banner ${state?.announcement ? 'is-duplicate-event' : ''} ${notice || move?.from || move?.to ? 'active' : ''}">
       <div class="movement-label">${escapeHtml(notice?.title || move?.label || 'Table ready')}</div>
@@ -757,14 +757,41 @@ function mobileStartTurnStageHtml() {
   `, { size: 'small', icon: 'chamber', sub: mine ? 'Choose when to open the door.' : 'Waiting for the active goblin.' });
 }
 
+
+function mobileOpenedDoorResultHtml(mine, actor) {
+  const card = state.revealCard || state.tableNotice?.card || null;
+  if (!card || card.type === 'THREAT') return '';
+  const isHex = card.type === 'HEX';
+  const title = isHex ? 'Hex Resolved' : 'Face-Up Chamber';
+  const detail = isHex
+    ? `${card.publicName} affected ${mine ? 'you' : actor}. No Foe was found.`
+    : `${mine ? 'You revealed' : `${actor} revealed`} ${card.publicName}. It went to ${mine ? 'your' : 'their'} hand.`;
+  const next = isHex
+    ? (mine ? 'Now Start Trouble or Loot the Room.' : `${actor} can Start Trouble or Loot the Room.`)
+    : (mine ? 'You may play it now from your hand, then choose your move.' : `${actor} may play it now, then choose their move.`);
+  return `<div class="mobile-opened-door-card ${cardTypeClass(card)}">
+    <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
+    <div>
+      <div class="mobile-card-type">${escapeHtml(title)}</div>
+      <strong>${escapeHtml(card.publicName)}</strong>
+      <span>${escapeHtml(detail)}</span>
+      <small>${escapeHtml(next)}</small>
+    </div>
+    <button class="mobile-mini-button" data-mobile-inspect-card="${card.instanceId}">View</button>
+  </div>`;
+}
+
 function mobileNoFoeStageHtml() {
   const mine = isMyTurn();
   const actor = active()?.name || 'The active goblin';
+  const openedDoor = mobileOpenedDoorResultHtml(mine, actor);
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'no-foe-actions secondary-only') : '';
-  return mobileStageShell('no-foe', mine ? 'Choose Move' : `${actor} chooses`, mine ? 'Start Trouble or Loot the Room' : `Waiting on ${actor}`, `
-    <div class="mobile-choice-grid">
+  const heading = openedDoor ? 'No Foe Revealed' : (mine ? 'Start Trouble or Loot the Room' : `Waiting on ${actor}`);
+  return mobileStageShell('no-foe', mine ? 'Choose Move' : `${actor} chooses`, heading, `
+    ${openedDoor}
+    <div class="mobile-choice-grid ${openedDoor ? 'after-opened-door' : ''}">
       <div class="mobile-choice-card ${mine ? '' : 'is-observer'}">
         ${assetIconHtml('strength', 'asset-sigil event-sigil')}
         <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${mine ? 'Tap a Foe in your hand.' : 'They may play a Foe from hand.'}</span></div>
@@ -775,7 +802,7 @@ function mobileNoFoeStageHtml() {
       </button>
     </div>
     ${actions}
-  `, { size: 'small', icon: mine ? 'chamber' : 'loot', sub: mine ? 'Your move.' : `${actor} can Start Trouble or Loot the Room.` });
+  `, { size: openedDoor ? 'medium' : 'small', icon: openedDoor ? cardTypeKey(state.revealCard || state.tableNotice?.card) : (mine ? 'chamber' : 'loot'), sub: openedDoor ? 'The opened Chamber card was shown to everyone.' : (mine ? 'Your move.' : `${actor} can Start Trouble or Loot the Room.`) });
 }
 
 function mobilePostCombatStageHtml() {

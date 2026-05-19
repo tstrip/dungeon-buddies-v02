@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.9.2-mobile-interaction-polish-v052' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.9.3-face-up-open-door-v053' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -308,7 +308,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.9.2-mobile-interaction-polish-v052',
+    version: '0.9.3-face-up-open-door-v053',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1959,7 +1959,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.9.2-mobile-interaction-polish-v052' });
+  socket.emit('ready', { version: '0.9.3-face-up-open-door-v053' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2168,9 +2168,9 @@ function handleAction(socket, room, player, payload) {
     else {
       markFresh(card, 'CHAMBER');
       player.hand.push(card);
-      movement(room, 'REVEAL_ZONE', 'PLAYER_HAND', 'Reveal Zone → Hand', `${card.publicName} went to ${player.name}'s hand.`, card);
-      announce(room, 'draw', 'Card Added to Hand', `${card.publicName} went to ${player.name}'s hand.`, card, { importance: 'normal' });
-      log(room, `${card.publicName} went to ${player.name}'s hand.`);
+      movement(room, 'REVEAL_ZONE', 'PLAYER_HAND', 'Face-Up Chamber → Hand', `${player.name} revealed ${card.publicName}; it went to their hand.`, card);
+      announce(room, 'reveal', 'Face-Up Chamber Revealed', `${player.name} revealed ${card.publicName}. It went to their hand; they may play it now or choose their next move.`, card, { importance: 'major' });
+      log(room, `${player.name} revealed ${card.publicName} face-up and added it to hand.`);
       room.phase = 'NO_THREAT_CHOICE';
     }
     return;
