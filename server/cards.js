@@ -34,6 +34,7 @@ const gear = (id, publicName, publicText, flavorText, stats = {}) => ({
 const trick = (id, publicName, publicText, flavorText, effect, stats = {}) => ({
   id, deck: 'LOOT', type: 'TRICK', publicName, publicText, flavorText,
   timing: stats.timing || ['DURING_COMBAT'], target: stats.target || 'COMBAT_SIDE', effect,
+  oneUse: true, consumable: true,
   scrapValue: stats.junkValue ?? 0, junkValue: stats.junkValue ?? 0, enforcement: stats.enforcement || 'AUTO', copies: stats.copies || 1
 });
 const special = (id, publicName, publicText, flavorText, effect, stats = {}) => ({

@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.1-start-hand-state-hotfix-v061' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.2-one-use-trick-hotfix-v062' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -202,6 +202,8 @@ function publicCard(card) {
     usableByOrigins: card.usableByOrigins || [],
     notUsableByOrigins: card.notUsableByOrigins || [],
     effect: card.effect ? { ...card.effect } : undefined,
+    oneUse: Boolean(card.oneUse || card.type === 'TRICK' || /\bOne-use\b/i.test(card.publicText || '')),
+    consumable: Boolean(card.consumable || card.type === 'TRICK' || /\b(Potion|Poison|Drink|Water)\b/i.test(card.publicName || '')),
     cheated: Boolean(card.cheated),
     attachedCards: (card.attachedCards || []).map(publicCard),
     attachmentNames: (card.attachedCards || []).map((a) => a.publicName),
@@ -308,7 +310,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.1-start-hand-state-hotfix-v061',
+    version: '0.10.2-one-use-trick-hotfix-v062',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -818,7 +820,14 @@ function effectiveGearCombatBonus(player, card) {
   return bonus;
 }
 
+
+function isOneUseConsumable(card) {
+  if (!card) return false;
+  return Boolean(card.oneUse || card.consumable || card.type === 'TRICK' || /\bOne-use\b/i.test(card.publicText || '') || /\b(Potion|Poison|Drink|Water)\b/i.test(card.publicName || ''));
+}
+
 function validateGearEquip(player, card) {
+  if (isOneUseConsumable(card)) return 'That is a one-use Trick, not equipable Gear.';
   if (card.type !== 'GEAR') return 'That is not Gear.';
   if (card.cheated) return null;
   const roleIds = callingCards(player).map((r) => r.id);
@@ -1963,7 +1972,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.1-start-hand-state-hotfix-v061' });
+  socket.emit('ready', { version: '0.10.2-one-use-trick-hotfix-v062' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2432,6 +2441,7 @@ function playCard(socket, room, player, card, payload) {
   }
 
   if (card.type === 'GEAR') {
+    if (isOneUseConsumable(card)) return emitError(socket, 'That is a one-use Trick, not Gear. Use it during its timing window; it will discard after use.');
     if (!canActOutsideCombat(room) || activeId(room) !== player.id) return emitError(socket, 'Gear can only be played on your own turn outside combat.');
     const mode = payload.mode || 'EQUIP';
     const fromHand = player.hand.some((c) => c.instanceId === card.instanceId);
@@ -2623,7 +2633,7 @@ function gearJunkValue(card) {
 }
 
 function ownedGearOptions(player) {
-  return [...player.hand.filter((c) => c.type === 'GEAR'), ...player.carriedGear, ...player.equippedGear];
+  return [...player.hand.filter((c) => c.type === 'GEAR' && !isOneUseConsumable(c)), ...player.carriedGear.filter((c) => !isOneUseConsumable(c)), ...player.equippedGear.filter((c) => !isOneUseConsumable(c))];
 }
 
 function inPlayGearOptions(player) {

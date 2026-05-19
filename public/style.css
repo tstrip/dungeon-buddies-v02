@@ -6963,3 +6963,21 @@ button[data-action="SELL_GEAR"]::before {
   border-color: rgba(255, 221, 114, .42);
   box-shadow: 0 0 0 2px rgba(255,221,114,.10), 0 10px 24px rgba(0,0,0,.28);
 }
+
+
+/* Loot Goblins v0.6.2 — One-use Trick / Potion guard */
+.consumable-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(154, 79, 217, .16);
+  border: 1px solid rgba(203, 132, 255, .28);
+  color: rgba(255,246,214,.86);
+  font-size: .82rem;
+  line-height: 1.22;
+}
+
+.card-type-trick .stats,
+.hand-card.card-type-trick .hand-card-main {
+  color: rgba(255, 231, 153, .95);
+}

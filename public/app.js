@@ -1563,7 +1563,8 @@ function isCardPlayable(card) {
   if (!state || !card) return false;
   if (state.pendingPrompt) return false;
   if (state.reaction) return isReactionCardPlayable(card);
-  if (card.type === 'ROLE' || card.type === 'ORIGIN' || card.type === 'GEAR') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
+  if (card.type === 'ROLE' || card.type === 'ORIGIN') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
+  if (card.type === 'GEAR') return !isOneUseConsumableCard(card) && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
     if (timing.includes('ANY_TIME')) return true;
@@ -1701,11 +1702,17 @@ function compactCardHtml(card, opts = {}) {
   </article>`;
 }
 
+
+function isOneUseConsumableCard(card) {
+  if (!card) return false;
+  return Boolean(card.oneUse || card.consumable || card.type === 'TRICK' || /\bOne-use\b/i.test(card.publicText || '') || /\b(Potion|Poison|Drink|Water)\b/i.test(card.publicName || ''));
+}
+
 function cardGlance(card) {
   if (card.type === 'THREAT') return `STR ${card.strength}`;
   if (card.type === 'GEAR') return `+${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''}`;
   if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)}`;
-  if (card.type === 'TRICK') return trickGlance(card);
+  if (card.type === 'TRICK') return `One-use · ${trickGlance(card)}`;
   if (card.type === 'HEX') return hexGlance(card);
   if (card.type === 'ROLE') return 'Calling';
   if (card.type === 'ORIGIN') return 'Kin';
@@ -1717,7 +1724,7 @@ function cardGlanceSub(card) {
   if (card.type === 'THREAT') return `${card.renownReward} Glory · ${card.lootReward} Loot`;
   if (card.type === 'GEAR') return `${card.slot || 'Gear'}${card.handsUsed ? ` · ${card.handsUsed}H` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
   if (card.type === 'THREAT_MODIFIER') return `Loot ${signed(card.lootDelta)}`;
-  if (card.type === 'TRICK') return (card.timing || []).map(prettyTiming).join(' / ') || 'Trick';
+  if (card.type === 'TRICK') return `Single-use ${((card.timing || []).map(prettyTiming).join(' / ') || 'Trick')}`;
   if (card.type === 'HEX') return (card.timing || []).map(prettyTiming).join(' / ') || 'Any time';
   if (card.type === 'ROLE' || card.type === 'ORIGIN') return 'Play on your turn';
   return (card.publicText || '').slice(0, 42);
@@ -1739,7 +1746,7 @@ function cardBottom(card) {
   if (card.type === 'THREAT') return `STR ${card.strength} · ${card.renownReward} Glory · ${card.lootReward} Loot`;
   if (card.type === 'GEAR') return `${card.slot || 'Gear'} · +${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
   if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
-  if (card.type === 'TRICK') return `${card.timing?.join(', ') || 'Trick'} · ${card.junkValue ?? card.scrapValue ?? 0} Junk`;
+  if (card.type === 'TRICK') return `One-use Trick · ${(card.timing || []).map(prettyTiming).join(' / ') || 'Combat'} · ${card.junkValue ?? card.scrapValue ?? 0} Junk`;
   if (card.type === 'ROLE') return 'Calling';
   if (card.type === 'ORIGIN') return 'Kin';
   if (card.type === 'HEX') return card.timing?.join(', ') || 'Hex';
@@ -1747,7 +1754,7 @@ function cardBottom(card) {
 }
 
 function typeLabel(card) {
-  const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Modifier' };
+  const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick · One-use', SPECIAL: 'Special', THREAT_MODIFIER: 'Modifier' };
   return map[card.type] || card.type;
 }
 
@@ -1813,7 +1820,9 @@ function cardActions(card) {
   if (state.pendingPrompt) return `<p>Resolve the current prompt first.</p>`;
   if (state.reaction) return reactionCardActions(card);
   if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
-  if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) {
+  if (card.type === 'GEAR' && isOneUseConsumableCard(card)) {
+    actions.push(`<p class="consumable-note">One-use cards are not equipable Gear. Use this during its timing window; it discards after use.</p>`);
+  } else if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) {
     actions.push(`<button class="primary" data-inspect-action="EQUIP">Equip</button>`);
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
     actions.push(`<button data-inspect-action="SELL_ONE">Sell / cash in</button>`);
@@ -1864,7 +1873,7 @@ function cardActions(card) {
 function whyNotPlayable(card) {
   if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase, unless the card says combat/any time.';
   if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
-  if (card.type === 'TRICK') return 'This Trick is only available during its timing window, such as combat or before a Flee roll.';
+  if (card.type === 'TRICK') return 'This is a one-use Trick, not Gear. Use it during its timing window, then it discards.';
   if (card.type === 'THREAT') return 'Foes are played with Start Trouble after no Foe appears.';
   return 'The current phase does not allow this card.';
 }

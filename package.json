@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-start-hand-state-hotfix-v061",
-  "version": "0.10.1",
+  "name": "loot-goblins-one-use-trick-hotfix-v062",
+  "version": "0.10.2",
   "private": true,
-  "description": "Loot Goblins v0.6.1 hotfix: restores 8-card starting hand and adds clearer death, victory, and zero-Glory delineation.",
+  "description": "Loot Goblins v0.6.2 hotfix: clarifies potions/one-use cards as Tricks, not equipable Gear, and hardens server/client Gear action guards.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
