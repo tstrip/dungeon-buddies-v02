@@ -31,12 +31,9 @@ function savedSession() {
 function maybeShowResume() {
   const saved = savedSession();
   const roomFromUrl = new URLSearchParams(location.search).get('room');
-  if (roomFromUrl && !state && $('codeInput')) $('codeInput').value = roomFromUrl.toUpperCase();
+  if (roomFromUrl && !state) $('codeInput').value = roomFromUrl.toUpperCase();
   if (saved && !state) {
-    if ($('resumeCopy')) $('resumeCopy').textContent = 'Your stool is still warm.';
-    if ($('resumeRoomCode')) $('resumeRoomCode').textContent = saved.roomCode || '—';
-    if ($('resumePlayerName')) $('resumePlayerName').textContent = saved.playerName || '—';
-    if ($('resumeState')) $('resumeState').textContent = 'Saved session';
+    $('resumeCopy').textContent = `Room ${saved.roomCode} · Player ${saved.playerName}`;
     showScreen('resumeScreen');
   }
 }
@@ -58,7 +55,7 @@ window.addEventListener('resize', () => {
 
 function setConnection(text) {
   const el = $('connection');
-  if (el) el.textContent = text === 'connected' ? 'Connected' : 'Disconnected';
+  if (el) el.textContent = text;
 }
 
 function showToast(message, type = 'ok') {
@@ -98,15 +95,6 @@ $('copyInviteBtn').addEventListener('click', async () => {
     showToast(url, 'ok');
   }
 });
-$('copyRoomCodeBtn').addEventListener('click', async () => {
-  if (!state?.code) return;
-  try {
-    await navigator.clipboard.writeText(state.code);
-    showToast('Room code copied.', 'ok');
-  } catch {
-    showToast(state.code, 'ok');
-  }
-});
 $('closeInspect').addEventListener('click', closeInspect);
 $('inspectOverlay').addEventListener('click', (e) => { if (e.target.id === 'inspectOverlay') closeInspect(); });
 
@@ -132,43 +120,19 @@ function render() {
 
 function renderLobby() {
   showScreen('lobbyScreen');
-  const isHost = Boolean(state.players[0]?.isYou);
-  const playerCount = state.players.length;
-  const missing = Math.max(0, 3 - playerCount);
-  const roomCode = state.code || '—';
-
-  $('lobbyRoomCode').textContent = roomCode;
-  if ($('lobbyInviteCode')) $('lobbyInviteCode').textContent = roomCode;
-
-  let status = 'Waiting for goblins to gather.';
-  if (playerCount === 1) status = 'Waiting for 2 more goblins.';
-  else if (playerCount === 2) status = 'Waiting for 1 more goblin.';
-  else if (playerCount >= 3) status = isHost ? 'Everyone’s here. Start when ready.' : `Everyone’s here. Waiting for ${state.players[0]?.name || 'Host'} to start.`;
-  if ($('lobbyStatusCopy')) $('lobbyStatusCopy').textContent = status;
-  if ($('lobbyTableState')) $('lobbyTableState').textContent = playerCount >= 3 ? 'Full Table' : `${missing} Empty Stool${missing === 1 ? '' : 's'}`;
-
+  $('lobbyRoomCode').textContent = state.code;
   const seats = $('lobbySeats');
   seats.innerHTML = '';
   for (let i = 0; i < 3; i++) {
     const p = state.players[i];
     const div = document.createElement('div');
-    div.className = `lobby-seat ${p ? 'occupied' : 'empty'} ${p?.isYou ? 'you' : ''} ${i === 0 ? 'host-seat' : ''}`;
+    div.className = 'seat';
     div.innerHTML = p
-      ? `<div class="seat-token">${p.isYou ? 'YOU' : (i === 0 ? 'HOST' : 'IN')}</div>
-         <div class="seat-copy"><strong>${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</strong><span>${i === 0 ? 'Host' : 'Joined'} · ${p.connected ? 'online' : 'offline'}</span></div>`
-      : `<div class="seat-token">+</div>
-         <div class="seat-copy"><strong>Empty Stool</strong><span>Invite a goblin</span></div>`;
+      ? `<strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span>${i === 0 ? 'Host' : 'Joined'} · ${p.connected ? 'online' : 'offline'}</span>`
+      : `<strong>Open seat</strong><span>Waiting</span>`;
     seats.appendChild(div);
   }
-
-  const start = $('startGameBtn');
-  start.disabled = !(isHost && playerCount === 3);
-  start.textContent = playerCount === 3 ? 'Start Game' : `Needs ${missing} More`;
-  if ($('startGameHint')) {
-    $('startGameHint').textContent = isHost
-      ? (playerCount === 3 ? 'The table is full. Start when ready.' : `Start Game unlocks at 3 goblins.`)
-      : `Waiting for ${state.players[0]?.name || 'Host'} to start the game.`;
-  }
+  $('startGameBtn').disabled = !(state.players[0]?.isYou && state.players.length === 3);
 }
 
 function renderGame() {
@@ -197,7 +161,7 @@ function announcementHtml() {
 }
 
 function announcementIcon(kind) {
-  const map = { roll: 'die', combat: 'combat', hex: 'hex', draw: 'draw', effect: 'special', card: 'card', backup: 'backup', flee: 'flee', tribute: 'loot', turn: 'turn', game: 'glory', reveal: 'chamber', gear: 'gear', prompt: 'prompt', bad: 'hex', death: 'death', glory: 'glory', 'zero-glory': 'death' };
+  const map = { roll: 'die', combat: 'combat', hex: 'hex', draw: 'draw', effect: 'special', card: 'card', backup: 'backup', flee: 'flee', tribute: 'loot', turn: 'turn', game: 'glory', reveal: 'chamber', gear: 'gear', prompt: 'prompt', bad: 'hex' };
   return assetIconHtml(map[kind] || 'special', 'event-sigil');
 }
 
@@ -445,7 +409,7 @@ function centerZoneLabel() {
   if (state.phase === 'COMBAT') return 'Combat Zone';
   if (state.phase === 'ESCAPE') return 'Flee Zone';
   if (state.revealCard) return 'Reveal Zone';
-  if (state.bodyLoot) return 'Goblin Down';
+  if (state.bodyLoot) return 'Body Loot';
   if (state.pendingPrompt) return 'Prompt Zone';
   return 'Table Center';
 }
@@ -455,7 +419,7 @@ function centerZoneSub() {
   if (state.phase === 'COMBAT') return 'Foes, modifiers, and played Tricks live here.';
   if (state.phase === 'ESCAPE') return 'Dice rolls and Bad News resolve here.';
   if (state.revealCard) return `${state.revealCard.publicName} is being resolved.`;
-  if (state.bodyLoot) return state.bodyLoot.requiresYou ? 'Choose one card from the fallen goblin.' : `Body looting: waiting for ${state.bodyLoot.currentLooterName || 'a player'}.`;
+  if (state.bodyLoot) return state.bodyLoot.requiresYou ? 'Choose one card from the fallen goblin.' : `Waiting for ${state.bodyLoot.currentLooterName || 'a player'} to loot the body.`;
   if (state.pendingPrompt) return state.pendingPrompt.message || 'Waiting for a player choice.';
   return 'Revealed cards will appear here.';
 }
@@ -693,7 +657,6 @@ function renderMobilePlayShell(root) {
   const phaseClass = `phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   root.innerHTML = `<div class="mobile-app-shell ${phaseClass}">
     ${mobilePlayerHudHtml()}
-    ${mobileZeroGloryNoticeHtml()}
     ${mobileDeckStripHtml(move)}
     ${stage}
   </div>`;
@@ -719,16 +682,6 @@ function renderMobilePlayShell(root) {
   });
 }
 
-
-function mobileZeroGloryNoticeHtml() {
-  const zero = (state.players || []).filter((p) => Number(p.renown || 0) <= 0 && !p.dead);
-  if (!zero.length) return '';
-  return `<div class="mobile-zero-glory-alert">
-    ${assetIconHtml('death', 'event-sigil')}
-    <span>${escapeHtml(zero.map((p) => p.isYou ? 'You' : p.name).join(', '))} ${zero.length === 1 ? 'is' : 'are'} at 0 Glory. Build back up by gaining Glory.</span>
-  </div>`;
-}
-
 function mobilePlayerHudHtml() {
   return `<div class="mobile-player-hud">${state.players.map((p) => {
     const isActive = p.id === state.activePlayerId;
@@ -738,7 +691,6 @@ function mobilePlayerHudHtml() {
     const statusCount = (p.statusEffects || []).filter((e) => e.visible !== false).length;
     return `<button class="mobile-player-chip ${activeClass} ${youClass} ${deadClass}" data-player-seat="${p.id}">
       ${isActive ? `<span class="mobile-turn-badge">${p.isYou ? 'YOUR TURN' : 'TURN'}</span>` : ''}
-      ${p.dead ? '<span class="mobile-death-badge">DOWN</span>' : Number(p.renown || 0) <= 0 ? '<span class="mobile-zero-badge">0 GLORY</span>' : ''}
       <span class="mobile-player-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
       <span class="mobile-player-stats"><b>GL ${p.renown}/10</b><b>PWR ${playerPower(p)}</b></span>
       ${statusCount ? `<span class="mobile-status-dot">${statusCount}</span>` : ''}
@@ -755,7 +707,6 @@ function mobileStageHtml() {
   if (state.phase === 'NO_THREAT_CHOICE') return mobileNoFoeStageHtml();
   if (state.phase === 'POST_COMBAT') return mobilePostCombatStageHtml();
   if (state.phase === 'END_TURN') return mobileEndTurnStageHtml();
-  if (state.bodyLoot) return mobileBodyLootStageHtml();
   if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
   if (state.phase === 'GAME_OVER') return mobileGameOverStageHtml();
   return mobileRevealOrWaitingStageHtml();
@@ -998,25 +949,6 @@ function mobileOpeningRollStageHtml() {
   return mobileStageShell('opening-roll', 'Opening Roll', first.requiresYou ? 'Your roll is needed' : 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>${actions}`, { size: 'medium', icon: 'die', sub: 'Highest roll opens the first Chamber. Ties reroll.' });
 }
 
-
-function mobileBodyLootStageHtml() {
-  const loot = state.bodyLoot;
-  const victimName = loot?.victimName || 'A goblin';
-  const current = loot?.requiresYou ? 'You are looting now.' : `${loot?.currentLooterName || 'A player'} is looting now.`;
-  const cards = Number(loot?.cardCount || 0);
-  return mobileStageShell('death', 'Goblin Down', `${victimName} is down`, `
-    <div class="mobile-death-card">
-      ${assetIconHtml('death', 'asset-sigil event-sigil')}
-      <div>
-        <strong>Body Looting</strong>
-        <span>${cards} card${cards === 1 ? '' : 's'} left to loot.</span>
-        <small>${escapeHtml(current)} Looting proceeds in Glory order.</small>
-      </div>
-    </div>
-    ${loot?.requiresYou ? '<p class="mobile-state-hint">Choose one card from the prompt below.</p>' : ''}
-  `, { size: 'medium', icon: 'death', sub: 'Death is separate from losing Glory.' });
-}
-
 function mobilePromptStageHtml(prompt) {
   return mobileStageShell('prompt', prompt.requiresYou ? 'Decision Required' : 'Prompt Pending', prompt.requiresYou ? 'Your choice' : `Waiting on ${playerName(prompt.playerId)}`, `
     <div class="mobile-wait-card">
@@ -1028,18 +960,12 @@ function mobilePromptStageHtml(prompt) {
 
 function mobileGameOverStageHtml() {
   const winner = state.players.find((p) => p.id === state.winnerId);
-  return mobileStageShell('game-over', 'Victory', `${winner?.name || 'Someone'} wins!`, `
-    <div class="mobile-victory-card">
+  return mobileStageShell('game-over', 'Game Over', `${winner?.name || 'Someone'} wins!`, `
+    <div class="mobile-wait-card">
       ${assetIconHtml('glory', 'asset-sigil event-sigil')}
-      <div>
-        <strong>10 Glory reached</strong>
-        <span>The winning Glory came from combat or a win-legal effect.</span>
-      </div>
+      <span>The final Glory came from a combat victory.</span>
     </div>
-    <div class="mobile-final-standings">
-      ${(state.players || []).slice().sort((a,b) => Number(b.renown || 0) - Number(a.renown || 0)).map((p, i) => `<div><span>#${i+1} ${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span><strong>${p.renown}/10 Glory</strong></div>`).join('')}
-    </div>
-  `, { size: 'large', icon: 'glory' });
+  `, { size: 'medium', icon: 'glory' });
 }
 
 function findVisibleCardByInstance(id) {

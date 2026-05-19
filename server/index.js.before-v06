@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.1-start-hand-state-hotfix-v061' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.9.3-face-up-open-door-v053' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -308,7 +308,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.1-start-hand-state-hotfix-v061',
+    version: '0.9.3-face-up-open-door-v053',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -861,11 +861,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       const min = effect.minimum ?? 1;
       const before = player.renown;
       player.renown = Math.max(min, player.renown - amount);
-      if (player.renown <= 0) {
-        announce(room, 'zero-glory', 'Zero Glory', `${player.name} dropped to 0 Glory and has to build back up.`, sourceCard, { importance: 'major' });
-      } else {
-        announce(room, 'glory', 'Glory Changed', `${player.name}: ${before} → ${player.renown} Glory.`, sourceCard, { importance: before !== player.renown ? 'major' : 'normal' });
-      }
+      announce(room, 'effect', 'Glory Changed', `${player.name}: ${before} → ${player.renown} Glory.`, sourceCard, { importance: 'normal' });
       log(room, `${player.name} lost ${amount} Glory.`);
       return true;
     }
@@ -1078,7 +1074,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
         }
       }
       announce(room, 'effect', 'Divine Scheduling Conflict', winners.length ? `${winners.map((p) => p.name).join(', ')} reached 10 Glory!` : `All Gravefriends gained 1 Glory.`, sourceCard, { importance: 'major' });
-      if (winners.length) { room.phase = 'GAME_OVER'; room.status = 'GAME_OVER'; room.winnerId = winners[0].id; announce(room, 'game', 'Victory — 10 Glory!', `${winners[0].name} reached 10 Glory and wins the game.`, sourceCard, { importance: 'major' }); }
+      if (winners.length) { room.phase = 'GAME_OVER'; room.status = 'GAME_OVER'; room.winnerId = winners[0].id; }
       return true;
     }
     case 'DOPPELGANGER': {
@@ -1401,7 +1397,7 @@ function startDeathLooting(room, victim, sourceCard, context = {}) {
   const detail = lootable.length
     ? `${victim.name} died. ${lootable.length} card${lootable.length === 1 ? '' : 's'} are laid out for body looting. ${ordered.map((p) => p.name).join(' → ') || 'No one'} chooses in Glory order.${tieRolls.length ? ' ' + tieRolls.join(' ') : ''}`
     : `${victim.name} died, but had no cards to loot.`;
-  announce(room, 'death', 'Goblin Down — Loot the Body', detail, sourceCard, { importance: 'major' });
+  announce(room, 'effect', 'Death — Loot the Body', detail, sourceCard, { importance: 'major' });
   log(room, `${victim.name} died. ${lootable.length} card${lootable.length === 1 ? '' : 's'} laid out for body looting.`);
   if (!lootable.length || !ordered.length) {
     finishBodyLooting(room);
@@ -1441,7 +1437,7 @@ function finishBodyLooting(room) {
   const after = loot.after || 'CONTINUE_ESCAPE';
   room.bodyLoot = null;
   room.pendingPrompt = null;
-  announce(room, 'death', 'Body Looting Complete', count ? `${count} unclaimed card${count === 1 ? '' : 's'} were discarded.` : 'No cards remain to loot.', null, { importance: 'major' });
+  announce(room, 'effect', 'Body Looting Complete', count ? `${count} unclaimed card${count === 1 ? '' : 's'} were discarded.` : 'No cards remain to loot.', null, { importance: 'major' });
   continueAfterPrompt(room, after);
 }
 
@@ -1737,11 +1733,11 @@ function setupGame(room) {
     p.extraOrigins = [];
     p.callingPermit = null;
     p.kinPermit = null;
-    drawMany(room, p, 'CHAMBER', 4, false);
-    drawMany(room, p, 'LOOT', 4, false);
+    drawMany(room, p, 'CHAMBER', 2, false);
+    drawMany(room, p, 'LOOT', 2, false);
   }
-  announce(room, 'roll', 'Opening Roll', 'Each goblin draws 4 Chamber and 4 Loot cards. Roll a d6 to see who opens the first Chamber.', null, { importance: 'major' });
-  log(room, `Game started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
+  announce(room, 'roll', 'Opening Roll', 'Each goblin draws 2 Chamber and 2 Loot cards. Roll a d6 to see who opens the first Chamber.', null, { importance: 'major' });
+  log(room, `Game started. Each goblin drew 2 Chamber and 2 Loot cards. Roll to see who goes first.`);
 }
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
@@ -1821,7 +1817,7 @@ function resolveCombat(room) {
       room.phase = 'GAME_OVER';
       room.status = 'GAME_OVER';
       room.winnerId = active.id;
-      announce(room, 'game', 'Victory — 10 Glory!', `${active.name} reached 10 Glory by combat and wins the game.`, null, { importance: 'major' });
+      announce(room, 'game', 'Game Won', `${active.name} wins by combat!`, null, { importance: 'major' });
       log(room, `${active.name} wins by combat!`);
     } else moveToPostCombat(room);
   } else {
@@ -1963,7 +1959,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.1-start-hand-state-hotfix-v061' });
+  socket.emit('ready', { version: '0.9.3-face-up-open-door-v053' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
