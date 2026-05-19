@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-face-up-open-door-v053",
-  "version": "0.9.3",
+  "name": "loot-goblins-tavern-entry-revamp-v06",
+  "version": "0.10.0",
   "private": true,
-  "description": "Loot Goblins Face-Up Open Door Fix v0.5.3: makes non-Foe Chamber reveals visible in the mobile center panel and clarifies Open Chamber resolution.",
+  "description": "Loot Goblins Tavern Entry Revamp v0.6: redesigned splash/create-join, resume, and lobby pages with app-first tavern table theming.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

@@ -31,9 +31,12 @@ function savedSession() {
 function maybeShowResume() {
   const saved = savedSession();
   const roomFromUrl = new URLSearchParams(location.search).get('room');
-  if (roomFromUrl && !state) $('codeInput').value = roomFromUrl.toUpperCase();
+  if (roomFromUrl && !state && $('codeInput')) $('codeInput').value = roomFromUrl.toUpperCase();
   if (saved && !state) {
-    $('resumeCopy').textContent = `Room ${saved.roomCode} · Player ${saved.playerName}`;
+    if ($('resumeCopy')) $('resumeCopy').textContent = 'Your stool is still warm.';
+    if ($('resumeRoomCode')) $('resumeRoomCode').textContent = saved.roomCode || '—';
+    if ($('resumePlayerName')) $('resumePlayerName').textContent = saved.playerName || '—';
+    if ($('resumeState')) $('resumeState').textContent = 'Saved session';
     showScreen('resumeScreen');
   }
 }
@@ -55,7 +58,7 @@ window.addEventListener('resize', () => {
 
 function setConnection(text) {
   const el = $('connection');
-  if (el) el.textContent = text;
+  if (el) el.textContent = text === 'connected' ? 'Connected' : 'Disconnected';
 }
 
 function showToast(message, type = 'ok') {
@@ -95,6 +98,15 @@ $('copyInviteBtn').addEventListener('click', async () => {
     showToast(url, 'ok');
   }
 });
+$('copyRoomCodeBtn').addEventListener('click', async () => {
+  if (!state?.code) return;
+  try {
+    await navigator.clipboard.writeText(state.code);
+    showToast('Room code copied.', 'ok');
+  } catch {
+    showToast(state.code, 'ok');
+  }
+});
 $('closeInspect').addEventListener('click', closeInspect);
 $('inspectOverlay').addEventListener('click', (e) => { if (e.target.id === 'inspectOverlay') closeInspect(); });
 
@@ -120,19 +132,43 @@ function render() {
 
 function renderLobby() {
   showScreen('lobbyScreen');
-  $('lobbyRoomCode').textContent = state.code;
+  const isHost = Boolean(state.players[0]?.isYou);
+  const playerCount = state.players.length;
+  const missing = Math.max(0, 3 - playerCount);
+  const roomCode = state.code || '—';
+
+  $('lobbyRoomCode').textContent = roomCode;
+  if ($('lobbyInviteCode')) $('lobbyInviteCode').textContent = roomCode;
+
+  let status = 'Waiting for goblins to gather.';
+  if (playerCount === 1) status = 'Waiting for 2 more goblins.';
+  else if (playerCount === 2) status = 'Waiting for 1 more goblin.';
+  else if (playerCount >= 3) status = isHost ? 'Everyone’s here. Start when ready.' : `Everyone’s here. Waiting for ${state.players[0]?.name || 'Host'} to start.`;
+  if ($('lobbyStatusCopy')) $('lobbyStatusCopy').textContent = status;
+  if ($('lobbyTableState')) $('lobbyTableState').textContent = playerCount >= 3 ? 'Full Table' : `${missing} Empty Stool${missing === 1 ? '' : 's'}`;
+
   const seats = $('lobbySeats');
   seats.innerHTML = '';
   for (let i = 0; i < 3; i++) {
     const p = state.players[i];
     const div = document.createElement('div');
-    div.className = 'seat';
+    div.className = `lobby-seat ${p ? 'occupied' : 'empty'} ${p?.isYou ? 'you' : ''} ${i === 0 ? 'host-seat' : ''}`;
     div.innerHTML = p
-      ? `<strong>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</strong><span>${i === 0 ? 'Host' : 'Joined'} · ${p.connected ? 'online' : 'offline'}</span>`
-      : `<strong>Open seat</strong><span>Waiting</span>`;
+      ? `<div class="seat-token">${p.isYou ? 'YOU' : (i === 0 ? 'HOST' : 'IN')}</div>
+         <div class="seat-copy"><strong>${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</strong><span>${i === 0 ? 'Host' : 'Joined'} · ${p.connected ? 'online' : 'offline'}</span></div>`
+      : `<div class="seat-token">+</div>
+         <div class="seat-copy"><strong>Empty Stool</strong><span>Invite a goblin</span></div>`;
     seats.appendChild(div);
   }
-  $('startGameBtn').disabled = !(state.players[0]?.isYou && state.players.length === 3);
+
+  const start = $('startGameBtn');
+  start.disabled = !(isHost && playerCount === 3);
+  start.textContent = playerCount === 3 ? 'Start Game' : `Needs ${missing} More`;
+  if ($('startGameHint')) {
+    $('startGameHint').textContent = isHost
+      ? (playerCount === 3 ? 'The table is full. Start when ready.' : `Start Game unlocks at 3 goblins.`)
+      : `Waiting for ${state.players[0]?.name || 'Host'} to start the game.`;
+  }
 }
 
 function renderGame() {
