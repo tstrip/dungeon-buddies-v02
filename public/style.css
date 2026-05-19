@@ -4967,3 +4967,124 @@ button[data-action="SELL_GEAR"]::before {
     font-size: .72rem;
   }
 }
+
+
+/* Loot Goblins v0.3.1 tribute selection hotfix */
+.hand-toggle-btn.tribute-mode {
+  opacity: .85;
+  cursor: default;
+  background: rgba(143,227,207,.18);
+  border-color: rgba(143,227,207,.4);
+}
+
+.tribute-tray {
+  overflow: visible;
+}
+
+.tribute-card-row {
+  align-items: stretch;
+  padding: 8px 4px 16px;
+}
+
+.tribute-card-shell {
+  flex: 0 0 118px;
+  width: 118px;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 8px;
+  position: relative;
+  border-radius: 18px;
+  padding: 5px;
+  border: 2px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.12);
+}
+
+.tribute-card-shell.selected {
+  border-color: rgba(143,245,143,.9);
+  background: rgba(143,245,143,.13);
+  box-shadow: 0 0 0 3px rgba(143,245,143,.18), 0 0 24px rgba(143,245,143,.2);
+}
+
+.tribute-card-shell > .hand-card {
+  width: 100%;
+  height: 138px;
+  flex: none;
+  margin: 0;
+}
+
+.tribute-card-shell.selected > .hand-card {
+  border-color: #8ff58f !important;
+  box-shadow: 0 0 0 3px rgba(143,245,143,.28), 0 8px 18px rgba(0,0,0,.3) !important;
+  transform: none;
+}
+
+.tribute-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.tribute-card-actions button {
+  min-height: 34px;
+  padding: 4px 5px;
+  border-radius: 12px;
+  font-size: .64rem;
+  font-weight: 1000;
+  line-height: 1;
+}
+
+.tribute-inspect-btn {
+  background: rgba(255,255,255,.08);
+}
+
+.tribute-pick-btn {
+  background: linear-gradient(135deg, #f8ce54, #df8d3e);
+  color: #1e1207;
+  border-color: rgba(255,242,170,.85);
+}
+
+.tribute-pick-btn.selected {
+  background: linear-gradient(135deg, #b9ff7a, #43ce82);
+  color: #10240a;
+}
+
+.tribute-card-shell.selected::after {
+  content: 'SELECTED';
+  position: absolute;
+  top: -9px;
+  left: 12px;
+  right: 12px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: #8ff58f;
+  color: #17310d;
+  font-size: .54rem;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  text-align: center;
+  box-shadow: 0 5px 10px rgba(0,0,0,.24);
+}
+
+@media (max-width: 760px) {
+  .hand-panel.hand-expanded .tribute-card-shell,
+  .tribute-card-shell {
+    flex-basis: 124px;
+    width: 124px;
+  }
+
+  .hand-panel.hand-expanded .tribute-card-shell > .hand-card,
+  .tribute-card-shell > .hand-card {
+    width: 100%;
+    height: 142px;
+  }
+
+  .tribute-card-actions button {
+    min-height: 36px;
+    font-size: .66rem;
+  }
+
+  .tribute-instruction {
+    display: block !important;
+    color: rgba(255,246,214,.92);
+  }
+}

@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-mobile-app-ux-v03",
-  "version": "0.8.2",
+  "name": "loot-goblins-mobile-app-ux-v031",
+  "version": "0.8.3",
   "private": true,
-  "description": "Loot Goblins Mobile App UX Build v0.3: app-first phone HUD, visible player power, clearer combat outcomes, and inspect-vs-select tribute flow.",
+  "description": "Loot Goblins Mobile App UX v0.3.1: tribute selection hotfix with separate Inspect/Pick controls, plus v0.3 HUD improvements.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

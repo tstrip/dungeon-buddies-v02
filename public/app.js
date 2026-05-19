@@ -1000,19 +1000,19 @@ function renderHand() {
   const forceOpen = state.phase === 'TRIBUTE' && isMyTurn();
   root.classList.toggle('hand-expanded', handExpanded || forceOpen);
   root.classList.toggle('hand-over-limit', over);
-  const toggleLabel = (handExpanded || forceOpen) ? 'Collapse' : 'Expand';
+  const toggleLabel = forceOpen ? 'Tribute' : ((handExpanded || forceOpen) ? 'Collapse' : 'Expand');
   let html = `<div class="hand-header v076-hand-header mobile-hand-header">
     <div><span class="hand-eyebrow">Bottom Tray</span><h3>Your Hand</h3></div>
     <div class="hand-header-actions">
       <span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span>
-      <button id="handToggleBtn" class="hand-toggle-btn" type="button" aria-expanded="${handExpanded || forceOpen}">${toggleLabel}</button>
+      <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'tribute-mode' : ''}" type="button" aria-expanded="${handExpanded || forceOpen}" ${forceOpen ? 'disabled' : ''}>${toggleLabel}</button>
     </div>
   </div>`;
   html += `<p class="micro hand-help">Tap a card to read it and choose an action. Expand the tray when you need more room.</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
-    html += `<p class="micro tribute-instruction">Tribute: select exactly ${need} card${need === 1 ? '' : 's'}, then confirm.</p>`;
-    html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, selectableTribute: true })).join('')}</div></div>`;
+    html += `<p class="micro tribute-instruction">Tribute: inspect cards first, then use Pick to choose exactly ${need} card${need === 1 ? '' : 's'}.</p>`;
+    html += `<div class="hand-tray v076-hand-tray tribute-tray"><div class="card-row hand-row tribute-card-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
     html += tributeControls(need);
   } else {
     html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${myHand().map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
@@ -1025,8 +1025,17 @@ function renderHand() {
   });
   root.querySelectorAll('[data-tribute-toggle]').forEach((btn) => {
     btn.addEventListener('click', (event) => {
+      event.preventDefault();
       event.stopPropagation();
       toggleTribute(btn.dataset.tributeToggle);
+    });
+  });
+  root.querySelectorAll('[data-tribute-inspect]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const card = myHand().find((c) => c.instanceId === btn.dataset.tributeInspect);
+      if (card) inspectCard(card);
     });
   });
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
@@ -1038,6 +1047,18 @@ function renderHand() {
   });
   const confirm = $('confirmTribute');
   if (confirm) confirm.addEventListener('click', () => confirmTribute());
+}
+
+
+function tributeCardHtml(card) {
+  const selected = selectedTribute.has(card.instanceId);
+  return `<div class="tribute-card-shell ${selected ? 'selected' : ''}" data-card-id="${card.instanceId || ''}">
+    ${cardHtml(card, { compact: true })}
+    <div class="tribute-card-actions">
+      <button type="button" class="tribute-inspect-btn" data-tribute-inspect="${card.instanceId}">Inspect</button>
+      <button type="button" class="tribute-pick-btn ${selected ? 'selected' : ''}" data-tribute-toggle="${card.instanceId}" aria-pressed="${selected ? 'true' : 'false'}">${selected ? '✓ Picked' : 'Pick'}</button>
+    </div>
+  </div>`;
 }
 
 function tributeControls(need) {
