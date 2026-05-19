@@ -42,6 +42,17 @@ function showScreen(id) {
   for (const s of screens) $(s).classList.toggle('hidden', s !== id);
 }
 
+function isMobileView() {
+  return window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+}
+
+let resizeRenderTimer = null;
+window.addEventListener('resize', () => {
+  if (!state || $('gameScreen')?.classList.contains('hidden')) return;
+  clearTimeout(resizeRenderTimer);
+  resizeRenderTimer = setTimeout(() => render(), 120);
+});
+
 function setConnection(text) {
   const el = $('connection');
   if (el) el.textContent = text;
@@ -450,11 +461,11 @@ function renderPhaseBanner() {
     if (first.requiresYou) buttons.push(buttonHtml('Roll d6', 'ROLL_FIRST', 'primary'));
   } else if (state.phase === 'START_TURN') {
     title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn — Open Chamber`;
-    copy = isMyTurn() ? 'Step 1: open a Chamber. You may also play Calling, Kin, or Gear before opening.' : `Waiting for ${active()?.name} to open a Chamber.`;
+    copy = isMyTurn() ? 'Open a Chamber, or play setup cards first.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) { buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
   } else if (state.phase === 'NO_THREAT_CHOICE') {
     title = isMyTurn() ? 'No Foe — Choose Your Move' : `${active()?.name} chooses next`;
-    copy = isMyTurn() ? 'Tap a Foe to Start Trouble, or draw a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Loot the Room.`;
+    copy = isMyTurn() ? 'Tap a Foe to Start Trouble, or draw a hidden Chamber.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) {
       buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
       buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
@@ -494,6 +505,7 @@ function renderPhaseBanner() {
     copy = 'Follow the table prompt.';
   }
 
+  root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p><div class="primary-action">${buttons.join('')}</div>`;
   root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
   root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot)));
@@ -614,11 +626,201 @@ function slotChips(p) {
 
 function renderActiveTable() {
   const root = $('activeTable');
+  if (isMobileView()) return renderMobilePlayShell(root);
   if (state.phase === 'ROLL_FOR_FIRST') return renderFirstRoll(root);
   if (state.phase === 'COMBAT' && state.combat) return renderCombat(root);
   if (state.phase === 'ESCAPE' && state.escape) return renderEscape(root);
   root.innerHTML = tableBoardHtml({ activeCard: state.revealCard || state.tableNotice?.card });
   attachTableSeatHandlers(root);
+}
+
+function renderMobilePlayShell(root) {
+  const move = deriveMovement();
+  const stage = mobileStageHtml();
+  root.innerHTML = `<div class="mobile-app-shell">
+    ${mobilePlayerHudHtml()}
+    ${mobileDeckStripHtml(move)}
+    ${stage}
+  </div>`;
+  attachTableSeatHandlers(root);
+  root.querySelectorAll('[data-mobile-inspect-card]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.mobileInspectCard;
+      const card = findVisibleCardByInstance(id);
+      if (card) inspectCard(card);
+    });
+  });
+}
+
+function mobilePlayerHudHtml() {
+  return `<div class="mobile-player-hud">${state.players.map((p) => {
+    const activeClass = p.id === state.activePlayerId ? 'active' : '';
+    const youClass = p.isYou ? 'you' : '';
+    const deadClass = p.dead ? 'dead' : '';
+    const statusCount = (p.statusEffects || []).filter((e) => e.visible !== false).length;
+    return `<button class="mobile-player-chip ${activeClass} ${youClass} ${deadClass}" data-player-seat="${p.id}">
+      <span class="mobile-player-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
+      <span class="mobile-player-stats"><b>GL ${p.renown}/10</b><b>PWR ${playerPower(p)}</b></span>
+      ${statusCount ? `<span class="mobile-status-dot">${statusCount}</span>` : ''}
+    </button>`;
+  }).join('')}</div>`;
+}
+
+function mobileStageHtml() {
+  if (state.phase === 'COMBAT' && state.combat) return mobileCombatStageHtml(state.combat);
+  if (state.phase === 'ESCAPE' && state.escape) return mobileFleeStageHtml(state.escape);
+  if (state.phase === 'ROLL_FOR_FIRST') return mobileOpeningRollStageHtml();
+  if (state.phase === 'TRIBUTE') return mobileTributeStageHtml();
+  if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
+  if (state.phase === 'GAME_OVER') return mobileGameOverStageHtml();
+  return mobileRevealOrWaitingStageHtml();
+}
+
+function mobileStageShell(kind, kicker, title, bodyHtml, options = {}) {
+  return `<section class="mobile-state-panel mobile-state-${escapeHtml(kind)}">
+    <div class="mobile-state-kicker">${escapeHtml(kicker)}</div>
+    <h2>${escapeHtml(title)}</h2>
+    ${options.sub ? `<p class="mobile-state-sub">${escapeHtml(options.sub)}</p>` : ''}
+    ${bodyHtml}
+  </section>`;
+}
+
+function mobileRevealOrWaitingStageHtml() {
+  const card = state.revealCard || state.tableNotice?.card || null;
+  if (card) {
+    const summary = cardGlance(card);
+    const sub = state.revealCard
+      ? `${card.publicName} is being resolved.`
+      : (state.tableNotice?.detail || 'A table event is resolving.');
+    return mobileStageShell('reveal', 'Current Table Card', card.publicName, `
+      <div class="mobile-card-summary ${cardTypeClass(card)}">
+        <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
+        <div>
+          <div class="mobile-card-type">${escapeHtml(typeLabel(card))}</div>
+          <div class="mobile-card-glance">${escapeHtml(summary)}</div>
+          <p>${escapeHtml((card.publicText || '').slice(0, 115))}${(card.publicText || '').length > 115 ? '…' : ''}</p>
+        </div>
+      </div>
+      <button class="mobile-secondary-action" data-mobile-inspect-card="${card.instanceId}">View Full Card</button>
+    `, { sub });
+  }
+  const title = state.activePlayerName ? `Waiting on ${state.activePlayerName}` : 'Table Ready';
+  return mobileStageShell('waiting', 'Current State', title, `
+    <div class="mobile-wait-card">
+      ${assetIconHtml('chamber', 'asset-sigil event-sigil')}
+      <span>${escapeHtml(centerZoneSub())}</span>
+    </div>
+  `);
+}
+
+function mobileCombatStageHtml(combat) {
+  const totals = combat.totals || { playerTotal: 0, threatTotal: 0, margin: 0, tieWin: false };
+  const outcome = combatOutcome(totals);
+  const need = combatNeedToWin(totals);
+  const primaryFoe = combat.threats?.[0] || null;
+  const waiting = state.players.filter((p) => !combat.passes?.[p.id]);
+  const passRow = state.players.map((p) => {
+    const passed = Boolean(combat.passes?.[p.id]);
+    return `<span class="mobile-pass-pill ${passed ? 'passed' : 'can-play'}">${escapeHtml(p.name)} · ${passed ? 'Passed' : 'Can play'}</span>`;
+  }).join('');
+  const foeText = primaryFoe ? `${primaryFoe.publicName}${(combat.threats || []).length > 1 ? ` + ${(combat.threats || []).length - 1}` : ''}` : 'Foe';
+  return mobileStageShell('combat', 'Combat', `${playerName(combat.activePlayerId)} vs ${foeText}`, `
+    <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}">
+      <strong>${escapeHtml(outcome.shortLabel)}</strong>
+      <span>${need > 0 ? `Need +${need} to win.` : 'No extra power needed if everyone passes.'}</span>
+    </div>
+    <div class="mobile-combat-scores ${escapeHtml(outcome.resultClass)}">
+      <div><span>Player Side</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</small></div>
+      <div class="mobile-vs">VS</div>
+      <div><span>Foe Side</span><b>${Number(totals.threatTotal || 0)}</b><small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small></div>
+    </div>
+    ${primaryFoe ? `<div class="mobile-foe-summary">
+      <div class="mobile-card-sigil">${cardTypeSigilHtml(primaryFoe, 'asset-sigil art-sigil')}</div>
+      <div><strong>${escapeHtml(primaryFoe.publicName)}</strong><span>STR ${Number(primaryFoe.finalStrength || primaryFoe.strength || 0)} · ${Number(primaryFoe.finalLoot || primaryFoe.lootReward || 0)} Loot</span></div>
+      <button class="mobile-mini-button" data-mobile-inspect-card="${primaryFoe.instanceId}">View</button>
+    </div>` : ''}
+    <div class="mobile-pass-row">${passRow}</div>
+    <details class="mobile-math-details"><summary>Combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
+  `, { sub: waiting.length ? `Waiting on: ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
+}
+
+function combatNeedToWin(totals) {
+  const player = Number(totals?.playerTotal || 0);
+  const foe = Number(totals?.threatTotal || 0);
+  if (totals?.tieWin) return Math.max(0, foe - player);
+  return Math.max(0, foe - player + 1);
+}
+
+function mobileTributeStageHtml() {
+  const you = me();
+  const need = Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0));
+  const selected = selectedTribute.size;
+  const isYours = isMyTurn();
+  return mobileStageShell('tribute', isYours ? 'Tribute Required' : 'Tribute Pending', isYours ? `Pick ${need} card${need === 1 ? '' : 's'}` : `${active()?.name || 'A player'} must resolve Tribute`, `
+    <div class="mobile-tribute-meter ${selected === need && need > 0 ? 'ready' : ''}">
+      <b>${selected}/${need}</b>
+      <span>${isYours ? 'Use Inspect/Pick controls in your hand below.' : 'Waiting for the active player.'}</span>
+    </div>
+    ${isYours ? '<p class="mobile-state-sub">Selected cards glow green. Confirm Tribute appears in the hand drawer.</p>' : ''}
+  `, { sub: you ? `Hand ${you.handCount}/${you.handLimit}` : '' });
+}
+
+function mobileFleeStageHtml(esc) {
+  const runner = state.players.find((p) => p.id === esc.currentPlayerId);
+  const last = esc.lastRoll;
+  const title = `${runner?.name || 'Runner'} vs ${esc.threat?.publicName || 'Foe'}`;
+  const body = `<div class="mobile-flee-grid">
+    <div class="mobile-die-wrap">${dieHtml(last?.raw ?? '—', last ? 'rolled' : 'idle')}</div>
+    <div class="mobile-flee-copy">
+      <strong>Target 5+</strong>
+      <span>Flee bonus ${signed(esc.fleeBonus || 0)}</span>
+      ${last ? `<b>${last.total >= 5 ? 'Escaped' : 'Failed'} · ${last.raw} ${signed(last.bonus || 0)} = ${last.total}</b>` : '<b>Waiting for roll</b>'}
+    </div>
+  </div>`;
+  return mobileStageShell('flee', 'Flee', title, body, { sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
+}
+
+function mobileOpeningRollStageHtml() {
+  const first = state.firstRoll || { rolls: {}, eligible: [] };
+  const rows = (first.eligible || []).map((id) => `<span class="mobile-pass-pill ${first.rolls?.[id] ? 'passed' : 'can-play'}">${escapeHtml(playerName(id))} · ${first.rolls?.[id] || '—'}</span>`).join('');
+  return mobileStageShell('opening-roll', 'Opening Roll', 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>`, { sub: 'Highest roll opens the first Chamber. Ties reroll.' });
+}
+
+function mobilePromptStageHtml(prompt) {
+  return mobileStageShell('prompt', prompt.requiresYou ? 'Decision Required' : 'Prompt Pending', prompt.requiresYou ? 'Your choice' : `Waiting on ${playerName(prompt.playerId)}`, `
+    <div class="mobile-wait-card">
+      ${assetIconHtml('special', 'asset-sigil event-sigil')}
+      <span>${escapeHtml(prompt.message || 'A player decision is pending.')}</span>
+    </div>
+  `);
+}
+
+function mobileGameOverStageHtml() {
+  const winner = state.players.find((p) => p.id === state.winnerId);
+  return mobileStageShell('game-over', 'Game Over', `${winner?.name || 'Someone'} wins!`, `
+    <div class="mobile-wait-card">
+      ${assetIconHtml('glory', 'asset-sigil event-sigil')}
+      <span>The final Glory came from a combat victory.</span>
+    </div>
+  `);
+}
+
+function findVisibleCardByInstance(id) {
+  if (!id) return null;
+  const all = [];
+  if (state.revealCard) all.push(state.revealCard);
+  if (state.tableNotice?.card) all.push(state.tableNotice.card);
+  if (state.announcement?.card) all.push(state.announcement.card);
+  if (state.combat?.threats) all.push(...state.combat.threats);
+  if (state.escape?.threat) all.push(state.escape.threat);
+  if (state.you?.hand) all.push(...state.you.hand);
+  for (const p of state.players || []) {
+    all.push(...(p.equippedGear || []), ...(p.carriedGear || []));
+    if (p.role) all.push(p.role);
+    if (p.origin) all.push(p.origin);
+    all.push(...(p.extraRoles || []), ...(p.extraOrigins || []));
+  }
+  return all.find((c) => c?.instanceId === id) || null;
 }
 
 function renderEscape(root) {
