@@ -4732,3 +4732,238 @@ button[data-action="SELL_GEAR"]::before {
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* Loot Goblins v0.3 mobile app UX pass
+   Shift phone layout from mini-board to fast app/HUD decision surface. */
+
+.seat-hud-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+}
+.seat-power {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  color: #231307;
+  font-weight: 1000;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(143,227,207,.95), rgba(67,176,130,.88));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+}
+
+.tribute-select-btn {
+  position: absolute;
+  right: -6px;
+  top: -8px;
+  z-index: 5;
+  min-height: 28px;
+  min-width: 36px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,242,170,.92);
+  background: linear-gradient(135deg, #f8ce54, #44c982);
+  color: #1e1207;
+  font-size: .68rem;
+  font-weight: 1000;
+  box-shadow: 0 7px 14px rgba(0,0,0,.34);
+}
+.hand-card.tribute-selected {
+  border-color: #8ff58f !important;
+  box-shadow:
+    0 0 0 3px rgba(143,245,143,.34),
+    0 0 22px rgba(143,245,143,.28),
+    0 8px 18px rgba(0,0,0,.3) !important;
+  transform: translateY(-4px);
+}
+.hand-card.tribute-selected::after {
+  content: 'SELECTED';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -9px;
+  border-radius: 999px;
+  padding: 2px 4px;
+  background: #8ff58f;
+  color: #17310d;
+  font-size: .50rem;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  text-align: center;
+  box-shadow: 0 5px 10px rgba(0,0,0,.24);
+}
+
+@media (max-width: 760px) {
+  .screen.game {
+    padding-bottom: calc(198px + var(--safe-bottom));
+  }
+
+  .phase-banner {
+    padding: 7px 9px;
+    border-radius: 15px;
+  }
+  .phase-banner .eyebrow {
+    font-size: .54rem;
+    letter-spacing: .10em;
+  }
+  .phase-banner h2 {
+    font-size: clamp(.96rem, 4.15vw, 1.16rem);
+    margin-bottom: 2px;
+  }
+  .phase-banner p {
+    font-size: .72rem;
+    -webkit-line-clamp: 1;
+  }
+  .phase-banner .primary-action {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .phase-banner .primary-action button {
+    width: 100%;
+    justify-content: center;
+    min-height: 38px;
+    padding: .48rem .54rem;
+    font-size: .78rem;
+  }
+  .phase-banner .primary-action .micro,
+  .phase-banner .action-note {
+    display: none !important;
+  }
+
+  .table-seat {
+    min-height: 58px;
+  }
+  .seat-name {
+    font-size: .73rem;
+  }
+  .seat-hud-row {
+    gap: 3px;
+  }
+  .seat-glory,
+  .seat-power {
+    font-size: .56rem;
+    padding: 3px 5px;
+  }
+  .status-mini {
+    max-height: 16px;
+    overflow: hidden;
+  }
+  .status-chip {
+    font-size: .48rem;
+    padding: 1px 4px;
+  }
+
+  .mobile-deck-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .mobile-deck-chip {
+    padding: 3px;
+    gap: 2px;
+  }
+  .mobile-deck-art {
+    width: 21px;
+    height: 25px;
+  }
+  .mobile-deck-chip strong {
+    font-size: .49rem;
+  }
+  .mobile-deck-chip small {
+    font-size: .44rem;
+  }
+
+  .v070-center-stage {
+    padding: 5px;
+  }
+  .center-zone {
+    padding: 8px 7px;
+  }
+  .center-zone strong {
+    font-size: .92rem;
+  }
+  .center-zone span {
+    font-size: .68rem;
+  }
+  .center-card-slot .card.table-small {
+    width: min(42vw, 158px);
+    flex-basis: min(42vw, 158px);
+    min-height: 208px;
+  }
+  .card.table-small .title {
+    font-size: .92rem;
+  }
+  .card.table-small .text {
+    font-size: .66rem;
+  }
+
+  .v077-combat-topper strong.winning::before,
+  .v077-combat-result.winning strong::before {
+    content: '✓ ';
+  }
+  .v077-combat-topper strong.losing::before,
+  .v077-combat-result.losing strong::before {
+    content: '⚠ ';
+  }
+  .v077-combat-topper strong {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    border-radius: 999px;
+    padding: 4px 8px;
+    background: rgba(0,0,0,.22);
+  }
+  .v077-combat-topper strong.winning,
+  .v077-combat-result.winning strong {
+    color: #d8ffc9;
+  }
+  .v077-combat-topper strong.losing,
+  .v077-combat-result.losing strong {
+    color: #ffd0ce;
+  }
+  .v077-combat-scoreboard {
+    gap: 5px;
+  }
+  .score-side b {
+    font-size: clamp(1.65rem, 9vw, 2.4rem);
+  }
+
+  .hand-panel {
+    max-height: 164px;
+    padding: 7px;
+  }
+  .hand-panel.hand-expanded {
+    max-height: min(72dvh, 620px);
+  }
+  .hand-panel.hand-expanded ~ .event-history {
+    margin-bottom: 72dvh;
+  }
+  .hand-toggle-btn {
+    font-size: .68rem;
+    padding: .38rem .54rem;
+  }
+  .hand-row {
+    padding-top: 4px;
+  }
+  .hand-card {
+    flex-basis: 96px;
+    width: 96px;
+    height: 112px;
+  }
+  .hand-panel.hand-expanded .hand-card {
+    flex-basis: 126px;
+    width: 126px;
+    height: 158px;
+  }
+  .hand-panel.hand-expanded .tribute-select-btn {
+    right: -7px;
+    top: -9px;
+    min-height: 32px;
+    min-width: 44px;
+    font-size: .72rem;
+  }
+}

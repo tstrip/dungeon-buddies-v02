@@ -358,7 +358,7 @@ function tableSeatsHtml() {
   const positions = ['seat-left', 'seat-top', 'seat-right'];
   return state.players.map((p, i) => `<button class="table-seat ${positions[i] || ''} ${p.id === state.activePlayerId ? 'active' : ''} ${p.isYou ? 'you' : ''} ${p.connected ? '' : 'offline'}" data-player-seat="${p.id}">
     <span class="seat-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
-    <span class="seat-glory">${p.renown}/10 Glory</span>
+    <span class="seat-hud-row"><span class="seat-glory">${p.renown}/10 Glory</span><span class="seat-power">PWR ${playerPower(p)}</span></span>
     <span class="seat-identity">${escapeHtml(identityLine(p))}</span>
     <span class="seat-sub">Hand ${p.handCount} · Gear +${p.combatBonus} · Flee +${p.escapeBonus}</span>
     ${statusMiniHtml(p)}
@@ -454,18 +454,17 @@ function renderPhaseBanner() {
     if (isMyTurn()) { buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
   } else if (state.phase === 'NO_THREAT_CHOICE') {
     title = isMyTurn() ? 'No Foe — Choose Your Move' : `${active()?.name} chooses next`;
-    copy = isMyTurn() ? 'Start Trouble with a Foe from hand, or Loot the Room for a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Loot the Room.`;
+    copy = isMyTurn() ? 'Tap a Foe to Start Trouble, or draw a hidden Chamber card.' : `Waiting for ${active()?.name} to Start Trouble or Loot the Room.`;
     if (isMyTurn()) {
       buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
       buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
-      buttons.push(`<span class="micro">To Start Trouble, tap a Foe in your hand. Loot the Room draws a hidden Chamber card.</span>`);
     }
   } else if (state.phase === 'COMBAT') {
     const totals = state.combat?.totals;
-    const marginText = totals ? (totals.margin >= 0 ? `${active()?.name} is ahead by ${totals.margin}` : `${active()?.name} is losing by ${Math.abs(totals.margin)}`) : '';
+    const outcome = combatOutcome(totals);
     title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
     const done = Boolean(state.combat?.passes?.[you?.id]);
-    copy = done ? `${marginText}. You are locked in. Waiting on the table unless someone plays a new card.` : `${marginText}. Play a card, ask for Backup, or confirm you are done. Combat resolves once everyone is done.`;
+    copy = done ? `${outcome.shortLabel}. You are locked in unless someone plays a new card.` : `${outcome.shortLabel}. Play a card, ask for Backup, or tap Done.`;
     buttons = combatButtons();
   } else if (state.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
@@ -597,7 +596,7 @@ function renderPlayers() {
     div.innerHTML = `
       <div class="player-head"><div class="player-name">${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</div><div class="renown">${p.renown}/10</div></div>
       ${leader}
-      <div class="player-stats">Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Flee +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
+      <div class="player-stats">Power ${playerPower(p)} · Hand ${p.handCount}/${p.handLimit} · Gear +${p.combatBonus} · Flee +${p.escapeBonus} · ${p.connected ? 'online' : 'offline'}</div>
       <div class="player-stats">${escapeHtml(identityLine(p))}</div>
       <div class="slot-line">${slotChips(p)}</div>
       ${statusMiniHtml(p)}
@@ -684,11 +683,7 @@ function renderFirstRoll(root) {
 }
 
 function combatStatusText(totals) {
-  if (!totals) return { headline: 'Combat math pending.', detail: 'Waiting for totals.' };
-  const tieText = totals.tieWin ? 'Tie counts as a win because of Calling ability.' : 'Tie counts as a loss. Player side must be higher.';
-  if (totals.playerTotal > totals.threatTotal) return { headline: `Player side is winning: ${totals.playerTotal} vs ${totals.threatTotal}.`, detail: 'If everyone confirms no more cards, the Foe is defeated.' };
-  if (totals.playerTotal === totals.threatTotal) return { headline: `Combat is tied: ${totals.playerTotal} vs ${totals.threatTotal}.`, detail: tieText };
-  return { headline: `Player side is losing: ${totals.playerTotal} vs ${totals.threatTotal}.`, detail: 'Add help, play cards, or prepare to Flee after everyone confirms.' };
+  return combatOutcome(totals);
 }
 
 function dieHtml(value, cls = '') {
@@ -769,9 +764,9 @@ function combatBreakdownHtml(combat, totals) {
     <div class="foe-math-title"><span>Foe-side cards/abilities</span><b>${signed(threatDelta)}</b></div>
     ${foeTricks.length ? `<div class="math-footnote">${escapeHtml(foeTricks.map((c) => c.publicName).join(', '))}</div>` : ''}
   </div>` : '';
-  const margin = Number(totals.margin || 0);
-  const resultClass = totals.wins ? 'good' : 'bad';
-  const resultText = totals.wins ? `Winning by ${Math.abs(margin)}` : margin === 0 ? 'Tied — normally losing' : `Losing by ${Math.abs(margin)}`;
+  const outcome = combatOutcome(totals);
+  const resultClass = outcome.resultClass === 'winning' ? 'good' : 'bad';
+  const resultText = outcome.shortLabel;
   return `<section class="combat-breakdown-panel">
     <div class="breakdown-header">
       <span>Combat Math</span>
@@ -807,8 +802,8 @@ function renderCombat(root) {
           ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to act or confirm.`
           : 'Everyone is done. Combat resolves now.';
   const status = combatStatusText(totals);
-  const resultClass = totals.wins ? 'winning' : 'losing';
-  const marginText = totals.wins ? `Winning by ${Math.abs(totals.margin || 0)}` : Number(totals.margin || 0) === 0 ? 'Tied — normally losing' : `Losing by ${Math.abs(totals.margin || 0)}`;
+  const resultClass = status.resultClass;
+  const marginText = status.shortLabel;
   const foeCards = (combat.threats || []).map((t, idx) => `<div class="v077-foe-hero ${idx === 0 ? 'primary-foe' : 'extra-foe'}">
       ${cardHtml(t, { feature: true })}
       <div class="v077-foe-ribbon"><span>STR ${Number(t.finalStrength || t.strength || 0)}</span><span>${Number(t.finalLoot || t.lootReward || 0)} Loot</span></div>
@@ -1028,12 +1023,17 @@ function renderHand() {
     handExpanded = !handExpanded;
     renderHand();
   });
+  root.querySelectorAll('[data-tribute-toggle]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleTribute(btn.dataset.tributeToggle);
+    });
+  });
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
     cardEl.addEventListener('click', () => {
       const card = myHand().find((c) => c.instanceId === cardEl.dataset.cardId);
       if (!card) return;
-      if (state.phase === 'TRIBUTE' && isMyTurn()) toggleTribute(card.instanceId);
-      else inspectCard(card);
+      inspectCard(card);
     });
   });
   const confirm = $('confirmTribute');
@@ -1201,12 +1201,14 @@ function cardHtml(card, opts = {}) {
 
 function compactCardHtml(card, opts = {}) {
   const classes = ['hand-card', cardTypeClass(card)];
+  const tributeSelected = opts.selectableTribute && selectedTribute.has(card.instanceId);
   if (opts.playable) classes.push('playable');
-  if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
+  if (tributeSelected) classes.push('tribute-selected');
   if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
   if (card.fresh) classes.push('new-card');
   return `<article class="${classes.join(' ')} compact-v076" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
     ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
+    ${opts.selectableTribute ? `<button class="tribute-select-btn" type="button" data-tribute-toggle="${card.instanceId}" aria-pressed="${tributeSelected ? 'true' : 'false'}">${tributeSelected ? '✓' : 'Pick'}</button>` : ''}
     <div class="hand-card-sigil" aria-hidden="true">${cardTypeSigilHtml(card, 'asset-sigil hand-sigil')}</div>
     <div class="hand-card-copy">
       <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
@@ -1437,6 +1439,46 @@ function prettyPhase(phase) {
 }
 function playerName(id) { return state.players.find((p) => p.id === id)?.name || 'Unknown'; }
 function signed(n) { return `${Number(n || 0) >= 0 ? '+' : ''}${Number(n || 0)}`; }
+
+function playerPower(p) {
+  return Number(p?.renown || 0) + Number(p?.combatBonus || 0);
+}
+
+function combatOutcome(totals) {
+  if (!totals) return {
+    resultClass: 'pending',
+    shortLabel: 'Combat pending',
+    headline: 'Combat math pending.',
+    detail: 'Waiting for totals.'
+  };
+  const player = Number(totals.playerTotal || 0);
+  const foe = Number(totals.threatTotal || 0);
+  const margin = player - foe;
+  if (player > foe) return {
+    resultClass: 'winning',
+    shortLabel: `Winning by ${Math.abs(margin)}`,
+    headline: `Player side is winning: ${player} vs ${foe}.`,
+    detail: 'If everyone confirms no more cards, the Foe is defeated.'
+  };
+  if (player === foe && totals.tieWin) return {
+    resultClass: 'winning',
+    shortLabel: 'Tied — player wins ties',
+    headline: `Tied at ${player} — player side wins ties.`,
+    detail: 'A Calling or ability lets the player side win this tied combat.'
+  };
+  if (player === foe) return {
+    resultClass: 'losing',
+    shortLabel: 'Tied — Foe wins',
+    headline: `Tied at ${player} — Foe wins ties.`,
+    detail: 'Player side must be higher unless a Calling or ability wins ties.'
+  };
+  return {
+    resultClass: 'losing',
+    shortLabel: `Losing by ${Math.abs(margin)}`,
+    headline: `Player side is losing: ${player} vs ${foe}.`,
+    detail: 'Add help, play cards, or prepare to Flee after everyone confirms.'
+  };
+}
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }
