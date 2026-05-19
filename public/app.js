@@ -848,15 +848,21 @@ function mobileTributeConfirmButton(need, selected) {
   return `<button class="primary" data-mobile-tribute-confirm ${disabled}>Confirm Tribute</button>`;
 }
 
+function mobileDeckCardPreviewHtml(deck = 'CHAMBER') {
+  const isLoot = String(deck).toUpperCase().includes('LOOT');
+  const src = isLoot ? '/assets/loot-goblins/deck/loot-card-back.png' : '/assets/loot-goblins/deck/chamber-card-back.png';
+  return `<div class="mobile-card-proportion-preview ${isLoot ? 'loot-back' : 'chamber-back'}"><img src="${src}" alt="" aria-hidden="true" loading="lazy" decoding="async" /></div>`;
+}
+
 function mobileStartTurnStageHtml() {
   const mine = isMyTurn();
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'start-turn-actions secondary-only') : '';
   return mobileStageShell('start-turn', mine ? 'Your Turn' : 'Turn Start', mine ? 'Open a Chamber' : `${active()?.name || 'A goblin'} is up`, `
-    <button class="mobile-choice-card mobile-choice-button mobile-primary-choice ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'}>
-      ${assetIconHtml('chamber', 'asset-sigil event-sigil')}
-      <div><strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong><span>${mine ? 'Tap this card to open the door.' : `${Number(state.decks?.chamber || 0)} cards remain`}</span></div>
+    <button class="mobile-choice-card mobile-choice-button mobile-primary-choice mobile-draw-choice ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'}>
+      ${mobileDeckCardPreviewHtml('CHAMBER')}
+      <div><strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong><span>${mine ? 'Draw the top Chamber card face-up.' : `${Number(state.decks?.chamber || 0)} cards remain`}</span></div>
     </button>
     <p class="mobile-state-hint">${mine ? 'Setup cards in your hand glow if they can be played first.' : `${active()?.name || 'The active goblin'} can open a Chamber or play setup cards.`}</p>
     ${actions}
@@ -898,7 +904,7 @@ function mobileOpenedDoorResultHtml(mine, actor) {
     ? (mine ? 'No Foe appeared. Choose your next move.' : `${actor} can now choose a move.`)
     : (isCardPlayable(card) ? 'Playable now' : 'Choose whether to use it now or keep it in hand.');
   return `<div class="mobile-opened-door-card mobile-opened-door-action-first ${cardTypeClass(card)}">
-    <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
+    <button class="mobile-reveal-card-preview" data-mobile-inspect-card="${card.instanceId}" aria-label="View ${escapeHtml(card.publicName)}">${cardHtml(card, { compact: true })}</button>
     <div class="mobile-opened-door-copy">
       <strong>${escapeHtml(card.publicName)}</strong>
       <div class="mobile-card-type">${escapeHtml(contextLine)}</div>
@@ -1527,9 +1533,10 @@ function renderHand() {
   if (!you) { root.innerHTML = ''; return; }
   const over = you.handCount > you.handLimit;
   const forceOpen = state.phase === 'TRIBUTE' && isMyTurn();
-  root.classList.toggle('hand-expanded', handExpanded || forceOpen);
+  const expanded = handExpanded || forceOpen;
+  root.classList.toggle('hand-expanded', expanded);
   root.classList.toggle('hand-over-limit', over);
-  const toggleLabel = forceOpen ? 'Tribute' : ((handExpanded || forceOpen) ? 'Collapse' : 'Expand');
+  const toggleLabel = forceOpen ? 'Tribute' : (expanded ? 'Collapse' : 'Expand');
   const handTitle = forceOpen ? 'Tribute Required' : 'Your Hand';
   const handEyebrow = over ? 'Over Limit' : (state.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards');
   const handStateClass = over ? 'bad' : (you.handCount === you.handLimit ? 'full' : '');
@@ -1538,14 +1545,14 @@ function renderHand() {
     <div><span class="hand-eyebrow">${escapeHtml(handEyebrow)}</span><h3>${escapeHtml(handTitle)}</h3></div>
     <div class="hand-header-actions">
       <span class="hand-limit ${handStateClass}">${handStateText}</span>
-      <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'tribute-mode' : ''}" type="button" aria-expanded="${handExpanded || forceOpen}" ${forceOpen ? 'disabled' : ''}>${toggleLabel}</button>
+      <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'tribute-mode' : ''}" type="button" aria-expanded="${expanded}" ${forceOpen ? 'disabled' : ''}>${toggleLabel}</button>
     </div>
   </div>`;
-  html += `<p class="micro hand-help">Tap cards to inspect. Expand only when you need more room.</p>`;
+  html += `<p class="micro hand-help">Tap cards to inspect. ${expanded ? 'Scroll this drawer to see more.' : 'Expand when you need more room.'}</p>`;
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
     html += `<p class="micro tribute-instruction">Tribute: inspect cards first, then use Pick to choose exactly ${need} card${need === 1 ? '' : 's'}.</p>`;
-    html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v076-hand-tray tribute-tray"><div class="card-row hand-row tribute-card-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
+    html += `<div class="hand-tray v076-hand-tray tribute-tray expanded-tray"><div class="card-row hand-row tribute-card-row expanded-hand-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
     html += tributeControls(need);
   } else {
     const playableCount = playableHandCount();
@@ -1558,7 +1565,12 @@ function renderHand() {
       if (isMyTurn() && state.phase === 'NO_THREAT_CHOICE' && !playableCount) phaseHint = `No Foe ready — Loot the Room or play a setup card first.`;
       html += `<p class="micro playable-now-label">${phaseHint}</p>`;
     }
-    html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
+    const cardsHtml = displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('');
+    if (expanded) {
+      html += `<div class="hand-tray v076-hand-tray expanded-tray"><div class="card-row hand-row expanded-hand-row">${cardsHtml}</div></div>`;
+    } else {
+      html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${cardsHtml}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
+    }
   }
   root.innerHTML = html;
   const toggle = $('handToggleBtn');
@@ -1593,12 +1605,10 @@ function renderHand() {
   if (confirm) confirm.addEventListener('click', () => confirmTribute());
 }
 
-
-
 function attachHandScrollControls(root) {
   const tray = root.querySelector('.hand-tray');
   if (!tray) return;
-  const row = tray.querySelector('.hand-row');
+  if (tray.classList.contains('expanded-tray')) return;
   const scrollByAmount = () => Math.max(160, Math.floor(tray.clientWidth * 0.72));
   root.querySelector('.hand-scroll-prev')?.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -1629,7 +1639,6 @@ function attachHandScrollControls(root) {
   tray.addEventListener('pointerup', () => { handDrag = null; });
   tray.addEventListener('pointercancel', () => { handDrag = null; });
 }
-
 
 function displayHandCards(cards) {
   const list = [...(cards || [])];

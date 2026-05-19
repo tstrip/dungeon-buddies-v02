@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-app-shell-interaction-fixes-v065",
-  "version": "0.10.5",
+  "name": "loot-goblins-hand-drawer-card-proportion-v066",
+  "version": "0.10.6",
   "private": true,
-  "description": "Loot Goblins v0.6.5: dice roll presentation, real hand drawer expansion, desktop hand scrolling, spacing compression, and clearer over-limit/tribute copy.",
+  "description": "Loot Goblins v0.6.6: fixes expanded hand scrolling/buttons, restores card-shaped draw/reveal previews, and tightens spacing.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

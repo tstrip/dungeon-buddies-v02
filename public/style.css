@@ -7406,3 +7406,78 @@ button[data-action="SELL_GEAR"],
   border-color: rgba(255,226,116,.36);
   box-shadow: 0 0 20px rgba(255,226,116,.10);
 }
+
+
+/* Loot Goblins v0.6.6 — Hand Drawer + Card Proportion Hotfix */
+@media (max-width: 760px) {
+  .screen.game {
+    padding-bottom: calc(148px + var(--safe-bottom)) !important;
+  }
+  .mobile-state-panel {
+    padding: 10px !important;
+  }
+  .mobile-draw-choice {
+    grid-template-columns: auto minmax(0,1fr) !important;
+    justify-content: start;
+    min-height: 88px !important;
+    text-align: left;
+  }
+  .mobile-card-proportion-preview {
+    width: 46px;
+    aspect-ratio: 5 / 7;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 8px 14px rgba(0,0,0,.30);
+    background: rgba(0,0,0,.18);
+  }
+  .mobile-card-proportion-preview img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .mobile-opened-door-action-first {
+    grid-template-columns: auto minmax(0,1fr) !important;
+    align-items: center !important;
+  }
+  .mobile-reveal-card-preview {
+    width: 86px;
+    aspect-ratio: 5 / 7;
+    min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; display: block;
+  }
+  .mobile-reveal-card-preview .hand-card {
+    width: 100% !important; height: 100% !important; min-height: 0 !important; transform: none !important; margin: 0 !important; pointer-events: none;
+  }
+  .mobile-reveal-actions { grid-column: 1 / -1; }
+  .hand-panel { max-height: 148px !important; }
+  .hand-panel.hand-expanded {
+    display: flex; flex-direction: column; max-height: min(62dvh, 540px) !important; overflow: hidden !important;
+  }
+  .hand-panel.hand-expanded .hand-header { flex: 0 0 auto; }
+  .hand-panel.hand-expanded .hand-help,
+  .hand-panel.hand-expanded .tribute-instruction,
+  .hand-panel.hand-expanded .playable-now-label { flex: 0 0 auto; }
+  .hand-panel.hand-expanded .expanded-tray {
+    flex: 1 1 auto; min-height: 0; max-height: none !important; overflow-y: auto !important; overflow-x: hidden !important; -webkit-overflow-scrolling: touch; touch-action: pan-y; cursor: default !important;
+  }
+  .hand-panel.hand-expanded .hand-scroll-btn { display: none !important; }
+  .hand-panel.hand-expanded .expanded-hand-row,
+  .hand-panel.hand-expanded .tribute-card-row {
+    display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; min-width: 0 !important; width: 100% !important; overflow: visible !important; padding: 4px 4px 12px !important;
+  }
+  .hand-panel.hand-expanded .hand-card {
+    width: 100% !important; min-width: 0 !important; height: 142px !important; min-height: 142px !important;
+  }
+  .hand-panel.hand-expanded .tribute-card-shell {
+    width: 100% !important; min-width: 0 !important; flex: none !important;
+  }
+  .hand-panel.hand-expanded .tribute-card-shell > .hand-card {
+    height: 132px !important; min-height: 132px !important;
+  }
+  .hand-panel.hand-expanded .primary-action { flex: 0 0 auto; margin-top: 7px; }
+  .hand-panel.hand-expanded .tribute-card-actions button { min-height: 34px; }
+}
+@media (min-width: 761px) {
+  .hand-panel.hand-expanded .expanded-tray { overflow-y: auto !important; overflow-x: hidden !important; }
+  .hand-panel.hand-expanded .expanded-hand-row,
+  .hand-panel.hand-expanded .tribute-card-row {
+    display: grid !important; grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)) !important; min-width: 0 !important; width: 100% !important;
+  }
+}
