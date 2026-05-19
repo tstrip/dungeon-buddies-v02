@@ -329,9 +329,9 @@ function tableFrameHtml(centerHtml, options = {}) {
 function mobileDeckStripHtml(move) {
   const piles = [
     { key: 'CHAMBER_DECK', label: 'Chamber', sub: 'Deck', count: state.decks?.chamber || 0 },
-    { key: 'CHAMBER_DISCARD', label: 'Chamber', sub: 'Discard', count: state.decks?.chamberDiscard || 0 },
+    { key: 'CHAMBER_DISCARD', label: 'Ch. Discard', sub: 'Discard', count: state.decks?.chamberDiscard || 0 },
     { key: 'LOOT_DECK', label: 'Loot', sub: 'Deck', count: state.decks?.loot || 0 },
-    { key: 'LOOT_DISCARD', label: 'Loot', sub: 'Discard', count: state.decks?.lootDiscard || 0 }
+    { key: 'LOOT_DISCARD', label: 'Loot Discard', sub: 'Discard', count: state.decks?.lootDiscard || 0 }
   ];
   return `<div class="mobile-deck-strip" aria-label="Deck and discard counts">${piles.map((p) => {
     const classes = ['mobile-deck-chip'];
@@ -340,7 +340,7 @@ function mobileDeckStripHtml(move) {
     if (Number(p.count || 0) <= 0) classes.push('empty');
     return `<div class="${classes.join(' ')}">
       ${deckPileImageHtml({ key: p.key }, 'mobile-deck-art')}
-      <span><strong>${escapeHtml(p.label)}</strong><small>${escapeHtml(p.sub)} · ${Number(p.count || 0)}</small></span>
+      <span><strong>${escapeHtml(p.label)}</strong><small>${Number(p.count || 0)} card${Number(p.count || 0) === 1 ? '' : 's'}</small></span>
     </div>`;
   }).join('')}</div>`;
 }
@@ -684,11 +684,13 @@ function renderMobilePlayShell(root) {
 
 function mobilePlayerHudHtml() {
   return `<div class="mobile-player-hud">${state.players.map((p) => {
-    const activeClass = p.id === state.activePlayerId ? 'active' : '';
+    const isActive = p.id === state.activePlayerId;
+    const activeClass = isActive ? 'active' : '';
     const youClass = p.isYou ? 'you' : '';
     const deadClass = p.dead ? 'dead' : '';
     const statusCount = (p.statusEffects || []).filter((e) => e.visible !== false).length;
     return `<button class="mobile-player-chip ${activeClass} ${youClass} ${deadClass}" data-player-seat="${p.id}">
+      ${isActive ? `<span class="mobile-turn-badge">${p.isYou ? 'YOUR TURN' : 'TURN'}</span>` : ''}
       <span class="mobile-player-name">${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>
       <span class="mobile-player-stats"><b>GL ${p.renown}/10</b><b>PWR ${playerPower(p)}</b></span>
       ${statusCount ? `<span class="mobile-status-dot">${statusCount}</span>` : ''}
@@ -743,38 +745,37 @@ function mobileTributeConfirmButton(need, selected) {
 function mobileStartTurnStageHtml() {
   const mine = isMyTurn();
   const actions = mine ? mobileActionButtonsHtml([
-    mobileLegalActionButton('Open Chamber', 'OPEN_CHAMBER', 'primary'),
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
-  ], 'start-turn-actions') : '';
+  ], 'start-turn-actions secondary-only') : '';
   return mobileStageShell('start-turn', mine ? 'Your Turn' : 'Turn Start', mine ? 'Open a Chamber' : `${active()?.name || 'A goblin'} is up`, `
-    <button class="mobile-choice-card mobile-choice-button ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'}>
+    <button class="mobile-choice-card mobile-choice-button mobile-primary-choice ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'}>
       ${assetIconHtml('chamber', 'asset-sigil event-sigil')}
-      <div><strong>Chamber Deck</strong><span>${mine ? 'Tap here to open the door.' : `${Number(state.decks?.chamber || 0)} cards remain`}</span></div>
+      <div><strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong><span>${mine ? 'Tap this card to open the door.' : `${Number(state.decks?.chamber || 0)} cards remain`}</span></div>
     </button>
-    <p class="mobile-state-hint">${mine ? 'Play setup cards first, or open the door.' : `Waiting for ${active()?.name || 'the active goblin'} to open a Chamber.`}</p>
+    <p class="mobile-state-hint">${mine ? 'Setup cards in your hand glow if they can be played first.' : `${active()?.name || 'The active goblin'} can open a Chamber or play setup cards.`}</p>
     ${actions}
   `, { size: 'small', icon: 'chamber', sub: mine ? 'Choose when to open the door.' : 'Waiting for the active goblin.' });
 }
 
 function mobileNoFoeStageHtml() {
   const mine = isMyTurn();
+  const actor = active()?.name || 'The active goblin';
   const actions = mine ? mobileActionButtonsHtml([
-    mobileLegalActionButton('Loot the Room', 'SEARCH_ROOM', 'primary'),
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
-  ], 'no-foe-actions') : '';
-  return mobileStageShell('no-foe', mine ? 'Choose Move' : 'No Foe', mine ? 'Start Trouble or Loot the Room' : `${active()?.name || 'A goblin'} chooses`, `
+  ], 'no-foe-actions secondary-only') : '';
+  return mobileStageShell('no-foe', mine ? 'Choose Move' : `${actor} chooses`, mine ? 'Start Trouble or Loot the Room' : `Waiting on ${actor}`, `
     <div class="mobile-choice-grid">
-      <div class="mobile-choice-card">
+      <div class="mobile-choice-card ${mine ? '' : 'is-observer'}">
         ${assetIconHtml('strength', 'asset-sigil event-sigil')}
-        <div><strong>Start Trouble</strong><span>Tap a Foe in your hand.</span></div>
+        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${mine ? 'Tap a Foe in your hand.' : 'They may play a Foe from hand.'}</span></div>
       </div>
-      <button class="mobile-choice-card mobile-choice-button ${mine ? '' : 'disabled'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
+      <button class="mobile-choice-card mobile-choice-button mobile-primary-choice ${mine ? '' : 'disabled is-observer'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
         ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-        <div><strong>Loot the Room</strong><span>Draw a hidden Chamber card.</span></div>
+        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Tap here to draw a hidden Chamber card.' : 'They may draw a hidden Chamber card.'}</span></div>
       </button>
     </div>
     ${actions}
-  `, { size: 'small', icon: mine ? 'chamber' : 'loot', sub: mine ? 'Your move.' : `Waiting for ${active()?.name || 'the active goblin'}.` });
+  `, { size: 'small', icon: mine ? 'chamber' : 'loot', sub: mine ? 'Your move.' : `${actor} can Start Trouble or Loot the Room.` });
 }
 
 function mobilePostCombatStageHtml() {
@@ -827,9 +828,10 @@ function mobileRevealOrWaitingStageHtml() {
     `, { size: 'medium', icon: cardTypeKey(card), sub });
   }
   const mine = isMyTurn();
-  const title = mine ? 'Your turn' : (state.activePlayerName ? `Waiting on ${state.activePlayerName}` : 'Table ready');
-  const hint = mine ? 'Choose the highlighted action above.' : centerZoneSub();
-  return mobileStageShell('waiting', mine ? 'Ready' : 'Current State', title, `
+  const actor = active()?.name || state.activePlayerName || 'the active goblin';
+  const title = mine ? 'Your turn' : `Waiting on ${actor}`;
+  const hint = mine ? 'Use the center action or your hand.' : `${actor} is choosing the next move.`;
+  return mobileStageShell('waiting', mine ? 'Ready' : 'Waiting', title, `
     <div class="mobile-wait-card">
       ${assetIconHtml(mine ? 'die' : 'chamber', 'asset-sigil event-sigil')}
       <span>${escapeHtml(hint)}</span>
@@ -1337,10 +1339,12 @@ function renderHand() {
   root.classList.toggle('hand-expanded', handExpanded || forceOpen);
   root.classList.toggle('hand-over-limit', over);
   const toggleLabel = forceOpen ? 'Tribute' : ((handExpanded || forceOpen) ? 'Collapse' : 'Expand');
+  const handTitle = forceOpen ? 'Tribute Required' : 'Your Hand';
+  const handEyebrow = over ? 'Over Limit' : (state.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards');
   let html = `<div class="hand-header v076-hand-header mobile-hand-header">
-    <div><span class="hand-eyebrow">Bottom Tray</span><h3>Your Hand</h3></div>
+    <div><span class="hand-eyebrow">${escapeHtml(handEyebrow)}</span><h3>${escapeHtml(handTitle)}</h3></div>
     <div class="hand-header-actions">
-      <span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}</span>
+      <span class="hand-limit ${over ? 'bad' : ''}">${you.handCount}/${you.handLimit}${over ? '!' : ''}</span>
       <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'tribute-mode' : ''}" type="button" aria-expanded="${handExpanded || forceOpen}" ${forceOpen ? 'disabled' : ''}>${toggleLabel}</button>
     </div>
   </div>`;
@@ -1352,7 +1356,12 @@ function renderHand() {
     html += tributeControls(need);
   } else {
     const playableCount = playableHandCount();
-    if (state.phase === 'COMBAT' || state.reaction) html += `<p class="micro playable-now-label">${playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.'}</p>`;
+    if (['START_TURN','NO_THREAT_CHOICE','COMBAT','POST_COMBAT','END_TURN'].includes(state.phase) || state.reaction) {
+      let phaseHint = playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.';
+      if (state.phase === 'START_TURN' && playableCount) phaseHint = `${playableCount} setup card${playableCount === 1 ? '' : 's'} can be played before opening.`;
+      if (state.phase === 'NO_THREAT_CHOICE' && playableCount) phaseHint = `Playable cards glow. Tap a Foe to Start Trouble.`;
+      html += `<p class="micro playable-now-label">${phaseHint}</p>`;
+    }
     html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
   }
   root.innerHTML = html;

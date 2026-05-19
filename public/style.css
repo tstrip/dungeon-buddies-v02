@@ -6088,3 +6088,160 @@ button[data-action="SELL_GEAR"]::before {
     min-height: 42px;
   }
 }
+
+
+/* Loot Goblins v0.5.2 — Interaction Polish & Nitpick Pass */
+@media (max-width: 760px) {
+  .phase-banner {
+    padding: 5px 9px !important;
+    border-radius: 15px !important;
+    min-height: 0 !important;
+  }
+
+  .phase-banner .eyebrow {
+    font-size: .45rem !important;
+    line-height: 1 !important;
+    opacity: .65 !important;
+  }
+
+  .phase-banner h2 {
+    font-size: clamp(.88rem, 3.75vw, 1.05rem) !important;
+    line-height: 1.02 !important;
+  }
+
+  .phase-banner p {
+    font-size: .60rem !important;
+    line-height: 1.05 !important;
+    opacity: .72 !important;
+  }
+
+  .mobile-turn-badge {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    border-radius: 999px;
+    padding: 2px 7px;
+    color: #1b1106;
+    background: linear-gradient(135deg, #c7ff87, #5ee894);
+    border: 2px solid rgba(255,255,255,.65);
+    font-size: .48rem;
+    font-weight: 1000;
+    letter-spacing: .08em;
+    box-shadow: 0 6px 12px rgba(0,0,0,.25);
+    white-space: nowrap;
+  }
+
+  .mobile-player-chip.active {
+    box-shadow:
+      0 0 0 2px rgba(245,189,88,.22),
+      0 0 18px rgba(245,189,88,.18),
+      0 8px 16px rgba(0,0,0,.24) !important;
+  }
+
+  .mobile-player-chip.you.active {
+    box-shadow:
+      0 0 0 2px rgba(143,227,207,.28),
+      0 0 20px rgba(143,227,207,.20),
+      0 8px 16px rgba(0,0,0,.24) !important;
+  }
+
+  .mobile-deck-chip {
+    grid-template-columns: 18px minmax(0,1fr) !important;
+  }
+
+  .mobile-deck-chip small {
+    font-size: .39rem !important;
+  }
+
+  .mobile-choice-card.is-observer,
+  .mobile-choice-button.disabled {
+    opacity: .62;
+    filter: saturate(.75);
+  }
+
+  .mobile-choice-button.mobile-primary-choice:not(.disabled) {
+    border-color: rgba(255,226,116,.62);
+    box-shadow:
+      0 0 0 2px rgba(255,226,116,.12),
+      0 12px 20px rgba(0,0,0,.24),
+      inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+
+  .mobile-center-actions.secondary-only {
+    grid-template-columns: 1fr;
+    margin-top: 0;
+  }
+
+  .mobile-center-actions.secondary-only button {
+    min-height: 38px;
+    font-size: .74rem;
+    opacity: .92;
+  }
+
+  .mobile-state-start-turn .mobile-center-actions.secondary-only,
+  .mobile-state-no-foe .mobile-center-actions.secondary-only {
+    max-width: 210px;
+    justify-self: center;
+  }
+
+  .hand-panel {
+    max-height: 150px !important;
+  }
+
+  .hand-header {
+    margin-bottom: 3px !important;
+  }
+
+  .hand-eyebrow {
+    font-size: .50rem !important;
+    letter-spacing: .16em !important;
+  }
+
+  .hand-header h3 {
+    font-size: .98rem !important;
+  }
+
+  .hand-limit.bad {
+    color: #ff8585 !important;
+    text-shadow: 0 0 10px rgba(255,95,95,.30);
+  }
+
+  .hand-over-limit {
+    border-color: rgba(255,95,95,.52) !important;
+    box-shadow: 0 -10px 34px rgba(255,55,55,.12), 0 -10px 32px rgba(0,0,0,.48) !important;
+  }
+
+  .playable-now-label {
+    color: rgba(255,233,153,.92) !important;
+    font-weight: 850;
+    text-align: center;
+  }
+
+  .hand-tray {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hand-tray::before,
+  .hand-tray::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 22px;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .hand-tray::before {
+    left: 0;
+    background: linear-gradient(90deg, rgba(26,16,12,.86), transparent);
+  }
+
+  .hand-tray::after {
+    right: 0;
+    background: linear-gradient(270deg, rgba(26,16,12,.86), transparent);
+  }
+}

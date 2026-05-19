@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-center-action-mobile-controls-v051",
-  "version": "0.9.1",
+  "name": "loot-goblins-mobile-interaction-polish-v052",
+  "version": "0.9.2",
   "private": true,
-  "description": "Loot Goblins Center Action Mobile Controls v0.5.1: mobile primary actions move into the live center state panel while the top banner becomes a compact status strip.",
+  "description": "Loot Goblins Mobile Interaction Polish v0.5.2: stronger active-turn HUD, perspective-aware waiting states, less duplicate action UI, tighter hand/toolbelt labels, and phase-specific playable hints.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
