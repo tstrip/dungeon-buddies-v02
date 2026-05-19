@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.6-hand-drawer-card-proportion-v066' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.7-table-clarity-resolution-v067' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -110,6 +110,24 @@ function movement(room, from, to, label, detail, card = null) {
     detail,
     card: publicCard(card)
   };
+}
+
+function describeBadNews(threat) {
+  const e = threat?.consequence || {};
+  if (!e || !e.type) return threat?.publicText || 'Bad News resolves.';
+  if (e.type === 'LOSE_RENOWN') return `Lose ${e.amount || 1} Glory.`;
+  if (e.type === 'DISCARD_HAND_CARDS') return `Discard ${e.count || e.amount || 1} card${(e.count || e.amount || 1) === 1 ? '' : 's'} from hand.`;
+  if (e.type === 'DISCARD_GEAR') return 'Discard Gear.';
+  if (e.type === 'DISCARD_OWNED_CARDS') return `Discard ${e.count || 1} owned card${(e.count || 1) === 1 ? '' : 's'}.`;
+  if (e.type === 'DEATH') return 'Death. Loot the body.';
+  if (e.type === 'BAD_NEWS_CHOICE' || e.type === 'CHOOSE_BAD_NEWS_OPTION') return 'Choose how the Bad News hits you.';
+  return String(e.type).replaceAll('_', ' ').toLowerCase();
+}
+
+function playedAnnouncement(room, player, card, label = 'Card Played', detail = '') {
+  if (!card) return;
+  movement(room, 'PLAYER_HAND', card.type === 'THREAT' ? 'COMBAT_ZONE' : 'TABLE', 'Card Played', `${player?.name || 'A player'} played ${card.publicName}.`, card);
+  announce(room, 'card', label, detail || `${player?.name || 'A player'} played ${card.publicName}.`, card, { importance: 'major' });
 }
 
 function markFresh(card, deckName) {
@@ -310,7 +328,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.6-hand-drawer-card-proportion-v066',
+    version: '0.10.7-table-clarity-resolution-v067',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -325,6 +343,10 @@ function serializeRoom(room, viewerId) {
       loot: room.lootDeck.length,
       chamberDiscard: room.chamberDiscard.length,
       lootDiscard: room.lootDiscard.length
+    },
+    discardPiles: {
+      chamber: room.chamberDiscard.slice(-60).map(publicCard),
+      loot: room.lootDiscard.slice(-60).map(publicCard)
     },
     revealCard: publicCard(room.revealCard),
     tableNotice: room.tableNotice || null,
@@ -411,6 +433,8 @@ function serializeEscape(room) {
     targetNumber: 5,
     fleeBonus: runner ? gearFleeBonus(runner) + originFleeBonus(runner) + temporaryFleeBonus(runner) : 0,
     autoFlee: runner ? runner.temporaryEffects.some((e) => e.type === 'AUTO_ESCAPE') : false,
+    badNewsText: describeBadNews(threat),
+    badNewsCard: publicCard(threat),
     lastRoll: room.escape.lastRoll || null,
     awaitingContinue: Boolean(room.escape.awaitingContinue)
   };
@@ -995,7 +1019,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
     }
     case 'SELL_GEAR_FOR_RENOWN': {
       const options = ownedGearOptions(player);
-      if (!options.length) { log(room, `${player.name} had no Gear to sell.`); return true; }
+      if (!options.length) { announce(room, 'gear', 'No Gear to Sell', `${player.name} had no Gear to sell.`, sourceCard, { importance: 'normal' }); log(room, `${player.name} had no Gear to sell.`); return true; }
       createPrompt(room, { type: 'SELL_GEAR', playerId: player.id, message: `${player.name} may sell Gear for Glory.`, options, meta: { effect, after: context.after || 'TO_TRIBUTE_OR_END' } });
       return false;
     }
@@ -1898,10 +1922,10 @@ function resolveFleeOutcome(room, player) {
     log(room, `${player.name} escaped.`);
     continueFlee(room);
   } else {
-    announce(room, 'roll', 'Flee Failed', `${player.name} failed to escape ${threat?.publicName || 'the Foe'}. Bad News resolves.`, threat, { importance: 'major' });
+    announce(room, 'bad', 'BAD NEWS', `${player.name} failed to escape ${threat?.publicName || 'the Foe'}. ${describeBadNews(threat)}`, threat, { importance: 'major' });
     log(room, `${player.name} failed to escape ${threat?.publicName || 'the Foe'}.`);
     const ok = applyEffect(room, player, threat?.consequence, threat, { after: 'CONTINUE_ESCAPE' });
-    if (ok) continueFlee(room);
+    if (ok) { announce(room, 'bad', 'Bad News Resolved', `${player.name}: ${describeBadNews(threat)}`, threat, { importance: 'major' }); continueFlee(room); }
   }
 }
 
@@ -1972,7 +1996,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.6-hand-drawer-card-proportion-v066' });
+  socket.emit('ready', { version: '0.10.7-table-clarity-resolution-v067' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2197,12 +2221,13 @@ function handleAction(socket, room, player, payload) {
     if (directIds.length) {
       const result = sellSpecificGear(room, player, directIds, effect);
       if (result.error) return emitError(socket, result.error);
-      announce(room, 'effect', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
+      announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
       log(room, `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value.`);
       return;
     }
-    const ok = applyEffect(room, player, effect, { publicName: 'Sell Gear' }, { after: room.phase === 'POST_COMBAT' ? 'TO_POST_COMBAT' : 'TO_TRIBUTE_OR_END' });
-    if (ok) continueAfterPrompt(room, room.phase === 'POST_COMBAT' ? 'TO_POST_COMBAT' : 'TO_TRIBUTE_OR_END');
+    const options = ownedGearOptions(player);
+    if (!options.length) { emitOk(socket, 'No Gear to sell.'); announce(room, 'gear', 'No Gear to Sell', `${player.name} checked for Gear to sell, but had none. Turn state did not advance.`, null, { importance: 'normal' }); return; }
+    createPrompt(room, { type: 'SELL_GEAR', playerId: player.id, message: `${player.name} may sell Gear for Glory. Selling is optional.`, options, meta: { effect, after: 'STAY', optional: true } });
     return;
   }
 
@@ -2263,6 +2288,15 @@ function handleAction(socket, room, player, payload) {
     log(room, `${player.name} looted the room and drew a hidden Chamber card.`);
     room.revealCard = null;
     moveToTributeOrEnd(room);
+    return;
+  }
+
+  if (type === 'ADD_FOE_FROM_HAND') {
+    if (room.phase !== 'COMBAT' || !room.combat) return emitError(socket, 'You can only add a Foe during combat.');
+    const options = player.hand.filter((c) => c.type === 'THREAT');
+    if (!options.length) return emitError(socket, 'You have no Foe cards in hand to add.');
+    createPrompt(room, { type: 'ADD_FOE_FROM_HAND', playerId: player.id, message: `Choose a Foe from hand to add to this combat.`, options, meta: { after: 'CONTINUE', optional: true } });
+    announce(room, 'combat', 'Add Foe From Hand', `${player.name} is choosing a Foe from hand to add to combat.`, null, { importance: 'major' });
     return;
   }
 
@@ -2416,7 +2450,7 @@ function playCard(socket, room, player, card, payload) {
       if (player.callingPermit?.attachedToCardId === old.instanceId) discardCallingPermit(room, player, `attached Calling ${old.publicName} was replaced`);
     }
     revalidateIdentityGear(room, player);
-    announce(room, 'effect', 'Calling Played', `${player.name}'s Callings: ${identityNames(callingCards(player))}.`, real, { importance: 'normal' });
+    playedAnnouncement(room, player, real, 'Calling Played', `${player.name} played ${real.publicName}. Callings: ${identityNames(callingCards(player))}.`);
     log(room, `${player.name} played Calling: ${real.publicName}.`);
     return;
   }
@@ -2435,7 +2469,7 @@ function playCard(socket, room, player, card, payload) {
       if (player.kinPermit?.attachedToCardId === old.instanceId) discardKinPermit(room, player, `attached Kin ${old.publicName} was replaced`);
     }
     revalidateIdentityGear(room, player);
-    announce(room, 'effect', 'Kin Played', `${player.name}'s Kin: ${identityNames(kinCards(player))}.`, real, { importance: 'normal' });
+    playedAnnouncement(room, player, real, 'Kin Played', `${player.name} played ${real.publicName}. Kin: ${identityNames(kinCards(player))}.`);
     log(room, `${player.name} played Kin: ${real.publicName}.`);
     return;
   }
@@ -2452,6 +2486,8 @@ function playCard(socket, room, player, card, payload) {
       if (combinedHeavy > heavyLimit(player)) return emitError(socket, `You can only carry ${heavyLimit(player)} Heavy Gear right now.`);
       const real = findAndRemoveFromHand(player, card.instanceId);
       carryGear(player, real);
+      announce(room, 'gear', 'Gear Carried', `${player.name} carried ${real.publicName}. It is in play but not equipped.`, real, { importance: 'major' });
+      movement(room, 'PLAYER_HAND', 'PLAYER_GEAR', 'Gear Carried', `${player.name} carried ${real.publicName}.`, real);
       log(room, `${player.name} carried ${real.publicName}.`);
       return;
     }
@@ -2466,7 +2502,7 @@ function playCard(socket, room, player, card, payload) {
       }
       else return emitError(socket, 'Gear must be in hand or carried to equip.');
       equipGear(player, real);
-      announce(room, 'gear', 'Gear Equipped', `${player.name} equipped ${real.publicName}.`, real, { importance: 'normal' });
+      announce(room, 'gear', 'Gear Equipped', `${player.name} equipped ${real.publicName}.`, real, { importance: 'major' });
       log(room, `${player.name} equipped ${real.publicName}.`);
       return;
     }
@@ -2976,10 +3012,16 @@ function resolvePrompt(socket, room, player, payload) {
   }
 
   if (prompt.type === 'SELL_GEAR') {
+    if (payload.cancel || payload.done) {
+      room.pendingPrompt = null;
+      announce(room, 'gear', 'Sell Gear Canceled', `${player.name} chose not to sell Gear.`, null, { importance: 'normal' });
+      return;
+    }
     const ids = Array.isArray(payload.cardIds) ? payload.cardIds : [];
+    if (!ids.length) { room.pendingPrompt = null; announce(room, 'gear', 'Sell Gear Skipped', `${player.name} sold no Gear.`, null, { importance: 'normal' }); return; }
     const result = sellSpecificGear(room, player, ids, prompt.meta?.effect || {});
     if (result.error) return emitError(socket, result.error);
-    announce(room, 'effect', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
+    announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
     log(room, `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.`);
     continueAfterPrompt(room, after);
     return;

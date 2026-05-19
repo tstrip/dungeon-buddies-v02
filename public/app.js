@@ -226,19 +226,23 @@ function renderGame() {
   renderPrompt();
   renderHand();
   renderEventHistory();
+  document.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => btn.closest('.mobile-public-event,.table-announcement')?.classList.add('acknowledged')));
 }
+
 
 function announcementHtml() {
   const a = state?.announcement;
   if (!a) return '';
   const icon = announcementIcon(a.kind);
+  const needsAck = ['bad','death','game'].includes(a.kind || '') || /BAD NEWS|GOBLIN DOWN|VICTORY/i.test(a.title || '');
   return `<section class="table-announcement ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
     <div class="announce-icon">${icon}</div>
     <div class="announce-copy">
       <div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div>
       <div class="announce-detail">${escapeHtml(a.detail || '')}</div>
+      ${needsAck ? '<button class="ack-button" data-ack-announcement>Got it</button>' : ''}
     </div>
-    ${a.card ? `<div class="announce-card-name">${escapeHtml(a.card.publicName)}</div>` : ''}
+    ${a.card ? `<button class="announce-card-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}</button>` : ''}
   </section>`;
 }
 
@@ -259,6 +263,7 @@ function renderDeckDock() {
     { key: 'LOOT_DISCARD', label: 'Loot', sub: 'discard', count: state.decks.lootDiscard, kind: 'discard' }
   ];
   dock.innerHTML = piles.map((p) => pileHtml(p, move)).join('');
+  dock.querySelectorAll('[data-discard-pile]').forEach((btn) => btn.addEventListener('click', () => showDiscardViewer(btn.dataset.discardPile)));
 }
 
 function pileHtml(pile, move) {
@@ -267,10 +272,13 @@ function pileHtml(pile, move) {
   if (move?.to === pile.key) classes.push('destination');
   const empty = Number(pile.count || 0) <= 0;
   if (empty) classes.push('empty');
-  return `<div class="${classes.join(' ')}" aria-label="${escapeHtml(pile.label)} ${escapeHtml(pile.sub)} ${Number(pile.count || 0)} cards">
+  const isDiscard = /DISCARD/.test(pile.key);
+  const tag = isDiscard ? 'button' : 'div';
+  const attrs = isDiscard ? `type="button" data-discard-pile="${pile.key === 'CHAMBER_DISCARD' ? 'chamber' : 'loot'}"` : '';
+  return `<${tag} class="${classes.join(' ')}" aria-label="${escapeHtml(pile.label)} ${escapeHtml(pile.sub)} ${Number(pile.count || 0)} cards" ${attrs}>
     ${deckPileImageHtml(pile)}
     <div class="pile-copy"><strong>${escapeHtml(pile.label)}</strong><small>${escapeHtml(pile.sub)} · ${Number(pile.count || 0)}</small></div>
-  </div>`;
+  </${tag}>`;
 }
 
 function deckPileImageHtml(pile, cls = 'deck-pile-art') {
@@ -680,6 +688,7 @@ function combatButtons() {
   }
   const youAreDone = Boolean(combat.passes?.[you.id]);
   if (!youAreDone) {
+    if ((state.you?.hand || []).some((c) => c.type === 'THREAT')) buttons.push(`<button class="primary" data-combat-action="ADD_FOE_FROM_HAND">Add Foe from Hand</button>`);
     if (hasPublicRole(you, 'Bruiser')) buttons.push(`<button data-combat-action="BRUISER_BERSERK">Bruiser: discard for +3</button>`);
     if (hasPublicRole(you, 'Cutpurse') && combat.activePlayerId !== you.id) buttons.push(`<button data-combat-action="CUTPURSE_BACKSTAB">Cutpurse: backstab -2</button>`);
     if (hasPublicRole(you, 'Hexhand') && combat.activePlayerId === you.id) buttons.push(`<button data-combat-action="HEXHAND_CHARM">Hexhand: charm Foe</button>`);
@@ -695,6 +704,7 @@ function handleCombatButton(action, target, lootCount, allLoot) {
   else if (action === 'BRUISER_BERSERK') emitAction('BRUISER_BERSERK');
   else if (action === 'CUTPURSE_BACKSTAB') emitAction('CUTPURSE_BACKSTAB');
   else if (action === 'HEXHAND_CHARM') emitAction('HEXHAND_CHARM');
+  else if (action === 'ADD_FOE_FROM_HAND') emitAction('ADD_FOE_FROM_HAND');
   else emitAction(action);
 }
 
@@ -742,6 +752,7 @@ function renderMobilePlayShell(root) {
     ${mobilePlayerHudHtml()}
     ${mobileZeroGloryNoticeHtml()}
     ${mobileDeckStripHtml(move)}
+    ${mobileAnnouncementHtml()}
     ${stage}
   </div>`;
   attachTableSeatHandlers(root);
@@ -774,10 +785,34 @@ function renderMobilePlayShell(root) {
   root.querySelectorAll('[data-mobile-tribute-confirm]').forEach((btn) => {
     btn.addEventListener('click', () => confirmTribute());
   });
+  root.querySelectorAll('[data-mobile-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.mobilePromptCard })));
+  const mobileSellSelected = new Set();
+  root.querySelectorAll('[data-mobile-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
+    if (mobileSellSelected.has(btn.dataset.mobileSellCard)) { mobileSellSelected.delete(btn.dataset.mobileSellCard); btn.classList.remove('selected'); }
+    else { mobileSellSelected.add(btn.dataset.mobileSellCard); btn.classList.add('selected'); }
+    const confirm = root.querySelector('[data-mobile-sell-confirm]');
+    if (confirm) confirm.disabled = mobileSellSelected.size === 0;
+  }));
+  root.querySelectorAll('[data-mobile-sell-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardIds: [...mobileSellSelected] })));
+  root.querySelectorAll('[data-mobile-prompt-cancel]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cancel: true })));
+
+  root.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => btn.closest('.mobile-public-event,.table-announcement')?.classList.add('acknowledged')));
+  root.querySelectorAll('[data-discard-pile]').forEach((btn) => btn.addEventListener('click', () => showDiscardViewer(btn.dataset.discardPile)));
 }
 
 
+function mobileAnnouncementHtml() {
+  const a = state?.announcement;
+  if (!a || !['card','gear','combat','hex','bad','death','game','reveal','draw'].includes(a.kind || '')) return '';
+  const needsAck = ['bad','death','game'].includes(a.kind || '') || /BAD NEWS|GOBLIN DOWN|VICTORY/i.test(a.title || '');
+  return `<div class="mobile-public-event ${escapeHtml(a.kind || '')}">
+    <div class="mobile-public-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span>${needsAck ? '<button class="ack-button" data-ack-announcement>Got it</button>' : ''}</div>
+    ${a.card ? `<button class="mobile-public-event-card" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}</button>` : ''}
+  </div>`;
+}
+
 function mobileZeroGloryNoticeHtml() {
+
   const zero = (state.players || []).filter((p) => Number(p.renown || 0) <= 0 && !p.dead);
   if (!zero.length) return '';
   return `<div class="mobile-zero-glory-alert">
@@ -1011,30 +1046,21 @@ function mobileCombatStageHtml(combat) {
   const need = combatNeedToWin(totals);
   const primaryFoe = combat.threats?.[0] || null;
   const waiting = state.players.filter((p) => !combat.passes?.[p.id]);
-  const passRow = state.players.map((p) => {
-    const passed = Boolean(combat.passes?.[p.id]);
-    return `<span class="mobile-pass-pill ${passed ? 'passed' : 'can-play'}">${escapeHtml(p.name)} · ${passed ? 'Passed' : 'Can play'}</span>`;
-  }).join('');
-  const foeText = primaryFoe ? `${primaryFoe.publicName}${(combat.threats || []).length > 1 ? ` + ${(combat.threats || []).length - 1}` : ''}` : 'Foe';
   const actions = mobileActionButtonsHtml(combatButtons(), 'combat-actions');
+  const activeP = findPlayer(combat.activePlayerId);
+  const helperP = combat.helperPlayerId ? findPlayer(combat.helperPlayerId) : null;
+  const playerCards = (combat.playedTricks || []).filter((c) => c.effect?.side !== 'THREAT');
+  const foeCards = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT');
+  const playerLedger = `${activeP ? `<div><span>${escapeHtml(activeP.name)}</span><b>PWR ${playerPower(activeP)}</b></div>` : ''}${helperP ? `<div><span>${escapeHtml(helperP.name)} Backup</span><b>PWR ${playerPower(helperP)}</b></div>` : ''}${playerCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('')}${Number(combat.playerDelta||0) ? `<div><span>Other cards/abilities</span><b>${signed(combat.playerDelta)}</b></div>` : ''}`;
+  const foeLedger = (combat.threats || []).map((foe) => `<div class="combat-ledger-foe"><span>${escapeHtml(foe.publicName)}</span><b>STR ${Number(foe.finalStrength || foe.strength || 0)}</b>${(foe.modifiers||[]).map((m)=>`<small>${escapeHtml(m.publicName)} ${signed(m.strengthDelta||0)}</small>`).join('')}</div>`).join('') + foeCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('') + (Number(combat.threatDelta||0) ? `<div><span>Other Foe bonuses</span><b>${signed(combat.threatDelta)}</b></div>` : '');
+  const foeText = primaryFoe ? `${primaryFoe.publicName}${(combat.threats || []).length > 1 ? ` + ${(combat.threats || []).length - 1}` : ''}` : 'Foe';
   return mobileStageShell('combat', 'Combat', `${playerName(combat.activePlayerId)} vs ${foeText}`, `
-    <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}">
-      <strong>${escapeHtml(outcome.shortLabel)}</strong>
-      <span>${need > 0 ? `Need +${need} to win.` : 'No extra power needed if everyone passes.'}</span>
-    </div>
-    <div class="mobile-combat-scores ${escapeHtml(outcome.resultClass)}">
-      <div><span>Player Side</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</small></div>
-      <div class="mobile-vs">VS</div>
-      <div><span>Foe Side</span><b>${Number(totals.threatTotal || 0)}</b><small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small></div>
-    </div>
-    ${primaryFoe ? `<div class="mobile-foe-summary">
-      <div class="mobile-card-sigil">${cardTypeSigilHtml(primaryFoe, 'asset-sigil art-sigil')}</div>
-      <div><strong>${escapeHtml(primaryFoe.publicName)}</strong><span>STR ${Number(primaryFoe.finalStrength || primaryFoe.strength || 0)} · ${Number(primaryFoe.finalLoot || primaryFoe.lootReward || 0)} Loot</span></div>
-      <button class="mobile-mini-button" data-mobile-inspect-card="${primaryFoe.instanceId}">View</button>
-    </div>` : ''}
+    <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}"><strong>${escapeHtml(outcome.shortLabel)}</strong><span>${need > 0 ? `Need +${need} to win.` : 'No extra power needed if everyone passes.'}</span></div>
+    <div class="mobile-combat-scores ${escapeHtml(outcome.resultClass)}"><div><span>Player Side</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</small></div><div class="mobile-vs">VS</div><div><span>Foe Side</span><b>${Number(totals.threatTotal || 0)}</b><small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small></div></div>
+    <div class="combat-ledger"><div><h4>Player Side</h4>${playerLedger || '<p>No player cards yet.</p>'}</div><div><h4>Foe Side</h4>${foeLedger || '<p>No Foes yet.</p>'}</div></div>
     ${actions}
-    <div class="mobile-pass-row">${passRow}</div>
-    <details class="mobile-math-details"><summary>Combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
+    <div class="mobile-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Can play'}</span>`).join('')}</div>
+    <details class="mobile-math-details"><summary>Full combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
   `, { size: 'large', icon: 'strength', sub: waiting.length ? `Waiting on: ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
 }
 
@@ -1076,7 +1102,8 @@ function mobileFleeStageHtml(esc) {
     <div class="mobile-flee-copy">
       <strong>Target 5+</strong>
       <span>Flee bonus ${signed(esc.fleeBonus || 0)}</span>
-      ${last ? `<b>${last.total >= 5 ? 'Bad News avoided.' : 'Bad News resolves.'}</b>` : '<b>Waiting for roll</b>'}
+      <div class="bad-news-preview"><b>Bad News</b><span>${escapeHtml(esc.badNewsText || esc.threat?.publicText || 'Bad News resolves if you fail.')}</span></div>
+      ${last ? `<b>${last.total >= 5 ? 'Bad News avoided.' : 'Bad News resolves. Tap Continue to apply it.'}</b>` : '<b>Roll before the Bad News hits.</b>'}
     </div>
   </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
   return mobileStageShell('flee', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
@@ -1114,11 +1141,18 @@ function mobileBodyLootStageHtml() {
 }
 
 function mobilePromptStageHtml(prompt) {
+  if (prompt.requiresYou && prompt.type === 'ADD_FOE_FROM_HAND') {
+    return mobileStageShell('prompt', 'Add Foe', 'Choose a Foe from hand', `<div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-prompt-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>Add to combat</span></button>`).join('')}</div><button data-mobile-prompt-cancel>Cancel</button>`, { size:'large', icon:'strength' });
+  }
+  if (prompt.requiresYou && prompt.type === 'SELL_GEAR') {
+    return mobileStageShell('prompt', 'Sell Gear', 'Optional sale', `<p class="mobile-state-hint">Choose Gear to sell, or cancel and keep playing.</p><div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-sell-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>${Number(c.junkValue||c.scrapValue||0)} Junk</span></button>`).join('')}</div><div class="mobile-center-actions"><button class="primary" data-mobile-sell-confirm disabled>Sell Selected</button><button data-mobile-prompt-cancel>Cancel / Done</button></div>`, { size:'large', icon:'gear' });
+  }
   return mobileStageShell('prompt', prompt.requiresYou ? 'Decision Required' : 'Prompt Pending', prompt.requiresYou ? 'Your choice' : `Waiting on ${playerName(prompt.playerId)}`, `
     <div class="mobile-wait-card">
       ${assetIconHtml('special', 'asset-sigil event-sigil')}
       <span>${escapeHtml(prompt.message || 'A player decision is pending.')}</span>
     </div>
+    ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if optional</button>' : ''}
   `, { size: 'medium', icon: 'special' });
 }
 
@@ -1147,6 +1181,8 @@ function findVisibleCardByInstance(id) {
   if (state.combat?.threats) all.push(...state.combat.threats);
   if (state.escape?.threat) all.push(state.escape.threat);
   if (state.you?.hand) all.push(...state.you.hand);
+  if (state.discardPiles?.chamber) all.push(...state.discardPiles.chamber);
+  if (state.discardPiles?.loot) all.push(...state.discardPiles.loot);
   for (const p of state.players || []) {
     all.push(...(p.equippedGear || []), ...(p.carriedGear || []));
     if (p.role) all.push(p.role);
@@ -1224,17 +1260,11 @@ function combatStatusText(totals) {
 function dieHtml(value, cls = '') {
   const n = Number(value);
   const valid = Number.isInteger(n) && n >= 1 && n <= 6;
-  const spots = valid ? Array.from({ length: 6 }, (_, i) => `<span class="pip p${i + 1} ${pipOn(n, i + 1) ? 'on' : ''}"></span>`).join('') : `<b>${escapeHtml(String(value ?? '—'))}</b>`;
-  return `<div class="die-face ${escapeHtml(cls)}">${spots}</div>`;
+  const map = { 1: [5], 2: [1,9], 3: [1,5,9], 4: [1,3,7,9], 5: [1,3,5,7,9], 6: [1,3,4,6,7,9] };
+  const spots = valid ? Array.from({ length: 9 }, (_, i) => `<span class="pip p${i + 1} ${map[n].includes(i + 1) ? 'on' : ''}"></span>`).join('') : `<b>${escapeHtml(String(value ?? '—'))}</b>`;
+  return `<div class="die-face standard-d6 ${escapeHtml(cls)}">${spots}</div>`;
 }
 
-function pipOn(n, pos) {
-  const map = { 1: [5], 2: [1,9], 3: [1,5,9], 4: [1,3,7,9], 5: [1,3,5,7,9], 6: [1,3,4,6,7,9] };
-  // logical positions 1,3,4,6,7,9 are mapped onto p1-p6 order below
-  const order = [1,3,4,6,7,9];
-  const logical = pos === 5 && n % 2 === 1 ? 5 : order[pos - 1];
-  return (map[n] || []).includes(logical);
-}
 
 
 function backupDealPanel(combat) {
@@ -1454,13 +1484,14 @@ function renderPrompt() {
 
   if (p.type === 'SELL_GEAR') {
     const total = p.options.filter((c) => selectedSell.has(c.instanceId)).reduce((sum, c) => sum + Number(c.junkValue || c.scrapValue || 0), 0);
-    root.innerHTML = `<h3>Sell Gear</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected Junk Value: ${total}. Every 1000 Junk Value = +1 Glory. Selling cannot grant final Glory.</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card ${selectedSell.has(c.instanceId) ? 'selected' : ''}" data-sell-card="${c.instanceId}">${escapeHtml(c.publicName)} · ${Number(c.junkValue || c.scrapValue || 0)} Junk</button>`).join('')}</div><button class="primary" id="confirmSell" ${selectedSell.size ? '' : 'disabled'}>Sell Selected Gear</button>`;
+    root.innerHTML = `<h3>Sell Gear</h3><p>${escapeHtml(p.message)}</p><p class="micro">Selected Junk Value: ${total}. Every 1000 Junk Value = +1 Glory. Selling cannot grant final Glory.</p><div class="selectable-list">${p.options.map((c) => `<button class="selectable-card ${selectedSell.has(c.instanceId) ? 'selected' : ''}" data-sell-card="${c.instanceId}">${escapeHtml(c.publicName)} · ${Number(c.junkValue || c.scrapValue || 0)} Junk</button>`).join('')}</div><button class="primary" id="confirmSell" ${selectedSell.size ? '' : 'disabled'}>Sell Selected Gear</button><button id="cancelSell">Cancel / Done</button>`;
     root.querySelectorAll('[data-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
       if (selectedSell.has(btn.dataset.sellCard)) selectedSell.delete(btn.dataset.sellCard);
       else selectedSell.add(btn.dataset.sellCard);
       renderPrompt();
     }));
     $('confirmSell').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] }); selectedSell.clear(); });
+    $('cancelSell').addEventListener('click', () => { selectedSell.clear(); emitAction('RESOLVE_PROMPT', { cancel: true }); });
     return;
   }
   if (p.type === 'DISCARD_FOR_BERSERK' || p.type === 'DISCARD_FOR_BACKSTAB') {
@@ -1903,6 +1934,18 @@ function typeLabel(card) {
 function shortTypeLabel(card) {
   const map = { THREAT: 'FOE', HEX: 'HEX', ROLE: 'CALL', ORIGIN: 'KIN', GEAR: 'GEAR', TRICK: 'TRICK', SPECIAL: 'SPEC', THREAT_MODIFIER: 'MOD' };
   return map[card?.type] || String(card?.type || 'CARD').slice(0, 5);
+}
+
+function showDiscardViewer(kind = 'chamber') {
+  const cards = state.discardPiles?.[kind] || [];
+  const label = kind === 'loot' ? 'Loot Discard' : 'Chamber Discard';
+  const root = $('inspectContent');
+  root.innerHTML = `<h2>${escapeHtml(label)}</h2><p class="micro">Any player can inspect discarded cards at any time.</p><div class="discard-viewer-grid">${cards.length ? cards.slice().reverse().map((c) => `<button class="discard-viewer-card" data-discard-card-id="${c.instanceId}">${cardHtml(c,{compact:true})}</button>`).join('') : '<p>No discarded cards yet.</p>'}</div>`;
+  root.querySelectorAll('[data-discard-card-id]').forEach((btn) => btn.addEventListener('click', () => {
+    const card = cards.find((c) => c.instanceId === btn.dataset.discardCardId);
+    if (card) inspectCard(card);
+  }));
+  $('inspectOverlay').classList.remove('hidden');
 }
 
 function inspectCard(card) {

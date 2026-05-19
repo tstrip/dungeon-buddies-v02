@@ -7481,3 +7481,41 @@ button[data-action="SELL_GEAR"],
     display: grid !important; grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)) !important; min-width: 0 !important; width: 100% !important;
   }
 }
+
+
+/* v0.6.7 — Table Clarity + Resolution Flow */
+.table-announcement.acknowledged,
+.mobile-public-event.acknowledged { display: none !important; }
+.ack-button { margin-top: 8px; min-height: 34px; border-radius: 12px; padding: 6px 12px; font-size: .72rem; }
+.announce-card-preview, .mobile-public-event-card { border: 0; background: transparent; padding: 0; }
+.mobile-public-event {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; align-items: center;
+  padding: 9px; border-radius: 18px; border: 1px solid rgba(245,189,88,.24);
+  background: radial-gradient(circle at 0 0, rgba(245,189,88,.12), transparent 48%), rgba(0,0,0,.27);
+}
+.mobile-public-event.bad { border-color: rgba(255,116,116,.50); background: radial-gradient(circle at 0 0, rgba(255,116,116,.16), transparent 48%), rgba(0,0,0,.32); }
+.mobile-public-event-copy strong { display:block; color: var(--ink); font-size: .82rem; line-height:1.05; }
+.mobile-public-event-copy span { display:block; color: rgba(255,246,214,.74); font-size:.64rem; line-height:1.15; margin-top:2px; }
+.mobile-public-event-card .hand-card { width: 74px; height: 96px; }
+.combat-ledger { display:grid; grid-template-columns: 1fr 1fr; gap: 7px; width:100%; }
+.combat-ledger > div { padding:8px; border-radius:15px; background:rgba(0,0,0,.24); border:1px solid rgba(255,255,255,.10); }
+.combat-ledger h4 { margin:0 0 5px; color:var(--accent); font-size:.58rem; letter-spacing:.14em; text-transform:uppercase; }
+.combat-ledger div div { display:flex; justify-content:space-between; gap:6px; color:rgba(255,246,214,.78); font-size:.62rem; line-height:1.15; }
+.combat-ledger b { color:var(--ink); white-space:nowrap; }
+.combat-ledger small { display:block; grid-column:1/-1; color:rgba(255,246,214,.62); font-size:.58rem; margin-left:6px; }
+.bad-news-preview { margin-top:5px; padding:7px; border-radius:13px; border:1px solid rgba(255,116,116,.28); background:rgba(255,116,116,.10); }
+.bad-news-preview b, .bad-news-preview span { display:block; }
+.bad-news-preview b { color:#ffd8d8; font-size:.68rem; }
+.bad-news-preview span { color:rgba(255,246,214,.76); font-size:.62rem; line-height:1.12; }
+.mobile-prompt-card-grid, .discard-viewer-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap:8px; width:100%; max-height:min(50dvh,420px); overflow:auto; padding:4px; }
+.mobile-prompt-card-choice, .discard-viewer-card { display:grid; gap:4px; justify-items:center; border-radius:14px; padding:6px; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.10); }
+.mobile-prompt-card-choice.selected { border-color: rgba(143,227,207,.75); box-shadow:0 0 0 2px rgba(143,227,207,.18); }
+.mobile-prompt-card-choice span { font-size:.62rem; color:rgba(255,246,214,.76); }
+.mobile-deck-chip[data-discard-pile], .deck-pile[data-discard-pile] { cursor:pointer; border-color:rgba(245,189,88,.32); }
+.die-face.standard-d6 { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); background:linear-gradient(145deg,#fff7d8,#e4c98d); border:3px solid rgba(255,255,255,.75); box-shadow: inset -8px -8px 12px rgba(89,57,16,.18), inset 8px 8px 10px rgba(255,255,255,.55), 0 10px 20px rgba(0,0,0,.24); }
+.die-face.standard-d6 .pip { width: 11px; height: 11px; border-radius:999px; background:transparent; justify-self:center; align-self:center; }
+.die-face.standard-d6 .pip.on { background:#211306; box-shadow: inset 0 1px 0 rgba(255,255,255,.20); }
+.die-face.standard-d6 .p1 { grid-area:1/1; } .die-face.standard-d6 .p2 { grid-area:1/2; } .die-face.standard-d6 .p3 { grid-area:1/3; }
+.die-face.standard-d6 .p4 { grid-area:2/1; } .die-face.standard-d6 .p5 { grid-area:2/2; } .die-face.standard-d6 .p6 { grid-area:2/3; }
+.die-face.standard-d6 .p7 { grid-area:3/1; } .die-face.standard-d6 .p8 { grid-area:3/2; } .die-face.standard-d6 .p9 { grid-area:3/3; }
+@media (max-width:760px){ .combat-ledger { grid-template-columns:1fr; } .mobile-public-event-card .hand-card { width:64px; height:84px; } }

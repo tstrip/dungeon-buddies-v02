@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-hand-drawer-card-proportion-v066",
-  "version": "0.10.6",
+  "name": "loot-goblins-table-clarity-resolution-v067",
+  "version": "0.10.7",
   "private": true,
-  "description": "Loot Goblins v0.6.6: fixes expanded hand scrolling/buttons, restores card-shaped draw/reveal previews, and tightens spacing.",
+  "description": "Loot Goblins v0.6.7: table clarity, public played-card events, sell-gear cancel, combat ledger, Bad News/Flee clarity, discard viewer, and standard d6.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
