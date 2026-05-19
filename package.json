@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-action-first-mobile-flow-v064",
-  "version": "0.10.4",
+  "name": "loot-goblins-app-shell-interaction-fixes-v065",
+  "version": "0.10.5",
   "private": true,
-  "description": "Loot Goblins v0.6.4: action-first face-up reveal controls and mobile flow polish.",
+  "description": "Loot Goblins v0.6.5: dice roll presentation, real hand drawer expansion, desktop hand scrolling, spacing compression, and clearer over-limit/tribute copy.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

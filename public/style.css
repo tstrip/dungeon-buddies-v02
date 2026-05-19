@@ -7234,3 +7234,175 @@ button[data-action="SELL_GEAR"],
     scroll-padding-right: 14px;
   }
 }
+
+
+/* Loot Goblins v0.6.5 — App-Shell Interaction Fixes */
+@media (max-width: 760px) {
+  .screen.game {
+    gap: 5px !important;
+    padding-top: calc(3px + var(--safe-top)) !important;
+    padding-bottom: calc(132px + var(--safe-bottom)) !important;
+  }
+
+  .phase-banner {
+    padding: 5px 8px !important;
+    border-radius: 14px !important;
+  }
+  .phase-banner h2 { font-size: clamp(.82rem, 3.35vw, 1.02rem) !important; }
+  .phase-banner p { font-size: .58rem !important; }
+
+  .mobile-app-shell { gap: 4px !important; padding: 5px !important; }
+  .mobile-player-chip { min-height: 48px !important; padding: 5px 4px !important; }
+  .mobile-player-name { font-size: .62rem !important; }
+  .mobile-player-stats b { font-size: .49rem !important; padding: 2px 4px !important; }
+  .mobile-deck-strip { gap: 2px !important; }
+  .mobile-deck-chip { min-height: 31px; padding: 2px !important; }
+  .mobile-deck-chip strong { font-size: .42rem !important; }
+  .mobile-deck-chip small { font-size: .36rem !important; }
+  .mobile-deck-art { width: 15px !important; height: 19px !important; }
+  .mobile-state-panel { padding: 10px !important; gap: 6px !important; }
+  .mobile-state-size-small { min-height: 120px !important; }
+  .mobile-state-size-medium { min-height: 205px !important; }
+  .mobile-state-size-large { min-height: 275px !important; }
+
+  .hand-panel {
+    max-height: 142px !important;
+    transition: max-height .24s ease, transform .24s ease, box-shadow .24s ease;
+  }
+  .hand-panel.hand-expanded {
+    max-height: min(72dvh, 640px) !important;
+    overflow: visible !important;
+    transform: translateY(-2px);
+    box-shadow: 0 -18px 50px rgba(0,0,0,.55), 0 0 0 2px rgba(245,189,88,.13) !important;
+  }
+  .hand-panel.hand-expanded .hand-tray {
+    max-height: min(48dvh, 440px);
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hand-panel.hand-expanded .hand-row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    padding: 4px 8px 12px !important;
+  }
+  .hand-panel.hand-expanded .hand-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 118px !important;
+  }
+
+  .hand-scroll-shell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .hand-scroll-btn {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    min-width: 26px;
+    padding: 0;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    background: rgba(75, 44, 29, .75);
+    color: rgba(255,246,214,.86);
+    border-color: rgba(245,189,88,.20);
+  }
+  .hand-tray {
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+    cursor: grab;
+  }
+  .hand-tray:active { cursor: grabbing; }
+  .hand-row { min-width: max-content; }
+  .hand-limit.full { color: rgba(255,227,125,.96); }
+}
+
+@media (min-width: 761px) {
+  .hand-scroll-shell {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .hand-scroll-btn {
+    display: grid;
+    place-items: center;
+    min-width: 34px;
+    padding: 0;
+    border-radius: 13px;
+    font-size: 1.25rem;
+    background: rgba(75, 44, 29, .82);
+    color: rgba(255,246,214,.88);
+    border-color: rgba(245,189,88,.25);
+  }
+  .hand-tray {
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    cursor: grab;
+  }
+  .hand-tray:active { cursor: grabbing; }
+  .hand-row { min-width: max-content; }
+  .hand-panel.hand-expanded {
+    max-height: min(58vh, 540px) !important;
+  }
+  .hand-panel.hand-expanded .hand-tray {
+    max-height: min(42vh, 390px);
+    overflow: auto !important;
+  }
+  .hand-panel.hand-expanded .hand-row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+    min-width: 0 !important;
+    gap: 10px !important;
+  }
+  .hand-panel.hand-expanded .hand-card {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+.mobile-roll-moment {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr);
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.10);
+}
+.mobile-roll-moment strong {
+  display: block;
+  color: var(--ink);
+  font-size: .98rem;
+}
+.mobile-roll-moment span {
+  display: block;
+  color: rgba(255,246,214,.74);
+  font-size: .74rem;
+  margin-top: 2px;
+}
+.die-face.rolling {
+  animation: dice-roll-tumble .88s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes dice-roll-tumble {
+  0% { transform: rotate(-28deg) scale(.88); filter: blur(.6px) brightness(1.08); }
+  18% { transform: rotate(38deg) scale(1.05); }
+  38% { transform: rotate(-42deg) scale(.94); filter: blur(.5px) brightness(1.16); }
+  62% { transform: rotate(24deg) scale(1.10); }
+  82% { transform: rotate(-7deg) scale(.98); }
+  100% { transform: rotate(0deg) scale(1); filter: blur(0) brightness(1); }
+}
+.mobile-roll-moment.rolling {
+  border-color: rgba(255,226,116,.36);
+  box-shadow: 0 0 20px rgba(255,226,116,.10);
+}

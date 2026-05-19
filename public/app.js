@@ -4,6 +4,9 @@ let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
 let handExpanded = false;
+let rollFx = null;
+let lastSeenRollKey = '';
+let handDrag = null;
 
 const $ = (id) => document.getElementById(id);
 const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
@@ -20,6 +23,7 @@ socket.on('session', (session) => {
 socket.on('toast', ({ type, message }) => showToast(message, type));
 socket.on('state', (next) => {
   state = next;
+  updateRollFxFromState(next);
   render();
 });
 
@@ -68,7 +72,48 @@ function showToast(message, type = 'ok') {
   setTimeout(() => { if (el.textContent === message) el.classList.add('hidden'); }, 4500);
 }
 
+
+function rollKeyFromState(next) {
+  const latest = next?.firstRoll?.latest;
+  if (latest) return `opening:${next.firstRoll.round || 1}:${latest.playerId}:${latest.raw}:${latest.at || 0}`;
+  const last = next?.escape?.lastRoll;
+  if (last) return `flee:${next.escape.currentPlayerId || 'runner'}:${last.raw}:${last.total}:${last.at || 0}:${last.changedBy || ''}`;
+  return '';
+}
+
+function updateRollFxFromState(next) {
+  const key = rollKeyFromState(next);
+  if (!key || key === lastSeenRollKey) return;
+  lastSeenRollKey = key;
+  startRollFx(key.startsWith('opening:') ? 'opening' : 'flee', key);
+}
+
+function startRollFx(kind, key) {
+  rollFx = { kind, key, at: Date.now() };
+  setTimeout(() => {
+    if (rollFx && rollFx.key === key) {
+      rollFx = null;
+      render();
+    }
+  }, 900);
+}
+
+function isRollFx(kind) {
+  return Boolean(rollFx && rollFx.kind === kind && Date.now() - rollFx.at < 950);
+}
+
+function mobileRollMoment(kind, value, label, sub = '') {
+  const rolling = isRollFx(kind);
+  const shown = rolling && (value === null || value === undefined || value === '—') ? '…' : value;
+  return `<div class="mobile-roll-moment ${rolling ? 'rolling' : ''}">
+    ${dieHtml(shown ?? '—', `${value && value !== '—' ? 'rolled' : 'idle'} ${rolling ? 'rolling' : ''}`)}
+    <div><strong>${escapeHtml(label)}</strong>${sub ? `<span>${escapeHtml(sub)}</span>` : ''}</div>
+  </div>`;
+}
+
 function emitAction(type, extra = {}) {
+  if (type === 'ROLL_FIRST') startRollFx('opening', 'local-opening');
+  if (type === 'ROLL_ESCAPE') startRollFx('flee', 'local-flee');
   socket.emit('action', { type, ...extra });
 }
 
@@ -1017,14 +1062,15 @@ function mobileFleeStageHtml(esc) {
   const buttons = [];
   if (runner?.isYou) {
     if (!esc.awaitingContinue && hasLittleHelper(me())) buttons.push(mobileLegalActionButton('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
-    buttons.push(mobileLegalActionButton(esc.awaitingContinue ? 'Continue' : (esc.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee'), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+    buttons.push(mobileLegalActionButton(isRollFx('flee') ? 'Rolling...' : (esc.awaitingContinue ? 'Continue' : (esc.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee')), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
   }
-  const body = `<div class="mobile-flee-grid">
-    <div class="mobile-die-wrap">${dieHtml(last?.raw ?? '—', last ? 'rolled' : 'idle')}</div>
+  const result = last ? `${last.raw} ${signed(last.bonus || 0)} = ${last.total}` : 'Target 5+';
+  const body = `<div class="mobile-flee-grid mobile-flee-roll-grid">
+    ${mobileRollMoment('flee', last?.raw ?? '—', last ? (last.total >= 5 ? 'Escaped!' : 'Failed to Flee') : (isRollFx('flee') ? 'Rolling...' : 'Ready to roll'), result)}
     <div class="mobile-flee-copy">
       <strong>Target 5+</strong>
       <span>Flee bonus ${signed(esc.fleeBonus || 0)}</span>
-      ${last ? `<b>${last.total >= 5 ? 'Escaped' : 'Failed'} · ${last.raw} ${signed(last.bonus || 0)} = ${last.total}</b>` : '<b>Waiting for roll</b>'}
+      ${last ? `<b>${last.total >= 5 ? 'Bad News avoided.' : 'Bad News resolves.'}</b>` : '<b>Waiting for roll</b>'}
     </div>
   </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
   return mobileStageShell('flee', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
@@ -1032,11 +1078,12 @@ function mobileFleeStageHtml(esc) {
 
 function mobileOpeningRollStageHtml() {
   const first = state.firstRoll || { rolls: {}, eligible: [] };
+  const latest = first.latest || null;
   const rows = (first.eligible || []).map((id) => `<span class="mobile-pass-pill ${first.rolls?.[id] ? 'passed' : 'can-play'}">${escapeHtml(playerName(id))} · ${first.rolls?.[id] || '—'}</span>`).join('');
-  const actions = first.requiresYou ? mobileActionButtonsHtml([mobileLegalActionButton('Roll d6', 'ROLL_FIRST', 'primary')], 'roll-actions') : '';
-  return mobileStageShell('opening-roll', 'Opening Roll', first.requiresYou ? 'Your roll is needed' : 'Roll to see who goes first', `<div class="mobile-pass-row">${rows}</div>${actions}`, { size: 'medium', icon: 'die', sub: 'Highest roll opens the first Chamber. Ties reroll.' });
+  const label = isRollFx('opening') ? 'Rolling...' : (latest ? `${latest.playerName || 'A goblin'} rolled ${latest.raw}` : (first.requiresYou ? 'Your roll is needed' : 'Waiting for rolls'));
+  const actions = first.requiresYou ? mobileActionButtonsHtml([mobileLegalActionButton(isRollFx('opening') ? 'Rolling...' : 'Roll d6', 'ROLL_FIRST', 'primary')], 'roll-actions') : '';
+  return mobileStageShell('opening-roll', 'Opening Roll', first.requiresYou ? 'Roll to see who goes first' : 'Opening rolls', `${mobileRollMoment('opening', latest?.raw ?? '—', label, 'Highest roll opens first. Ties reroll.')}<div class="mobile-pass-row">${rows}</div>${actions}`, { size: 'medium', icon: 'die', sub: '' });
 }
-
 
 function mobileBodyLootStageHtml() {
   const loot = state.bodyLoot;
@@ -1486,7 +1533,7 @@ function renderHand() {
   const handTitle = forceOpen ? 'Tribute Required' : 'Your Hand';
   const handEyebrow = over ? 'Over Limit' : (state.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards');
   const handStateClass = over ? 'bad' : (you.handCount === you.handLimit ? 'full' : '');
-  const handStateText = over ? `${you.handCount}/${you.handLimit} Tribute` : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
+  const handStateText = over ? (forceOpen ? `${you.handCount}/${you.handLimit} Tribute` : `${you.handCount}/${you.handLimit} Over Limit`) : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
   let html = `<div class="hand-header v076-hand-header mobile-hand-header">
     <div><span class="hand-eyebrow">${escapeHtml(handEyebrow)}</span><h3>${escapeHtml(handTitle)}</h3></div>
     <div class="hand-header-actions">
@@ -1498,18 +1545,20 @@ function renderHand() {
   if (state.phase === 'TRIBUTE' && isMyTurn()) {
     const need = you.handCount - you.handLimit;
     html += `<p class="micro tribute-instruction">Tribute: inspect cards first, then use Pick to choose exactly ${need} card${need === 1 ? '' : 's'}.</p>`;
-    html += `<div class="hand-tray v076-hand-tray tribute-tray"><div class="card-row hand-row tribute-card-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
+    html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v076-hand-tray tribute-tray"><div class="card-row hand-row tribute-card-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
     html += tributeControls(need);
   } else {
     const playableCount = playableHandCount();
     if (['START_TURN','NO_THREAT_CHOICE','COMBAT','POST_COMBAT','END_TURN'].includes(state.phase) || state.reaction) {
-      let phaseHint = playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.';
-      if (state.phase === 'START_TURN' && playableCount) phaseHint = `${playableCount} setup card${playableCount === 1 ? '' : 's'} can be played before opening.`;
-      if (state.phase === 'NO_THREAT_CHOICE' && playableCount) phaseHint = `Foe cards glow — tap one to Start Trouble.`;
-      if (state.phase === 'NO_THREAT_CHOICE' && !playableCount) phaseHint = `No Foe ready — Loot the Room or play a setup card first.`;
+      let phaseHint = '';
+      if (!isMyTurn() && !state.reaction) phaseHint = `Waiting on ${active()?.name || 'the active goblin'}. No reactions available.`;
+      else phaseHint = playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.';
+      if (isMyTurn() && state.phase === 'START_TURN' && playableCount) phaseHint = `${playableCount} setup card${playableCount === 1 ? '' : 's'} can be played before opening.`;
+      if (isMyTurn() && state.phase === 'NO_THREAT_CHOICE' && playableCount) phaseHint = `Foe cards glow — tap one to Start Trouble.`;
+      if (isMyTurn() && state.phase === 'NO_THREAT_CHOICE' && !playableCount) phaseHint = `No Foe ready — Loot the Room or play a setup card first.`;
       html += `<p class="micro playable-now-label">${phaseHint}</p>`;
     }
-    html += `<div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div>`;
+    html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('')}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
   }
   root.innerHTML = html;
   const toggle = $('handToggleBtn');
@@ -1539,10 +1588,47 @@ function renderHand() {
       inspectCard(card);
     });
   });
+  attachHandScrollControls(root);
   const confirm = $('confirmTribute');
   if (confirm) confirm.addEventListener('click', () => confirmTribute());
 }
 
+
+
+function attachHandScrollControls(root) {
+  const tray = root.querySelector('.hand-tray');
+  if (!tray) return;
+  const row = tray.querySelector('.hand-row');
+  const scrollByAmount = () => Math.max(160, Math.floor(tray.clientWidth * 0.72));
+  root.querySelector('.hand-scroll-prev')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    tray.scrollBy({ left: -scrollByAmount(), behavior: 'smooth' });
+  });
+  root.querySelector('.hand-scroll-next')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    tray.scrollBy({ left: scrollByAmount(), behavior: 'smooth' });
+  });
+  tray.addEventListener('wheel', (event) => {
+    if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+      tray.scrollLeft += event.deltaY;
+      event.preventDefault();
+    }
+  }, { passive: false });
+  tray.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.target.closest('button')) return;
+    handDrag = { tray, x: event.clientX, left: tray.scrollLeft, moved: false };
+    tray.setPointerCapture?.(event.pointerId);
+  });
+  tray.addEventListener('pointermove', (event) => {
+    if (!handDrag || handDrag.tray !== tray) return;
+    const dx = event.clientX - handDrag.x;
+    if (Math.abs(dx) > 4) handDrag.moved = true;
+    tray.scrollLeft = handDrag.left - dx;
+  });
+  tray.addEventListener('pointerup', () => { handDrag = null; });
+  tray.addEventListener('pointercancel', () => { handDrag = null; });
+}
 
 
 function displayHandCards(cards) {
