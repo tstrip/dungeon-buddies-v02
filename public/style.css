@@ -4212,3 +4212,176 @@ body::after { transform: none !important; letter-spacing: .18em; opacity: .7; }
   .logo-mark.goblin-crest,
   .logo-mark { width: 58px !important; height: 48px !important; }
 }
+
+
+/* Loot Goblins v0.1 visual integration: approved raster asset kit */
+.image-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  padding: 0 !important;
+}
+.brand-logo-img {
+  display: block;
+  width: min(420px, 92vw);
+  max-height: 150px;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 24px rgba(0,0,0,.35));
+}
+.resume-hero .brand-logo-img,
+.entry-hero .brand-logo-img { margin-inline: auto; }
+.lobby-mark .brand-logo-img {
+  width: min(360px, 88vw);
+  max-height: 128px;
+}
+.lobby-splash-img {
+  display: block;
+  width: min(230px, 70vw);
+  margin: 0 auto 10px;
+  filter: drop-shadow(0 16px 26px rgba(0,0,0,.35));
+}
+
+.asset-sigil.icon-img,
+.event-sigil.icon-img,
+.corner-sigil.icon-img,
+.tiny-sigil.icon-img,
+.art-sigil.icon-img,
+.hand-sigil.icon-img,
+.pile-sigil.icon-img {
+  display: inline-block;
+  object-fit: contain;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+.asset-sigil.icon-img { width: 32px; height: 32px; }
+.event-sigil.icon-img { width: 30px; height: 30px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.28)); }
+.tiny-sigil.icon-img { width: 18px; height: 18px; margin-right: 4px; }
+.corner-sigil.icon-img { width: 30px; height: 30px; }
+.art-sigil.icon-img { width: 58px; height: 58px; filter: drop-shadow(3px 5px 0 rgba(0,0,0,.18)); }
+.hand-sigil.icon-img { width: 28px; height: 28px; filter: drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
+.pile-sigil.icon-img { width: 22px; height: 22px; }
+
+.deck-pile-art {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 8px rgba(0,0,0,.28));
+  flex: 0 0 auto;
+}
+.deck-pile {
+  min-height: 50px;
+  gap: 7px;
+}
+.deck-pile .mini-stack { display: none; }
+
+.board-pile .deck-pile-art {
+  width: 52px;
+  height: 52px;
+}
+.table-stack.asset-stack {
+  width: 54px;
+  height: 54px;
+}
+
+.asset-props {
+  justify-content: center;
+}
+.prop-card-img {
+  width: 82px;
+  height: 112px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 18px rgba(0,0,0,.28));
+}
+.prop-token-img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 14px rgba(0,0,0,.24));
+}
+.lobby-deck-img {
+  width: 92px;
+  height: 116px;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 16px rgba(0,0,0,.28));
+}
+.card-corner-sigil {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+}
+.inline-card-sigil {
+  display: inline-flex;
+  align-items: center;
+}
+.card .type {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.card .art span {
+  display: grid;
+  place-items: center;
+}
+.hand-card-sigil {
+  display: grid !important;
+  place-items: center !important;
+}
+.announce-icon .event-sigil.icon-img {
+  width: 28px;
+  height: 28px;
+}
+.player-head .renown::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  vertical-align: -4px;
+  background: url('/assets/loot-goblins/core-icons/glory.png') center / contain no-repeat;
+}
+button[data-action="ROLL_FIRST"]::before,
+button[data-action="ROLL_FLEE"]::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: -5px;
+  background: url('/assets/loot-goblins/core-icons/die.png') center / contain no-repeat;
+}
+button[data-action="OPEN_CHAMBER"]::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: -5px;
+  background: url('/assets/loot-goblins/core-icons/chamber.png') center / contain no-repeat;
+}
+button[data-action="SEARCH_ROOM"]::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: -5px;
+  background: url('/assets/loot-goblins/core-icons/loot.png') center / contain no-repeat;
+}
+button[data-action="SELL_GEAR"]::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: -5px;
+  background: url('/assets/loot-goblins/core-icons/junk.png') center / contain no-repeat;
+}

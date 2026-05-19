@@ -174,9 +174,19 @@ function pileHtml(pile, move) {
   const empty = Number(pile.count || 0) <= 0;
   if (empty) classes.push('empty');
   return `<div class="${classes.join(' ')}" aria-label="${escapeHtml(pile.label)} ${escapeHtml(pile.sub)} ${Number(pile.count || 0)} cards">
-    <div class="mini-stack"><span></span><span></span><span></span></div>
+    ${deckPileImageHtml(pile)}
     <div class="pile-copy"><strong>${escapeHtml(pile.label)}</strong><small>${escapeHtml(pile.sub)} · ${Number(pile.count || 0)}</small></div>
   </div>`;
+}
+
+function deckPileImageHtml(pile, cls = 'deck-pile-art') {
+  const key = String(pile?.key || '');
+  let src = '/assets/loot-goblins/deck/chamber-deck-stack.png';
+  if (key === 'LOOT_DECK') src = '/assets/loot-goblins/deck/loot-deck-stack.png';
+  if (key === 'CHAMBER_DISCARD') src = '/assets/loot-goblins/deck/chamber-discard-pile.png';
+  if (key === 'LOOT_DISCARD') src = '/assets/loot-goblins/deck/loot-discard-pile.png';
+  if (key === 'CHAMBER_DECK') src = '/assets/loot-goblins/deck/chamber-deck-stack.png';
+  return `<img class="${escapeHtml(cls)}" src="${src}" alt="" aria-hidden="true" loading="lazy" decoding="async" />`;
 }
 
 
@@ -356,7 +366,7 @@ function boardPile(key, label, sub, count, move) {
   if (move?.to === key) classes.push('destination');
   if (Number(count || 0) <= 0) classes.push('empty');
   return `<div class="${classes.join(' ')}">
-    <div class="table-stack"><span></span><span></span><span></span></div>
+    ${deckPileImageHtml({ key }, 'deck-pile-art table-deck-art')}
     <div><strong>${deckPileIconHtml(key)}${escapeHtml(label)}</strong><small>${escapeHtml(sub)} · ${Number(count || 0)}</small></div>
   </div>`;
 }
@@ -1091,30 +1101,43 @@ function deckPileIconHtml(key) {
 
 function assetIconHtml(key, cls = 'asset-sigil') {
   const k = String(key || 'special').toLowerCase().replace(/[^a-z0-9-]+/g, '');
-  const common = `class="${escapeHtml(cls)} sigil-${escapeHtml(k)}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"`;
-  const icons = {
-    foe: `<svg ${common}><path class="fill" d="M12 36c0-15 9-24 20-24s20 9 20 24c0 10-8 16-20 16S12 46 12 36Z"/><path class="cut" d="M22 38l6 9 4-8 4 8 6-9"/><path class="line" d="M19 28c5-5 9-5 13 0M32 28c4-5 8-5 13 0"/><circle class="ink" cx="25" cy="33" r="3"/><circle class="ink" cx="39" cy="33" r="3"/></svg>`,
-    hex: `<svg ${common}><path class="fill" d="M32 5l21 13-5 24-16 17-16-17-5-24L32 5Z"/><path class="line" d="M32 10l-5 14 9 6-11 4 8 19M20 20l12 9 11-9M44 42l-12-8"/></svg>`,
-    gear: `<svg ${common}><path class="fill" d="M20 18l9-9 8 8-9 9 17 17-8 8-17-17-4 4-6-6 4-4-5-5 6-6 5 5Z"/><path class="line" d="M39 11l14 14M43 15l-7 7M20 34l17 17"/></svg>`,
-    trick: `<svg ${common}><path class="fill" d="M43 8l6 13 13 6-13 6-6 13-6-13-13-6 13-6 6-13Z"/><path class="line" d="M12 51l17-17 6 6-17 17-10 3 4-9Z"/><path class="ink" d="M15 52l5 5-7 2 2-7Z"/></svg>`,
-    modifier: `<svg ${common}><path class="fill" d="M8 35l10-8 1-13 11 7 13-7 1 13 12 8-12 8-1 13-13-7-11 7-1-13-10-8Z"/><path class="line" d="M20 35h24M32 23v24M22 25l20 20M42 25L22 45"/></svg>`,
-    calling: `<svg ${common}><path class="fill" d="M14 10h29l7 8-7 8H14v27h-6V10h6Z"/><path class="line" d="M14 16h25M14 24h27M14 10v43"/></svg>`,
-    kin: `<svg ${common}><path class="fill" d="M32 7c8 0 14 6 14 14 0 5-3 10-7 12l11 19H14l11-19c-4-2-7-7-7-12 0-8 6-14 14-14Z"/><path class="line" d="M32 21v23M22 44h20M24 28c5 3 11 3 16 0M24 18c3-4 13-4 16 0"/></svg>`,
-    special: `<svg ${common}><path class="fill" d="M19 8h25l6 7v41H14V13l5-5Z"/><path class="line" d="M21 20h22M21 29h17M21 38h22M37 8v12h13"/><path class="ink" d="M43 42l4 4-8 8-6 1 1-6 9-7Z"/></svg>`,
-    chamber: `<svg ${common}><path class="fill" d="M16 56V29c0-13 7-21 16-21s16 8 16 21v27H16Z"/><path class="line" d="M22 56V30c0-9 4-15 10-15s10 6 10 15v26M32 16v40M24 33h16"/><circle class="ink" cx="38" cy="38" r="2.5"/></svg>`,
-    loot: `<svg ${common}><path class="fill" d="M10 25h44v28H10V25Z"/><path class="line" d="M15 25v-5c0-5 5-9 17-9s17 4 17 9v5M10 35h44M29 33h6v8h-6z"/><circle class="ink" cx="21" cy="45" r="3"/><circle class="ink" cx="44" cy="45" r="3"/></svg>`,
-    discard: `<svg ${common}><path class="fill" d="M17 13l31 8-8 31-31-8 8-31Z"/><path class="line" d="M25 11l28 14M15 24l25 7M22 37l18 5"/></svg>`,
-    glory: `<svg ${common}><path class="fill" d="M32 6l7 16 17 2-13 11 4 17-15-9-15 9 4-17L8 24l17-2 7-16Z"/><path class="line" d="M32 14v23M22 28h20"/></svg>`,
-    junk: `<svg ${common}><circle class="fill" cx="32" cy="32" r="24"/><path class="line" d="M24 20h16M24 44h16M32 17v30M22 29h20"/></svg>`,
-    strength: `<svg ${common}><path class="fill" d="M16 48l25-25 8 8-25 25H16v-8Z"/><path class="line" d="M37 19l8-8 8 8-8 8M21 45l-6 6"/></svg>`,
-    flee: `<svg ${common}><path class="fill" d="M16 45c13 0 21-4 28-13l8 7c-7 12-18 17-36 17H8V45h8Z"/><path class="line" d="M15 45l6-23h12l-3 15M34 20l7 7"/></svg>`,
-    die: `<svg ${common}><rect class="fill" x="11" y="11" width="42" height="42" rx="10"/><circle class="ink" cx="24" cy="24" r="3"/><circle class="ink" cx="40" cy="24" r="3"/><circle class="ink" cx="32" cy="32" r="3"/><circle class="ink" cx="24" cy="40" r="3"/><circle class="ink" cx="40" cy="40" r="3"/></svg>`,
-    backup: `<svg ${common}><path class="fill" d="M13 36c0-7 5-12 12-12s12 5 12 12v16H13V36Z"/><path class="line" d="M25 24V12h26v24H37M43 19v10M38 24h10"/></svg>`,
-    turn: `<svg ${common}><path class="fill" d="M14 16h26l10 16-10 16H14l10-16-10-16Z"/><path class="line" d="M23 32h23M38 22l10 10-10 10"/></svg>`,
-    prompt: `<svg ${common}><path class="fill" d="M32 8c12 0 21 8 21 19 0 14-16 17-16 17v8H27V39s16-3 16-12c0-5-4-9-11-9-6 0-10 3-13 7l-7-7c5-7 12-10 20-10Z"/><circle class="ink" cx="32" cy="57" r="4"/></svg>`,
-    card: `<svg ${common}><rect class="fill" x="17" y="8" width="30" height="48" rx="6"/><path class="line" d="M23 18h18M23 28h18M23 38h12"/></svg>`
+  const core = {
+    glory: '/assets/loot-goblins/core-icons/glory.png',
+    junk: '/assets/loot-goblins/core-icons/junk.png',
+    strength: '/assets/loot-goblins/core-icons/strength.png',
+    combat: '/assets/loot-goblins/core-icons/combat.png',
+    loot: '/assets/loot-goblins/core-icons/loot.png',
+    flee: '/assets/loot-goblins/core-icons/flee.png',
+    die: '/assets/loot-goblins/core-icons/die.png',
+    roll: '/assets/loot-goblins/core-icons/roll.png',
+    death: '/assets/loot-goblins/core-icons/death.png',
+    backup: '/assets/loot-goblins/core-icons/backup.png',
+    hex: '/assets/loot-goblins/core-icons/hex.png',
+    chamber: '/assets/loot-goblins/core-icons/chamber.png',
+    draw: '/assets/loot-goblins/core-icons/draw.png',
+    discard: '/assets/loot-goblins/core-icons/discard.png',
+    trade: '/assets/loot-goblins/core-icons/trade.png',
+    give: '/assets/loot-goblins/core-icons/give.png',
+    'trade-give': '/assets/loot-goblins/core-icons/trade-give.png'
   };
-  return icons[k] || icons.special;
+  const types = {
+    foe: '/assets/loot-goblins/card-type-icons/foe.png',
+    gear: '/assets/loot-goblins/card-type-icons/gear.png',
+    trick: '/assets/loot-goblins/card-type-icons/trick.png',
+    modifier: '/assets/loot-goblins/card-type-icons/modifier.png',
+    calling: '/assets/loot-goblins/card-type-icons/calling.png',
+    kin: '/assets/loot-goblins/card-type-icons/kin.png',
+    special: '/assets/loot-goblins/card-type-icons/special.png',
+    card: '/assets/loot-goblins/card-type-icons/special.png',
+    prompt: '/assets/loot-goblins/core-icons/chamber.png',
+    turn: '/assets/loot-goblins/core-icons/chamber.png'
+  };
+  // Preserve Hex parity: core contexts use the bigger Hex icon, card-type contexts use D2.
+  let src = core[k] || types[k] || types.special;
+  if (String(cls || '').includes('card-type') || String(cls || '').includes('corner-sigil') || String(cls || '').includes('hand-sigil') || String(cls || '').includes('tiny-sigil')) {
+    src = types[k] || core[k] || types.special;
+  }
+  return `<img class="${escapeHtml(cls)} icon-img sigil-${escapeHtml(k)}" src="${src}" alt="" aria-hidden="true" loading="lazy" decoding="async" />`;
 }
 
 function cardHtml(card, opts = {}) {
@@ -1160,7 +1183,7 @@ function compactCardHtml(card, opts = {}) {
 function cardGlance(card) {
   if (card.type === 'THREAT') return `STR ${card.strength}`;
   if (card.type === 'GEAR') return `+${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''}`;
-  if (card.type === 'THREAT_MODIFIER') return `Foe ${signed(card.strengthDelta)}`;
+  if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)}`;
   if (card.type === 'TRICK') return trickGlance(card);
   if (card.type === 'HEX') return hexGlance(card);
   if (card.type === 'ROLE') return 'Calling';
@@ -1194,7 +1217,7 @@ function hexGlance(card) {
 function cardBottom(card) {
   if (card.type === 'THREAT') return `STR ${card.strength} · ${card.renownReward} Glory · ${card.lootReward} Loot`;
   if (card.type === 'GEAR') return `${card.slot || 'Gear'} · +${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
-  if (card.type === 'THREAT_MODIFIER') return `Foe ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
+  if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
   if (card.type === 'TRICK') return `${card.timing?.join(', ') || 'Trick'} · ${card.junkValue ?? card.scrapValue ?? 0} Junk`;
   if (card.type === 'ROLE') return 'Calling';
   if (card.type === 'ORIGIN') return 'Kin';
@@ -1203,7 +1226,7 @@ function cardBottom(card) {
 }
 
 function typeLabel(card) {
-  const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Foe Modifier' };
+  const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick', SPECIAL: 'Special', THREAT_MODIFIER: 'Modifier' };
   return map[card.type] || card.type;
 }
 

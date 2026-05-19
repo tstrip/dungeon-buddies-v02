@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-v079",
-  "version": "0.7.9",
+  "name": "loot-goblins-visual-integration-v01",
+  "version": "0.8.0",
   "private": true,
-  "description": "Loot Goblins v0.7.9: original Loot Goblins asset kit with crest, type sigils, card backs, deck marks, and icon language, preserving the locked classic-style card engine.",
+  "description": "Loot Goblins Visual Integration Build v0.1 with approved brand, deck, core icon, and card-type asset kit wired into the existing game.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
