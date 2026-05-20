@@ -8123,3 +8123,32 @@ button[data-action="SELL_GEAR"],
     font-size: .63rem;
   }
 }
+
+
+/* Loot Goblins v0.6.13 — Source-First Resolution + Combat Pass Cleanup */
+.mobile-state-hex-reveal,
+.center-zone.hex-center {
+  border-color: rgba(203,132,255,.34) !important;
+}
+
+.mobile-state-hex-reveal {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(142,78,210,.24), transparent 55%),
+    linear-gradient(180deg, rgba(23,12,32,.92), rgba(8,8,11,.86));
+}
+
+.hex-reveal-actions button.primary,
+button[data-action="RESOLVE_HEX"] {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.26), transparent 31%),
+    linear-gradient(135deg, #d9a8ff, #8e4ed2 78%) !important;
+  color: #1b071f !important;
+  border-color: rgba(220,170,255,.74) !important;
+}
+
+.mobile-state-hex-reveal .mobile-opened-door-card {
+  border-color: rgba(203,132,255,.34);
+  background:
+    radial-gradient(circle at 0 0, rgba(142,78,210,.18), transparent 46%),
+    rgba(0,0,0,.24);
+}

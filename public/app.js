@@ -293,8 +293,8 @@ function announcementTier(a) {
   const type = String(card?.type || '').toUpperCase();
   const joined = `${title} ${detail}`;
 
-  // Routine bookkeeping should never stop the table.
-  if (/use loot|sell before tribute|use\/sell|using loot|loot phase|tribute pending|window complete/i.test(joined)) return 'log';
+  // Routine bookkeeping/pass states should never stop the table.
+  if (/use loot|sell before tribute|use\/sell|using loot|loot phase|tribute pending|window complete|done buffing|done nerfing|confirmed no more/i.test(joined)) return 'log';
 
   // Hard events: immediate tactical/current-resolution moments.
   if (['bad','death','game','flee','backup','trade'].includes(kind)) return 'hard';
@@ -641,6 +641,7 @@ function boardPile(key, label, sub, count, move) {
 
 function centerZoneLabel() {
   if (state.phase === 'ROLL_FOR_FIRST') return 'Opening Roll';
+  if (state.phase === 'HEX_REVEAL') return 'Hex Reveal';
   if (state.phase === 'COMBAT') return 'Combat Zone';
   if (state.phase === 'ESCAPE') return 'Flee Zone';
   if (state.revealCard) return 'Reveal Zone';
@@ -651,6 +652,7 @@ function centerZoneLabel() {
 
 function centerZoneSub() {
   if (state.phase === 'ROLL_FOR_FIRST') return 'Every goblin rolls a d6. Highest starts. Ties reroll.';
+  if (state.phase === 'HEX_REVEAL') return state.pendingHex?.card ? `${state.pendingHex.card.publicName} is waiting to resolve.` : 'A Hex is waiting to resolve.';
   if (state.phase === 'COMBAT') return 'Foes, modifiers, and played Tricks live here.';
   if (state.phase === 'ESCAPE') return 'Dice rolls and Bad News resolve here.';
   if (state.revealCard) return `${state.revealCard.publicName} is being resolved.`;
@@ -661,6 +663,7 @@ function centerZoneSub() {
 
 function centerZoneClass() {
   if (state.phase === 'ROLL_FOR_FIRST') return 'roll-center';
+  if (state.phase === 'HEX_REVEAL') return 'hex-center';
   if (state.phase === 'COMBAT') return 'combat-center';
   if (state.phase === 'ESCAPE') return 'flee-center';
   if (state.revealCard) return 'reveal-center';
@@ -694,6 +697,11 @@ function renderPhaseBanner() {
     title = first.requiresYou ? 'Roll to See Who Goes First' : 'Opening Roll';
     copy = first.requiresYou ? 'Tap the die. Highest roll opens the first Chamber. Ties reroll.' : `Waiting for opening rolls from ${eligibleNames || 'the table'}.`;
     if (first.requiresYou) buttons.push(buttonHtml('Roll d6', 'ROLL_FIRST', 'primary'));
+  } else if (state.phase === 'HEX_REVEAL' && state.pendingHex) {
+    const h = state.pendingHex;
+    title = h.requiresYou ? 'Resolve Revealed Hex' : `${h.targetPlayerName || 'A goblin'} is resolving a Hex`;
+    copy = h.card ? `${h.card.publicName}: ${h.card.publicText || 'Resolve the Hex effect.'}` : 'Read the Hex, then resolve its effect.';
+    if (h.requiresYou) buttons.push(buttonHtml('Resolve Hex', 'RESOLVE_HEX', 'primary'));
   } else if (state.phase === 'START_TURN') {
     title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn`;
     copy = isMyTurn() ? 'Open a Chamber, or play setup cards first.' : `Waiting for ${active()?.name}.`;
@@ -1001,6 +1009,7 @@ function mobileStageHtml() {
   if (state.phase === 'COMBAT' && state.combat) return mobileCombatStageHtml(state.combat);
   if (state.phase === 'ESCAPE' && state.escape) return mobileFleeStageHtml(state.escape);
   if (state.phase === 'ROLL_FOR_FIRST') return mobileOpeningRollStageHtml();
+  if (state.phase === 'HEX_REVEAL' && state.pendingHex) return mobileHexRevealStageHtml();
   if (state.phase === 'TRIBUTE') return mobileTributeStageHtml();
   if (state.phase === 'START_TURN') return mobileStartTurnStageHtml();
   if (state.phase === 'NO_THREAT_CHOICE') return mobileNoFoeStageHtml();
@@ -1046,6 +1055,28 @@ function mobileDeckCardPreviewHtml(deck = 'CHAMBER') {
   const isLoot = String(deck).toUpperCase().includes('LOOT');
   const src = isLoot ? '/assets/loot-goblins/deck/loot-card-back.png' : '/assets/loot-goblins/deck/chamber-card-back.png';
   return `<div class="mobile-card-proportion-preview ${isLoot ? 'loot-back' : 'chamber-back'}"><img src="${src}" alt="" aria-hidden="true" loading="lazy" decoding="async" /></div>`;
+}
+
+
+function mobileHexRevealStageHtml() {
+  const h = state.pendingHex;
+  const card = h?.card || state.revealCard;
+  const targetName = h?.targetPlayerName || 'the target';
+  const mine = Boolean(h?.requiresYou);
+  return mobileStageShell('hex-reveal', 'Hex Revealed', `${card?.publicName || 'Hex'} hits ${targetName}`, `
+    ${card ? `<div class="mobile-opened-door-card mobile-opened-door-action-first card-type-hex">
+      <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
+      <div class="mobile-opened-door-copy">
+        <strong>${escapeHtml(card.publicName)}</strong>
+        <div class="mobile-card-type">Hex · Source first</div>
+        <span class="mobile-opened-door-status">Read the card before the consequence resolves.</span>
+        <small>${escapeHtml(card.publicText || 'Resolve the Hex effect.')}</small>
+      </div>
+      <button class="mobile-mini-button" data-mobile-inspect-card="${card.instanceId}">View</button>
+    </div>` : ''}
+    <p class="mobile-state-hint">${mine ? 'Resolve the Hex when you are ready. Any required choices will come next.' : `Waiting for ${escapeHtml(targetName)} to resolve the Hex.`}</p>
+    ${mine ? mobileActionButtonsHtml([buttonHtml('Resolve Hex', 'RESOLVE_HEX', 'primary')], 'hex-reveal-actions') : ''}
+  `, { size: 'medium', icon: 'hex', sub: 'Show the cause, then resolve the effect.' });
 }
 
 function mobileStartTurnStageHtml() {

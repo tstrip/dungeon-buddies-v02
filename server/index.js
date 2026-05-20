@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.12-roll-flow-soft-popup-timing-v0612' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.13-source-first-resolution-v0613' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -329,7 +329,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.12-roll-flow-soft-popup-timing-v0612',
+    version: '0.10.13-source-first-resolution-v0613',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -358,6 +358,7 @@ function serializeRoom(room, viewerId) {
     escape: serializeEscape(room),
     firstRoll: serializeFirstRoll(room, viewerId),
     pendingPrompt: serializePrompt(room.pendingPrompt, viewerId),
+    pendingHex: serializePendingHex(room, viewerId),
     bodyLoot: serializeBodyLoot(room, viewerId),
     tradeOffer: serializeTradeOffer(room, viewerId),
     log: room.log.slice(-80),
@@ -367,6 +368,21 @@ function serializeRoom(room, viewerId) {
 }
 
 
+
+
+function serializePendingHex(room, viewerId) {
+  const h = room.pendingHex;
+  if (!h) return null;
+  const target = getPlayer(room, h.targetPlayerId);
+  return {
+    card: publicCard(h.card),
+    targetPlayerId: h.targetPlayerId,
+    targetPlayerName: target?.name || 'Player',
+    after: h.after || 'TO_NO_THREAT_CHOICE',
+    source: h.source || 'REVEAL',
+    requiresYou: viewerId === h.targetPlayerId
+  };
+}
 
 function serializeTradeOffer(room, viewerId) {
   const offer = room.tradeOffer;
@@ -1635,6 +1651,7 @@ function completeHexResolution(room, card, targetPlayer, after = 'TO_NO_THREAT_C
   discardCard(room, card);
   if (complete) {
     if (!room.tableNotice || room.tableNotice.kind === 'hex') announce(room, 'hex', 'Hex Resolved', `${card.publicName} finished resolving for ${targetPlayer.name}.`, card, { importance: 'normal' });
+    room.revealCard = null;
     room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
   } else {
     announce(room, 'prompt', 'Hex Needs a Choice', `${targetPlayer.name} must choose how ${card.publicName} resolves.`, card, { importance: 'major' });
@@ -1666,6 +1683,7 @@ function legalActions(room, player) {
     return actions;
   }
   if (room.pendingPrompt?.playerId === player.id) actions.push('RESOLVE_PROMPT');
+  if (room.phase === 'HEX_REVEAL' && room.pendingHex?.targetPlayerId === player.id) actions.push('RESOLVE_HEX');
   if (room.phase === 'ROLL_FOR_FIRST' && room.firstRoll?.eligible?.includes(player.id) && !room.firstRoll.rolls?.[player.id]) actions.push('ROLL_FIRST');
   if (room.phase === 'START_TURN' && activeId(room) === player.id) actions.push('OPEN_CHAMBER');
   if (canActOutsideCombat(room) && activeId(room) === player.id) actions.push('PLAY_TABLE_CARDS', 'SELL_GEAR', 'START_TRADE');
@@ -1755,6 +1773,7 @@ function endTurn(room) {
   room.escape = null;
   room.reaction = null;
   room.pendingPrompt = null;
+  room.pendingHex = null;
   room.bodyLoot = null;
   room.tableNotice = null;
   room.tradeOffer = null;
@@ -1785,6 +1804,7 @@ function setupGame(room) {
   room.escape = null;
   room.reaction = null;
   room.pendingPrompt = null;
+  room.pendingHex = null;
   room.bodyLoot = null;
   room.tableNotice = null;
   room.announcement = null;
@@ -1815,17 +1835,34 @@ function setupGame(room) {
   log(room, `The table started. Each goblin drew 4 Chamber and 4 Loot cards. Roll to see who goes first.`);
 }
 
-function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
+function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE', source = 'REVEAL') {
   log(room, `Hex revealed: ${card.publicName}.`);
-  announce(room, 'hex', 'Hex Revealed', `${card.publicName} affects ${targetPlayer.name}.`, card, { importance: 'major' });
+  room.pendingHex = { card, targetPlayerId: targetPlayer.id, after, source };
+  room.revealCard = card;
+  room.phase = 'HEX_REVEAL';
+  announce(room, 'hex', 'Hex Revealed', `${card.publicName} affects ${targetPlayer.name}. Read the card, then resolve the Hex.`, card, { importance: 'major' });
+}
+
+function finishPendingHexResolution(room, player) {
+  const pending = room.pendingHex;
+  if (!pending) return `${player.name} has no Hex to resolve.`;
+  const targetPlayer = getPlayer(room, pending.targetPlayerId);
+  if (!targetPlayer) return 'Hex target not found.';
+  if (player.id !== targetPlayer.id) return `${targetPlayer.name} must resolve this Hex.`;
+  const card = pending.card;
+  const after = pending.after || 'TO_NO_THREAT_CHOICE';
+  const source = pending.source || 'REVEAL';
+  room.pendingHex = null;
   if (after === 'TO_NO_THREAT_CHOICE' && targetPlayer.equippedGear.some((g) => g.id === 'GEAR_SANDALS_PROTECTION')) {
     announce(room, 'hex', 'Hex Blocked', `${targetPlayer.name}'s Sandals of Protection blocked ${card.publicName}.`, card, { importance: 'major' });
     discardCard(room, card);
+    room.revealCard = null;
     room.phase = 'NO_THREAT_CHOICE';
-    return;
+    return null;
   }
-  if (startHexCancelReactionIfAvailable(room, card, targetPlayer, after, 'REVEAL')) return;
+  if (startHexCancelReactionIfAvailable(room, card, targetPlayer, after, source)) return null;
   completeHexResolution(room, card, targetPlayer, after);
+  return null;
 }
 
 function canFoePursuePlayer(threat, player) {
@@ -2037,7 +2074,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.12-roll-flow-soft-popup-timing-v0612' });
+  socket.emit('ready', { version: '0.10.13-source-first-resolution-v0613' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2111,6 +2148,7 @@ function handleAction(socket, room, player, payload) {
     return;
   }
   if (room.pendingPrompt && !['RESOLVE_PROMPT','CANCEL_TRADE'].includes(type)) return emitError(socket, 'A prompt must be resolved before anything else can happen.');
+  if (room.pendingHex && !['RESOLVE_HEX','MARK_CARD_SEEN'].includes(type)) return emitError(socket, 'Resolve the revealed Hex before continuing.');
 
   if (room.reaction && !['PASS_REACTION','USE_WISH_RING','USE_LOADED_DIE','USE_INVISIBILITY_ESCAPE','USE_FLASK_GLUE','MARK_CARD_SEEN'].includes(type)) {
     return emitError(socket, 'A reaction window is open. Respond to it before continuing.');
@@ -2229,6 +2267,13 @@ function handleAction(socket, room, player, payload) {
   if (type === 'ROLL_FIRST') {
     if (room.phase !== 'ROLL_FOR_FIRST') return emitError(socket, 'The opening roll is not active.');
     const err = rollForFirst(room, player);
+    if (err) return emitError(socket, err);
+    return;
+  }
+
+  if (type === 'RESOLVE_HEX') {
+    if (room.phase !== 'HEX_REVEAL' || !room.pendingHex) return emitError(socket, 'No revealed Hex is waiting to resolve.');
+    const err = finishPendingHexResolution(room, player);
     if (err) return emitError(socket, err);
     return;
   }
@@ -2412,7 +2457,7 @@ function handleAction(socket, room, player, payload) {
   if (type === 'PASS_COMBAT') {
     if (room.phase !== 'COMBAT' || !room.combat) return emitError(socket, 'There is no combat to pass on.');
     room.combat.passes[player.id] = true;
-    announce(room, 'combat', 'Done Buffing/Nerfing', `${player.name} is done adding buffs or nerfs for now.`, null, { importance: 'normal' });
+    // Passing/done buffing updates the combat pass tracker only; no public modal or popup needed.
     log(room, `${player.name} confirmed no more combat cards.`);
     if (allCombatPlayersPassed(room)) resolveCombat(room);
     return;
@@ -2665,10 +2710,8 @@ function playCard(socket, room, player, card, payload) {
     if (!real) return emitError(socket, 'Hex must be in your hand.');
     const target = getPlayer(room, payload.targetPlayerId) || getActive(room) || player;
     const after = room.phase === 'ESCAPE' ? 'CONTINUE_ESCAPE' : 'CONTINUE';
-    announce(room, 'hex', 'Hex Played', `${player.name} played ${real.publicName} on ${target.name}.`, real, { importance: 'major' });
     log(room, `${player.name} played Hex: ${real.publicName} on ${target.name}.${room.phase === 'COMBAT' ? ' Everyone must confirm again.' : ''}`);
-    if (startHexCancelReactionIfAvailable(room, real, target, after, 'PLAYED')) return;
-    completeHexResolution(room, real, target, after);
+    resolveHex(room, real, target, after, 'PLAYED');
     if (room.phase === 'COMBAT') resetCombatPasses(room);
     return;
   }
