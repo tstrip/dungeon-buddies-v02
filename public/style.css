@@ -7656,3 +7656,216 @@ button[data-action="SELL_GEAR"],
   outline: 2px solid rgba(143, 227, 207, .72);
   box-shadow: 0 0 0 4px rgba(143,227,207,.14);
 }
+
+
+/* Loot Goblins v0.6.10 — Event Priority + Modal Cleanup
+   Important table-changing moments interrupt. Routine bookkeeping becomes soft feed. */
+
+/* Soft public event: visible, non-blocking, no acknowledgement */
+.public-event-soft {
+  width: min(100%, 720px);
+  margin: 0 auto 8px;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 15px;
+  border: 1px solid rgba(245,189,88,.24);
+  background:
+    radial-gradient(circle at 0 0, rgba(245,189,88,.13), transparent 48%),
+    rgba(0,0,0,.24);
+  box-shadow: 0 10px 22px rgba(0,0,0,.18);
+  overflow: hidden;
+}
+
+.mobile-soft-event {
+  width: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.soft-event-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: rgba(245,189,88,.14);
+  border: 1px solid rgba(245,189,88,.24);
+}
+
+.soft-event-icon .event-sigil,
+.soft-event-icon img {
+  width: 24px;
+  height: 24px;
+}
+
+.soft-event-copy {
+  min-width: 0;
+}
+
+.soft-event-copy strong {
+  display: block;
+  color: var(--ink);
+  font-size: .80rem;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.soft-event-copy span {
+  display: block;
+  color: rgba(255,246,214,.70);
+  font-size: .66rem;
+  line-height: 1.14;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.soft-event-view {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: .62rem;
+}
+
+/* Hard event modal: centered, wider, readable, real modal */
+.public-resolution-modal.hard-event,
+.mobile-public-event.public-resolution-modal.hard-event {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: calc(18px + var(--safe-top)) 14px calc(18px + var(--safe-bottom)) !important;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(82,34,104,.58), rgba(5,5,7,.75) 62%, rgba(0,0,0,.88)) !important;
+  border: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  pointer-events: auto !important;
+}
+
+.public-resolution-modal.hard-event .public-modal-card,
+.mobile-public-event.public-resolution-modal.hard-event .public-modal-card {
+  width: min(560px, 92vw) !important;
+  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 34px);
+  overflow: auto;
+  display: grid;
+  gap: 13px;
+  padding: 16px;
+  border-radius: 24px;
+  border: 2px solid rgba(255,217,132,.58);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255,218,119,.18), transparent 40%),
+    radial-gradient(circle at 96% 0%, rgba(177,91,229,.18), transparent 44%),
+    linear-gradient(180deg, rgba(63,35,25,.98), rgba(15,10,14,.98));
+  box-shadow: 0 24px 80px rgba(0,0,0,.66), inset 0 0 0 1px rgba(255,255,255,.05);
+}
+
+.public-modal-header,
+.mobile-public-event-copy.public-modal-header {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+}
+
+.public-modal-copy {
+  min-width: 0;
+}
+
+.public-modal-header .announce-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.public-modal-header .announce-title,
+.mobile-public-event-copy.public-modal-header strong {
+  display: block;
+  color: var(--ink);
+  font-size: clamp(1.04rem, 4.2vw, 1.32rem);
+  line-height: 1.05;
+  font-weight: 1000;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.public-modal-header .announce-detail,
+.mobile-public-event-copy.public-modal-header span {
+  display: block;
+  color: rgba(255,246,214,.82);
+  font-size: .82rem;
+  line-height: 1.22;
+  margin-top: 4px;
+  overflow-wrap: break-word;
+}
+
+.public-modal-preview {
+  justify-self: center;
+  width: 100%;
+  max-width: 260px;
+  display: grid !important;
+  justify-items: center;
+  gap: 8px;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  color: rgba(255,246,214,.78);
+  font-weight: 850;
+}
+
+.public-modal-preview .hand-card {
+  width: 124px !important;
+  height: 168px !important;
+  flex-basis: 124px !important;
+}
+
+.public-modal-preview > span {
+  display: block;
+  width: min(100%, 260px);
+  text-align: center;
+  color: rgba(255,246,214,.78);
+  font-size: .74rem;
+  line-height: 1.16;
+}
+
+.public-modal-card .ack-button {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 15px;
+  font-size: .88rem;
+}
+
+@media (max-width: 760px) {
+  .mobile-soft-event {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    padding: 7px 9px;
+    border-radius: 14px;
+  }
+
+  .soft-event-copy strong {
+    font-size: .74rem;
+  }
+
+  .soft-event-copy span {
+    font-size: .61rem;
+  }
+
+  .public-resolution-modal.hard-event .public-modal-card,
+  .mobile-public-event.public-resolution-modal.hard-event .public-modal-card {
+    width: min(92vw, 520px) !important;
+    padding: 14px;
+  }
+
+  .public-modal-preview .hand-card {
+    width: 116px !important;
+    height: 158px !important;
+    flex-basis: 116px !important;
+  }
+}

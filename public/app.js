@@ -227,13 +227,43 @@ function renderGame() {
   renderPrompt();
   renderHand();
   renderEventHistory();
+  document.querySelectorAll('[data-mobile-inspect-card]').forEach((btn) => {
+    if (btn.dataset.boundInspect === '1') return;
+    btn.dataset.boundInspect = '1';
+    btn.addEventListener('click', () => {
+      const card = findVisibleCardByInstance(btn.dataset.mobileInspectCard);
+      if (card) inspectCard(card);
+    });
+  });
   document.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => { if (btn.dataset.ackAnnouncement) acknowledgedAnnouncements.add(btn.dataset.ackAnnouncement); render(); }));
 }
 
 
+function announcementTier(a) {
+  if (!a) return 'log';
+  const kind = String(a.kind || '').toLowerCase();
+  const title = String(a.title || '');
+  const detail = String(a.detail || '');
+  const card = a.card;
+  const type = String(card?.type || '').toUpperCase();
+  const text = `${title} ${detail}`.toLowerCase();
+
+  if (['bad','death','game','flee','backup','trade'].includes(kind)) return 'hard';
+  if (kind === 'roll' && /opening roll|goes first|rolled|roll complete|winner/i.test(`${title} ${detail}`)) return 'hard';
+  if (kind === 'combat') return 'hard';
+  if (kind === 'hex') return 'hard';
+  if (kind === 'card' && ['TRICK','THREAT','THREAT_MODIFIER'].includes(type)) return 'hard';
+  if (/bad news|goblin down|victory|flee|backup|trade|added .*foe|foe added|combat|opening roll|goes first/i.test(`${title} ${detail}`)) return 'hard';
+
+  if (['gear','draw','reveal','glory','tribute'].includes(kind)) return 'soft';
+  if (kind === 'card' && ['ROLE','ORIGIN','GEAR','SPECIAL'].includes(type)) return 'soft';
+  if (/kin played|calling played|gear equipped|gear carried|added to hand|using loot|loot phase|tribute pending/i.test(`${title} ${detail}`)) return 'soft';
+
+  return 'log';
+}
+
 function announcementNeedsAck(a) {
-  if (!a) return false;
-  return a.importance === 'major' || ['card','gear','combat','hex','bad','death','game','roll','reveal','draw'].includes(a.kind || '') || /BAD NEWS|GOBLIN DOWN|VICTORY|PLAYED|ROLL/i.test(a.title || '');
+  return announcementTier(a) === 'hard';
 }
 
 function announcementCardLabel(card) {
@@ -247,13 +277,24 @@ function announcementCardLabel(card) {
 function announcementHtml() {
   const a = state?.announcement;
   if (!a || acknowledgedAnnouncements.has(a.id)) return '';
+  const tier = announcementTier(a);
+  if (tier === 'log') return '';
   const icon = announcementIcon(a.kind);
-  const needsAck = announcementNeedsAck(a);
-  return `<section class="table-announcement public-resolution-modal ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
+  if (tier === 'soft') {
+    return `<section class="table-announcement public-event-soft ${escapeHtml(a.kind || '')}">
+      <div class="soft-event-icon">${icon}</div>
+      <div class="soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+      ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
+    </section>`;
+  }
+  return `<section class="table-announcement public-resolution-modal hard-event ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
     <div class="public-modal-card">
-      <div class="public-modal-header"><div class="announce-icon">${icon}</div><div><div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div><div class="announce-detail">${escapeHtml(a.detail || '')}</div></div></div>
+      <div class="public-modal-header">
+        <div class="announce-icon">${icon}</div>
+        <div class="public-modal-copy"><div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div><div class="announce-detail">${escapeHtml(a.detail || '')}</div></div>
+      </div>
       ${a.card ? `<button class="announce-card-preview public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
-      ${needsAck ? `<button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>` : ''}
+      <button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>
     </div>
   </section>`;
 }
@@ -827,16 +868,25 @@ function renderMobilePlayShell(root) {
 
 function mobileAnnouncementHtml() {
   const a = state?.announcement;
-  if (!a || acknowledgedAnnouncements.has(a.id) || !['card','gear','combat','hex','bad','death','game','reveal','draw','roll','flee','backup','turn'].includes(a.kind || '')) return '';
-  const needsAck = announcementNeedsAck(a);
-  return `<div class="mobile-public-event public-resolution-modal ${escapeHtml(a.kind || '')}">
+  if (!a || acknowledgedAnnouncements.has(a.id)) return '';
+  const tier = announcementTier(a);
+  if (tier === 'log') return '';
+  const icon = announcementIcon(a.kind);
+  if (tier === 'soft') {
+    return `<div class="mobile-public-event public-event-soft mobile-soft-event ${escapeHtml(a.kind || '')}">
+      <div class="soft-event-icon">${icon}</div>
+      <div class="mobile-public-event-copy soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+      ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
+    </div>`;
+  }
+  return `<div class="mobile-public-event public-resolution-modal hard-event ${escapeHtml(a.kind || '')}">
     <div class="public-modal-card mobile-public-modal-card">
       <div class="mobile-public-event-copy public-modal-header">
-        <div class="announce-icon">${announcementIcon(a.kind)}</div>
-        <div><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+        <div class="announce-icon">${icon}</div>
+        <div class="public-modal-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
       </div>
       ${a.card ? `<button class="mobile-public-event-card public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
-      ${needsAck ? `<button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>` : ''}
+      <button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>
     </div>
   </div>`;
 }
