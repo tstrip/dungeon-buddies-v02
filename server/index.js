@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.16-soft-popup-fit-ux-polish-v0616' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.17-backup-negotiation-popup-cleanup-v0617' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -329,7 +329,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.16-soft-popup-fit-ux-polish-v0616',
+    version: '0.10.17-backup-negotiation-popup-cleanup-v0617',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -2109,7 +2109,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.16-soft-popup-fit-ux-polish-v0616' });
+  socket.emit('ready', { version: '0.10.17-backup-negotiation-popup-cleanup-v0617' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2440,7 +2440,7 @@ function handleAction(socket, room, player, payload) {
     const target = getPlayer(room, payload.targetPlayerId);
     if (!target || target.id === player.id) return emitError(socket, 'Choose another player for Backup.');
     room.combat.backupRequest = { fromPlayerId: player.id, toPlayerId: target.id, stage: 'NEGOTIATING', deal: null };
-    announce(room, 'backup', 'Backup Negotiation', `${player.name} asks ${target.name} for Backup. ${player.name} must propose a Loot deal.`, null, { importance: 'major' });
+    // Negotiation state is shown in the combat panel; do not interrupt everyone with a popup.
     log(room, `${player.name} opened Backup negotiation with ${target.name}.`);
     return;
   }
@@ -2451,7 +2451,8 @@ function handleAction(socket, room, player, payload) {
     if (room.combat.backupRequest.fromPlayerId !== player.id) return emitError(socket, 'Only the fighter can rescind the Backup request.');
     const helper = getPlayer(room, room.combat.backupRequest.toPlayerId);
     room.combat.backupRequest = null;
-    announce(room, 'backup', type === 'RESCIND_BACKUP' ? 'Backup Request Rescinded' : 'Continuing Without Backup', `${player.name} canceled the Backup request${helper ? ` to ${helper.name}` : ''}.`, null, { importance: 'normal' });
+    // Canceled negotiation is routine state cleanup; no table-wide popup needed.
+    log(room, `${player.name} canceled the Backup request${helper ? ` to ${helper.name}` : ''}.`);
     return;
   }
 
@@ -2462,7 +2463,7 @@ function handleAction(socket, room, player, payload) {
     const maxLoot = Math.max(0, totalCombatLoot(room));
     const lootCount = payload.allLoot ? maxLoot : Math.max(0, Math.min(maxLoot, Number(payload.lootCount || 0)));
     room.combat.backupRequest.deal = { lootCount, totalLootAtOffer: maxLoot };
-    announce(room, 'backup', 'Backup Deal Offered', `${player.name} offers ${helper?.name || 'the helper'} ${lootCount} of ${maxLoot} Loot if the Foe is defeated.`, null, { importance: 'major' });
+    // Deal offer is visible in the Backup negotiation panel; only the final accepted deal should interrupt the table.
     log(room, `${player.name} offered ${helper?.name || 'helper'} ${lootCount}/${maxLoot} Loot for Backup.`);
     return;
   }
@@ -2483,7 +2484,7 @@ function handleAction(socket, room, player, payload) {
 
   if (type === 'DECLINE_BACKUP') {
     if (!room.combat?.backupRequest || room.combat.backupRequest.toPlayerId !== player.id) return emitError(socket, 'No Backup request for you.');
-    announce(room, 'backup', 'Backup Declined', `${player.name} declined the Backup negotiation.`, null, { importance: 'normal' });
+    // Declining Backup does not change combat math; update the panel/log only.
     log(room, `${player.name} declined Backup.`);
     room.combat.backupRequest = null;
     return;

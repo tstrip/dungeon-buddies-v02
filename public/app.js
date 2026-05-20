@@ -297,6 +297,7 @@ function announcementTier(a) {
   if (/use loot|sell before tribute|use\/sell|using loot|loot phase|tribute pending|window complete|done buffing|done nerfing|confirmed no more/i.test(joined)) return 'log';
 
   // Hard events: immediate tactical/current-resolution moments.
+  if (kind === 'backup' && !/locked|joins|accepted|deal locked/i.test(joined)) return 'log';
   if (['bad','death','game','flee','backup','trade'].includes(kind)) return 'hard';
   if (kind === 'roll' && /opening roll complete|goes first|winner/i.test(joined)) return 'hard';
   if (kind === 'prompt' && /hex needs|choice required/i.test(joined)) return 'hard';
