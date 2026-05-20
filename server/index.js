@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.11-true-modal-overlay-refactor-v0611' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.12-roll-flow-soft-popup-timing-v0612' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -329,7 +329,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.11-true-modal-overlay-refactor-v0611',
+    version: '0.10.12-roll-flow-soft-popup-timing-v0612',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1689,7 +1689,7 @@ function rollForFirst(room, player) {
   const raw = rollD6();
   room.firstRoll.rolls[player.id] = raw;
   room.firstRoll.latest = { playerId: player.id, playerName: player.name, raw, at: Date.now() };
-  announce(room, 'roll', 'Opening Roll', `${player.name} rolled ${raw}.`, null, { importance: 'normal' });
+  // Individual opening rolls update the shared roll board but do not create acknowledge events.
   log(room, `${player.name} rolled ${raw} to see who goes first.`);
   resolveFirstRollIfReady(room);
   return null;
@@ -1708,7 +1708,7 @@ function resolveFirstRollIfReady(room) {
     first.eligible = tied;
     first.rolls = {};
     first.latest = null;
-    announce(room, 'roll', 'Opening Roll Tie', `${tied.map((id) => getPlayer(room, id)?.name || 'Player').join(', ')} tied for first. They roll again.`, null, { importance: 'major' });
+    // Tie state is visible in the opening roll panel; do not interrupt with an acknowledge modal.
     log(room, `Tie for first. ${tied.map((id) => getPlayer(room, id)?.name || 'Player').join(', ')} roll again.`);
     return;
   }
@@ -1739,7 +1739,7 @@ function moveToPostCombat(room) {
   if (!active) return;
   room.usedLootWindowThisTurn = true;
   room.phase = 'POST_COMBAT';
-  announce(room, 'turn', 'Use Loot / Sell Before Tribute', `${active.name} may play, equip, carry, sell Gear, or trade before Tribute is checked.`, null, { importance: 'major' });
+  announce(room, 'turn', 'Use Loot / Sell Before Tribute', `${active.name} may play, equip, carry, sell Gear, or trade before Tribute is checked.`, null, { importance: 'normal' });
 }
 
 function finishPostCombat(room) {
@@ -1749,6 +1749,7 @@ function finishPostCombat(room) {
 }
 
 function endTurn(room) {
+  room.lastCombatWonThisTurn = false;
   room.revealCard = null;
   room.combat = null;
   room.escape = null;
@@ -1876,6 +1877,7 @@ function resolveCombat(room) {
   const active = getPlayer(room, room.combat.activePlayerId);
   const helper = room.combat.helperPlayerId ? getPlayer(room, room.combat.helperPlayerId) : null;
   if (totals.wins) {
+    room.lastCombatWonThisTurn = true;
     const renown = room.combat.threats.reduce((s, t) => s + (t.renownReward || 0), 0);
     const loot = totalCombatLoot(room);
     gainGlory(room, active, renown, true, true);
@@ -2035,7 +2037,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.11-true-modal-overlay-refactor-v0611' });
+  socket.emit('ready', { version: '0.10.12-roll-flow-soft-popup-timing-v0612' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2582,8 +2584,12 @@ function playCard(socket, room, player, card, payload) {
     const timing = card.timing || [];
     const canPlayAny = timing.includes('ANY_TIME');
     const canPlayCombat = timing.includes('DURING_COMBAT') && room.phase === 'COMBAT';
-    const canPlayOwnTurn = canActOutsideCombat(room) && activeId(room) === player.id;
-    if (!canPlayAny && !canPlayCombat && !canPlayOwnTurn) return emitError(socket, 'That Special is not playable in this timing window.');
+    const canPlayOwnTurn = timing.includes('OWN_TURN_OUTSIDE_COMBAT') && canActOutsideCombat(room) && activeId(room) === player.id;
+    const canPlayPostCombatWin = timing.includes('POST_COMBAT_WIN') && room.phase === 'POST_COMBAT' && activeId(room) === player.id && room.lastCombatWonThisTurn;
+    if (!canPlayAny && !canPlayCombat && !canPlayOwnTurn && !canPlayPostCombatWin) {
+      if (timing.includes('POST_COMBAT_WIN')) return emitError(socket, `${card.publicName} can only be played after you win combat.`);
+      return emitError(socket, 'That Special is not playable in this timing window.');
+    }
     if (card.effect?.type === 'ADD_EXTRA_CALLING_SLOT') {
       if (!player.role) return emitError(socket, 'Play a Calling first, then attach Overqualified to it.');
       const realPermit = findAndRemoveFromHand(player, card.instanceId);

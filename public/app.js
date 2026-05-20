@@ -8,6 +8,9 @@ let rollFx = null;
 let lastSeenRollKey = '';
 let handDrag = null;
 const acknowledgedAnnouncements = new Set();
+const dismissedSoftAnnouncements = new Set();
+let softAnnouncementTimer = null;
+let lastSoftAnnouncementId = '';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
@@ -256,6 +259,28 @@ function renderGlobalModal() {
   const html = globalAnnouncementHtml();
   root.innerHTML = html;
   root.classList.toggle('active', Boolean(html));
+  scheduleSoftAnnouncementDismiss();
+}
+
+function scheduleSoftAnnouncementDismiss() {
+  const a = state?.announcement;
+  if (!a || announcementTier(a) !== 'soft' || dismissedSoftAnnouncements.has(a.id)) {
+    if (softAnnouncementTimer) {
+      clearTimeout(softAnnouncementTimer);
+      softAnnouncementTimer = null;
+    }
+    lastSoftAnnouncementId = '';
+    return;
+  }
+  if (lastSoftAnnouncementId === a.id && softAnnouncementTimer) return;
+  if (softAnnouncementTimer) clearTimeout(softAnnouncementTimer);
+  lastSoftAnnouncementId = a.id;
+  softAnnouncementTimer = setTimeout(() => {
+    dismissedSoftAnnouncements.add(a.id);
+    if (lastSoftAnnouncementId === a.id) lastSoftAnnouncementId = '';
+    softAnnouncementTimer = null;
+    render();
+  }, 2600);
 }
 
 
@@ -266,18 +291,23 @@ function announcementTier(a) {
   const detail = String(a.detail || '');
   const card = a.card;
   const type = String(card?.type || '').toUpperCase();
-  const text = `${title} ${detail}`.toLowerCase();
+  const joined = `${title} ${detail}`;
 
+  // Routine bookkeeping should never stop the table.
+  if (/use loot|sell before tribute|use\/sell|using loot|loot phase|tribute pending|window complete/i.test(joined)) return 'log';
+
+  // Hard events: immediate tactical/current-resolution moments.
   if (['bad','death','game','flee','backup','trade'].includes(kind)) return 'hard';
-  if (kind === 'roll' && /opening roll|goes first|rolled|roll complete|winner/i.test(`${title} ${detail}`)) return 'hard';
+  if (kind === 'roll' && /opening roll complete|goes first|winner/i.test(joined)) return 'hard';
   if (kind === 'combat') return 'hard';
   if (kind === 'hex') return 'hard';
   if (kind === 'card' && ['TRICK','THREAT','THREAT_MODIFIER'].includes(type)) return 'hard';
-  if (/bad news|goblin down|victory|flee|backup|trade|added .*foe|foe added|combat|opening roll|goes first/i.test(`${title} ${detail}`)) return 'hard';
+  if (/bad news|goblin down|victory|flee result|backup|trade|added .*foe|foe added|combat card|opening roll complete|goes first/i.test(joined)) return 'hard';
 
+  // Soft events: visible table updates, auto-dismissed.
   if (['gear','draw','reveal','glory','tribute'].includes(kind)) return 'soft';
   if (kind === 'card' && ['ROLE','ORIGIN','GEAR','SPECIAL'].includes(type)) return 'soft';
-  if (/kin played|calling played|gear equipped|gear carried|added to hand|using loot|loot phase|tribute pending/i.test(`${title} ${detail}`)) return 'soft';
+  if (/kin played|calling played|gear equipped|gear carried|added to hand/i.test(joined)) return 'soft';
 
   return 'log';
 }
@@ -323,7 +353,20 @@ function hardEventTypeLabel(a) {
 
 function globalAnnouncementHtml() {
   const a = state?.announcement;
-  if (!a || acknowledgedAnnouncements.has(a.id) || announcementTier(a) !== 'hard') return '';
+  if (!a || acknowledgedAnnouncements.has(a.id)) return '';
+  const tier = announcementTier(a);
+  if (tier === 'soft') {
+    if (dismissedSoftAnnouncements.has(a.id)) return '';
+    const icon = announcementIcon(a.kind);
+    return `<section class="global-soft-popup ${escapeHtml(a.kind || '')}" role="status" aria-live="polite">
+      <div class="global-soft-card">
+        <div class="soft-event-icon">${icon}</div>
+        <div class="soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+        ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
+      </div>
+    </section>`;
+  }
+  if (tier !== 'hard') return '';
   const icon = announcementIcon(a.kind);
   const template = hardEventTemplate(a);
   return `<section class="global-public-modal public-resolution-modal hard-event ${template} ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}" role="dialog" aria-modal="true">
@@ -345,16 +388,7 @@ function globalAnnouncementHtml() {
 
 
 function announcementHtml() {
-  const a = state?.announcement;
-  if (!a || acknowledgedAnnouncements.has(a.id)) return '';
-  const tier = announcementTier(a);
-  if (tier !== 'soft') return '';
-  const icon = announcementIcon(a.kind);
-  return `<section class="table-announcement public-event-soft ${escapeHtml(a.kind || '')}">
-    <div class="soft-event-icon">${icon}</div>
-    <div class="soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
-    ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
-  </section>`;
+  return '';
 }
 
 function announcementIcon(kind) {
@@ -925,16 +959,7 @@ function renderMobilePlayShell(root) {
 
 
 function mobileAnnouncementHtml() {
-  const a = state?.announcement;
-  if (!a || acknowledgedAnnouncements.has(a.id)) return '';
-  const tier = announcementTier(a);
-  if (tier !== 'soft') return '';
-  const icon = announcementIcon(a.kind);
-  return `<div class="mobile-public-event public-event-soft mobile-soft-event ${escapeHtml(a.kind || '')}">
-    <div class="soft-event-icon">${icon}</div>
-    <div class="mobile-public-event-copy soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
-    ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
-  </div>`;
+  return '';
 }
 
 function mobileTradeNoticeHtml() {

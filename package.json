@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-true-modal-overlay-refactor-v0611",
-  "version": "0.10.11",
+  "name": "loot-goblins-roll-flow-soft-popup-timing-v0612",
+  "version": "0.10.12",
   "private": true,
-  "description": "Loot Goblins v0.6.11: true global modal overlay for hard public resolution events, with cleaner centered modal layout.",
+  "description": "Loot Goblins v0.6.12: simultaneous opening roll flow, soft popups that auto-dismiss, no Use/Sell acknowledge, and Check the Pockets timing fix.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
