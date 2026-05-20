@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-streamlined-table-language-hotfix-v0781",
-  "version": "0.11.8-1",
+  "name": "loot-goblins-no-foe-gear-choice-hotfix-v0782",
+  "version": "0.11.8-2",
   "private": true,
-  "description": "Loot Goblins v0.7.8.1: hotfix for v0.7.8 blank-screen regression; keeps streamlined language, private loot reveal, and Sell Gear scroll fix.",
+  "description": "Loot Goblins v0.7.8.2: fixes No Foe action tile visual parity and Gear discard/value prompt selection.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

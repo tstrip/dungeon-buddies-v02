@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.1-streamlined-table-language-hotfix-v0781' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.2-no-foe-gear-choice-hotfix-v0782' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -395,7 +395,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.8.1-streamlined-table-language-hotfix-v0781',
+    version: '0.11.8.2-no-foe-gear-choice-hotfix-v0782',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -2357,7 +2357,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.8.1-streamlined-table-language-hotfix-v0781' });
+  socket.emit('ready', { version: '0.11.8.2-no-foe-gear-choice-hotfix-v0782' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -3234,14 +3234,34 @@ function resolvePrompt(socket, room, player, payload) {
     return;
   }
   if (prompt.type === 'DISCARD_GEAR') {
-    const valid = (prompt.options || []).some((c) => c.instanceId === payload.cardId);
-    if (!valid) return emitError(socket, 'Choose a valid Gear card.');
-    const chosen = (prompt.options || []).find((c) => c.instanceId === payload.cardId);
-    discardSpecificGear(room, player, payload.cardId);
+    const chosenId = payload.cardId || (Array.isArray(payload.cardIds) ? payload.cardIds[0] : null);
+    const valid = (prompt.options || []).some((c) => c.instanceId === chosenId);
+    if (!valid) return emitError(socket, 'Choose Gear from the available choices.');
+    const chosen = (prompt.options || []).find((c) => c.instanceId === chosenId);
+    discardSpecificGear(room, player, chosenId);
     announce(room, 'effect', 'Gear Discarded', `${player.name} discarded ${chosen?.publicName || 'Gear'}.`, chosen, { importance: 'major' });
     continueAfterPrompt(room, after);
     return;
   }
+  if (prompt.type === 'DISCARD_GEAR_VALUE') {
+    const targetValue = Number(prompt.meta?.targetValue || 0);
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : (payload.cardId ? [payload.cardId] : []);
+    if (!ids.length) return emitError(socket, `Choose Gear totaling at least ${targetValue} Junk.`);
+    const validById = new Map((prompt.options || []).map((c) => [c.instanceId, c]));
+    if (!ids.every((id) => validById.has(id))) return emitError(socket, 'Choose Gear from the available choices.');
+    const total = ids.reduce((sum, id) => sum + gearJunkValue(validById.get(id)), 0);
+    if (total < targetValue) return emitError(socket, `Choose Gear totaling at least ${targetValue} Junk.`);
+    const discarded = [];
+    for (const id of ids) {
+      const card = removeAndDiscardOwnedCard(room, player, id);
+      if (card) discarded.push(card);
+    }
+    announce(room, 'effect', 'Gear Paid', `${player.name} discarded ${discarded.map((c) => c.publicName).join(', ') || 'chosen Gear'} for ${total} Junk.`, discarded[0] || null, { importance: 'major' });
+    log(room, `${player.name} discarded ${discarded.length} Gear card${discarded.length === 1 ? '' : 's'} worth ${total} Junk.`);
+    continueAfterPrompt(room, after);
+    return;
+  }
+
   if (prompt.type === 'DISCARD_HAND_CARDS') {
     const need = prompt.meta?.count || 1;
     const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];

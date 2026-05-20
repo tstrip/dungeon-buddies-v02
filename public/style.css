@@ -9415,3 +9415,86 @@ body .global-soft-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* Loot Goblins v0.7.8.2 — No Foe tile parity + Gear choice hotfix */
+
+/* No Foe choices should be equal, readable, and both feel like buttons. */
+.move-choice-pair {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+}
+
+.move-choice-tile,
+.move-choice-tile.loot-room,
+.move-choice-tile.start-trouble,
+.move-choice-tile.start-trouble.actionable {
+  min-height: 92px !important;
+  max-height: 92px !important;
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  align-items: center !important;
+  justify-items: start !important;
+  text-align: left !important;
+  gap: 12px !important;
+  padding: 12px 14px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 222, 133, .42) !important;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 222, 133, .14), transparent 44%),
+    radial-gradient(circle at 88% 100%, rgba(177, 91, 229, .12), transparent 46%),
+    rgba(0,0,0,.22) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05) !important;
+  color: var(--ink) !important;
+  overflow: hidden !important;
+}
+
+.move-choice-tile .event-sigil {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+}
+
+.move-choice-tile > div {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.move-choice-tile strong {
+  font-size: .92rem !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.move-choice-tile span {
+  margin: 0 !important;
+  font-size: .70rem !important;
+  line-height: 1.1 !important;
+  color: rgba(255,246,214,.74) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.move-choice-tile.soft-disabled {
+  opacity: .64 !important;
+}
+
+/* Override the older tiny-phone rule that made these shapes uneven. */
+@media (max-width: 420px) {
+  .move-choice-pair {
+    grid-template-columns: 1fr !important;
+  }
+
+  .move-choice-tile {
+    min-height: 92px !important;
+    max-height: 92px !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+  }
+}

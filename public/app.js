@@ -2108,6 +2108,15 @@ function drawerDecisionCardHtml(card, mode) {
   return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Take card' : 'Choose'}</span></button>`;
 }
 
+function drawerSelectedGearTotal(mode) {
+  const cards = mode?.prompt?.options || [];
+  const byId = new Map(cards.map((c) => [c.instanceId, c]));
+  return [...selectedTribute].reduce((sum, id) => {
+    const c = byId.get(id);
+    return sum + Number(c?.junkValue ?? c?.scrapValue ?? 0);
+  }, 0);
+}
+
 function drawerControls(mode) {
   if (mode.key === 'sell') {
     return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedSell.size}</span><button class="primary" data-drawer-sell-confirm ${selectedSell.size ? '' : 'disabled'}>Sell Selected</button><button data-drawer-prompt-cancel>Done</button></div>`;
@@ -2123,8 +2132,13 @@ function drawerControls(mode) {
     return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}/${need}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size === need ? '' : 'disabled'}>Discard Selected</button></div>`;
   }
   if (mode.key === 'discard-gear') {
+    if (mode.prompt?.type === 'DISCARD_GEAR_VALUE') {
+      const target = Number(mode.prompt?.meta?.targetValue || 0);
+      const total = drawerSelectedGearTotal(mode);
+      return `<div class="drawer-decision-actions"><span class="micro">Selected ${total}/${target} Junk</span><button class="primary" data-drawer-discard-confirm ${total >= target ? '' : 'disabled'}>Pay Gear</button></div>`;
+    }
     const need = mode.prompt?.meta?.count || 1;
-    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}${need ? `/${need}` : ''}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size ? '' : 'disabled'}>Confirm Choice</button></div>`;
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}/${need}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size === need ? '' : 'disabled'}>Confirm Choice</button></div>`;
   }
   if (mode.key === 'add-foe') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel</button></div>`;
   if (mode.key === 'prompt') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass / Cancel if optional</button></div>`;
@@ -2183,13 +2197,19 @@ function attachDrawerHandlers(root, mode) {
   root.querySelectorAll('[data-drawer-trade-decline]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { decline: true })));
   root.querySelectorAll('[data-drawer-discard-card]').forEach((btn) => btn.addEventListener('click', () => {
     const id = btn.dataset.drawerDiscardCard;
+    const promptType = state?.pendingPrompt?.type;
     if (selectedTribute.has(id)) selectedTribute.delete(id);
-    else selectedTribute.add(id);
+    else {
+      if (promptType === 'DISCARD_GEAR') selectedTribute.clear();
+      selectedTribute.add(id);
+    }
     renderHand();
   }));
   root.querySelectorAll('[data-drawer-discard-confirm]').forEach((btn) => btn.addEventListener('click', () => {
     if (!selectedTribute.size) return;
-    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedTribute] });
+    const promptType = state?.pendingPrompt?.type;
+    if (promptType === 'DISCARD_GEAR') emitAction('RESOLVE_PROMPT', { cardId: [...selectedTribute][0] });
+    else emitAction('RESOLVE_PROMPT', { cardIds: [...selectedTribute] });
     selectedTribute.clear();
   }));
   root.querySelectorAll('[data-drawer-prompt-cancel]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cancel: true })));
