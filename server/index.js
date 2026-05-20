@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.0-playtest-hardening-v070' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.5-hand-decision-drawer-v075' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -82,11 +82,58 @@ function log(room, message) {
   if (room.log.length > 180) room.log.shift();
 }
 
+function eventMetadata(kind, title = '', detail = '', card = null, options = {}) {
+  const k = String(kind || '').toLowerCase();
+  const t = String(title || '');
+  const d = String(detail || '');
+  const joined = `${t} ${d}`;
+  const cardType = String(card?.type || '').toUpperCase();
+  let priority = options.priority || null;
+  let audience = options.audience || 'all';
+  let requiresAck = typeof options.requiresAck === 'boolean' ? options.requiresAck : null;
+  let category = options.category || k || 'table';
+
+  if (!priority) {
+    // Log-only: bookkeeping, waiting, negotiation drafts, and pass states.
+    if (/use loot|sell before tribute|use\/sell|using loot|loot phase|tribute pending|window complete|done buffing|done nerfing|confirmed no more|waiting/i.test(joined)) priority = 'log';
+    else if (k === 'backup' && !/locked|joins|accepted|deal locked/i.test(joined)) priority = 'log';
+    else if (k === 'turn') priority = 'log';
+
+    // Hard: moments that change immediate table reality and should stop the table.
+    else if (['bad','death','game','flee','zero-glory'].includes(k)) priority = 'hard';
+    else if (k === 'backup' && /locked|joins|accepted|deal locked/i.test(joined)) priority = 'hard';
+    else if (k === 'trade' && /accepted|complete|locked|trade/i.test(joined)) priority = 'hard';
+    else if (k === 'roll' && /opening roll complete|goes first|winner|flee result|loaded die/i.test(joined)) priority = 'hard';
+    else if (k === 'prompt' && /hex needs|choice required|bad news|death|body/i.test(joined)) priority = 'hard';
+    else if (k === 'combat') priority = 'hard';
+    else if (k === 'card' && ['TRICK','THREAT','THREAT_MODIFIER'].includes(cardType)) priority = 'hard';
+    else if (/bad news|goblin down|victory|flee result|foe added|added .*foe|combat card|opening roll complete|goes first|backup deal locked/i.test(joined)) priority = 'hard';
+
+    // Hex reveals/resolved should be visible but not double-acknowledged.
+    else if (k === 'hex' && /hex needs|choice required|hex canceled|hex blocked/i.test(joined)) priority = 'hard';
+    else if (k === 'hex') priority = 'soft';
+
+    // Soft: visible public updates that should not stop play.
+    else if (['gear','draw','reveal','glory','tribute','effect'].includes(k)) priority = 'soft';
+    else if (k === 'card' && ['ROLE','ORIGIN','GEAR','SPECIAL'].includes(cardType)) priority = 'soft';
+    else if (/kin played|calling played|gear equipped|gear carried|added to hand|card drawn/i.test(joined)) priority = 'soft';
+
+    else priority = 'log';
+  }
+
+  if (requiresAck === null) requiresAck = priority === 'hard';
+  if (priority === 'log') requiresAck = false;
+
+  return { priority, audience, requiresAck, category };
+}
+
 function tableNotice(room, kind, title, detail, card = null) {
-  room.tableNotice = { at: Date.now(), kind, title, detail, card: publicCard(card) };
+  const meta = eventMetadata(kind, title, detail, card, { priority: 'log', requiresAck: false });
+  room.tableNotice = { at: Date.now(), kind, title, detail, card: publicCard(card), ...meta };
 }
 
 function announce(room, kind, title, detail, card = null, options = {}) {
+  const meta = eventMetadata(kind, title, detail, card, options);
   const announcement = {
     at: Date.now(),
     id: instanceId(),
@@ -94,10 +141,11 @@ function announce(room, kind, title, detail, card = null, options = {}) {
     title,
     detail,
     card: publicCard(card),
-    importance: options.importance || 'normal'
+    importance: options.importance || (meta.priority === 'hard' ? 'major' : 'normal'),
+    ...meta
   };
   room.announcement = announcement;
-  room.tableNotice = { at: announcement.at, kind, title, detail, card: publicCard(card) };
+  room.tableNotice = { at: announcement.at, kind, title, detail, card: publicCard(card), ...meta };
 }
 
 function movement(room, from, to, label, detail, card = null) {
@@ -127,7 +175,14 @@ function describeBadNews(threat) {
 function playedAnnouncement(room, player, card, label = 'Card Played', detail = '') {
   if (!card) return;
   movement(room, 'PLAYER_HAND', card.type === 'THREAT' ? 'COMBAT_ZONE' : 'TABLE', 'Card Played', `${player?.name || 'A player'} played ${card.publicName}.`, card);
-  announce(room, 'card', label, detail || `${player?.name || 'A player'} played ${card.publicName}.`, card, { importance: 'major' });
+  const tactical = ['TRICK','THREAT','THREAT_MODIFIER'].includes(card.type);
+  announce(room, 'card', label, detail || `${player?.name || 'A player'} played ${card.publicName}.`, card, {
+    priority: tactical ? 'hard' : 'soft',
+    audience: 'all',
+    requiresAck: tactical,
+    importance: tactical ? 'major' : 'normal',
+    category: 'card'
+  });
 }
 
 function markFresh(card, deckName) {
@@ -329,7 +384,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.0-playtest-hardening-v070',
+    version: '0.11.5-hand-decision-drawer-v075',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -338,7 +393,7 @@ function serializeRoom(room, viewerId) {
     activePlayerName: active?.name || null,
     winnerId: room.winnerId || null,
     players: room.players.map((p) => publicPlayer(room, p, viewerId)),
-    you: viewer ? { id: viewer.id, name: viewer.name, hand: viewer.hand.map(publicCard) } : null,
+    you: viewer ? { id: viewer.id, name: viewer.name, hand: viewer.hand.map((c) => publicCardForViewer(room, viewer, c)) } : null,
     decks: {
       chamber: room.chamberDeck.length,
       loot: room.lootDeck.length,
@@ -363,11 +418,193 @@ function serializeRoom(room, viewerId) {
     tradeOffer: serializeTradeOffer(room, viewerId),
     log: room.log.slice(-80),
     chat: room.chat.slice(-60),
-    legalActions: viewer ? legalActions(room, viewer) : []
+    legalActions: viewer ? legalActions(room, viewer) : [],
+    legalCardActions: viewer ? legalCardActions(room, viewer) : {}
   };
 }
 
 
+
+
+
+function actionPayload(type, payload = {}) {
+  return { type, payload };
+}
+
+function legalCardAction(label, type, payload = {}, style = '', reason = '') {
+  return {
+    label,
+    type,
+    payload,
+    style,
+    reason
+  };
+}
+
+function publicCardForViewer(room, player, card) {
+  const c = publicCard(card);
+  if (!c) return c;
+  const ownedInHand = player?.hand?.some((h) => h.instanceId === card.instanceId);
+  c.ownedByYou = Boolean(ownedInHand);
+  c.legalActions = ownedInHand ? legalCardActionsForCard(room, player, card) : [];
+  return c;
+}
+
+function legalCardActions(room, player) {
+  const out = {};
+  if (!player) return out;
+  for (const card of player.hand || []) {
+    out[card.instanceId] = legalCardActionsForCard(room, player, card);
+  }
+  return out;
+}
+
+function actionBlockedByTableState(room, player) {
+  if (!room || !player) return true;
+  if (player.dead) return true;
+  if (room.pendingPrompt) return true;
+  if (room.pendingHex) return true;
+  return false;
+}
+
+function legalReactionActionsForCard(room, player, card) {
+  const actions = [];
+  const r = room.reaction;
+  if (!r || !card) return actions;
+  const eligible = r.eligiblePlayerIds || (r.playerId ? [r.playerId] : []);
+  if (!eligible.includes(player.id) || r.passes?.[player.id]) return actions;
+  if (r.type === 'HEX_CANCEL_REACTION' && card.id === 'SPECIAL_WISHING_RING_A') {
+    actions.push(legalCardAction('Cancel Hex', 'USE_WISH_RING', {}, 'primary', 'Use Wish Ring to cancel this Hex.'));
+  } else if (r.type === 'DIE_ROLL_REACTION' && card.id === 'SPECIAL_LOADED_DIE') {
+    for (let value = 1; value <= 6; value++) actions.push(legalCardAction(`Set die to ${value}`, 'USE_LOADED_DIE', { value }, value === 6 ? 'primary' : '', 'Choose the final die face.'));
+  } else if (r.type === 'FLEE_FAILURE_REACTION' && card.id === 'TRICK_INVISIBILITY') {
+    actions.push(legalCardAction('Escape Automatically', 'USE_INVISIBILITY_ESCAPE', {}, 'primary', 'Use before Bad News resolves.'));
+  } else if (r.type === 'FLEE_SUCCESS_REACTION' && card.id === 'TRICK_FLASK_GLUE') {
+    actions.push(legalCardAction('Force Flee Reroll', 'USE_FLASK_GLUE', {}, 'primary', 'Interfere with this successful Flee roll.'));
+  }
+  return actions;
+}
+
+function legalCardActionsForCard(room, player, card) {
+  const actions = [];
+  if (!room || !player || !card) return actions;
+  const inHand = player.hand?.some((c) => c.instanceId === card.instanceId);
+  if (!inHand) return actions;
+
+  if (room.reaction) return legalReactionActionsForCard(room, player, card);
+  if (actionBlockedByTableState(room, player)) return actions;
+
+  const isActive = activeId(room) === player.id;
+  const outsideCombatOwnTurn = canActOutsideCombat(room) && isActive;
+
+  if (card.type === 'ROLE') {
+    if (outsideCombatOwnTurn && !callingCards(player).some((r) => r.id === card.id)) {
+      actions.push(legalCardAction(`Play ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Play this Calling.'));
+    }
+    return actions;
+  }
+
+  if (card.type === 'ORIGIN') {
+    if (outsideCombatOwnTurn && !kinCards(player).some((r) => r.id === card.id)) {
+      actions.push(legalCardAction(`Play ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Play this Kin.'));
+    }
+    return actions;
+  }
+
+  if (card.type === 'GEAR') {
+    if (!outsideCombatOwnTurn || isOneUseConsumable(card)) return actions;
+    if (!validateGearEquip(player, card)) actions.push(legalCardAction('Equip', 'PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' }, 'primary', 'Equip this Gear.'));
+    const combinedHeavy = heavyCount(player) + (card.isHeavy ? 1 : 0);
+    if (combinedHeavy <= heavyLimit(player)) actions.push(legalCardAction('Carry', 'PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' }, '', 'Carry this Gear without equipping it.'));
+    actions.push(legalCardAction('Sell / cash in', 'SELL_GEAR', { cardIds: [card.instanceId] }, '', 'Sell this Gear for Junk.'));
+    if (card.id !== 'GEAR_HIRELING' && hasLittleHelperWithCapacity(player)) actions.push(legalCardAction('Give to Little Helper', 'ASSIGN_HIRELING_GEAR', { cardId: card.instanceId }, '', 'Assign this Gear to your Little Helper.'));
+    return actions;
+  }
+
+  if (card.type === 'THREAT') {
+    if (room.phase === 'NO_THREAT_CHOICE' && isActive) {
+      actions.push(legalCardAction('Start Trouble', 'START_TROUBLE', { cardId: card.instanceId }, 'primary', 'Start combat with this Foe.'));
+    }
+    if (room.phase === 'COMBAT' && room.combat && (card.tags || []).includes('RESTLESS') && room.combat.threats.some((t) => (t.tags || []).includes('RESTLESS'))) {
+      actions.push(legalCardAction('Join Restless Combat', 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Restless Foes can join Restless combat.'));
+    }
+    return actions;
+  }
+
+  if (card.type === 'TRICK') {
+    if (room.phase === 'ESCAPE' && room.escape?.currentPlayerId === player.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) {
+      actions.push(legalCardAction('Play before Flee roll', 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Use this before rolling to Flee.'));
+      return actions;
+    }
+    if (room.phase !== 'COMBAT' || !room.combat || !(card.timing || []).includes('DURING_COMBAT')) return actions;
+    if (card.effect?.type === 'MODIFY_COMBAT_TOTAL') {
+      const amt = Number(card.effect.amount || 0);
+      actions.push(legalCardAction(`${amt >= 0 ? 'Buff' : 'Nerf'} Player Side ${amt >= 0 ? '+' : ''}${amt}`, 'PLAY_CARD', { cardId: card.instanceId, side: 'PLAYER' }, 'primary', 'Apply this Trick to the player side.'));
+      actions.push(legalCardAction(`${amt >= 0 ? 'Buff' : 'Nerf'} Foe Side ${amt >= 0 ? '+' : ''}${amt}`, 'PLAY_CARD', { cardId: card.instanceId, side: 'THREAT' }, '', 'Apply this Trick to the Foe side.'));
+    } else {
+      actions.push(legalCardAction('Play Combat Trick', 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Use this one-use Trick during combat.'));
+    }
+    return actions;
+  }
+
+  if (card.type === 'THREAT_MODIFIER') {
+    if (room.phase !== 'COMBAT' || !room.combat?.threats?.length) return actions;
+    if (room.combat.threats.length > 1) {
+      for (const foe of room.combat.threats) actions.push(legalCardAction(`Attach to ${foe.publicName}`, 'PLAY_CARD', { cardId: card.instanceId, targetFoeInstanceId: foe.instanceId }, 'primary', 'Modify this Foe.'));
+    } else {
+      actions.push(legalCardAction('Attach to Foe', 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Modify the Foe.'));
+    }
+    return actions;
+  }
+
+  if (card.type === 'HEX') {
+    // Hexes are broadly playable, but only from hand and only when no blocking prompt/reaction is active.
+    for (const p of room.players.filter((p) => !p.dead)) {
+      actions.push(legalCardAction(`Hex ${p.name}${p.id === player.id ? ' (you)' : ''}`, 'PLAY_CARD', { cardId: card.instanceId, targetPlayerId: p.id }, p.id === player.id ? '' : 'primary', 'Play this Hex on that player.'));
+    }
+    return actions;
+  }
+
+  if (card.type === 'SPECIAL') {
+    const timing = card.timing || [];
+    const canPlayAny = timing.includes('ANY_TIME');
+    const canPlayCombat = timing.includes('DURING_COMBAT') && room.phase === 'COMBAT';
+    const canPlayOwnTurn = timing.includes('OWN_TURN_OUTSIDE_COMBAT') && outsideCombatOwnTurn;
+    const canPlayPostCombatWin = timing.includes('POST_COMBAT_WIN') && room.phase === 'POST_COMBAT' && isActive && room.lastCombatWonThisTurn;
+    if (!canPlayAny && !canPlayCombat && !canPlayOwnTurn && !canPlayPostCombatWin) return actions;
+
+    if (card.effect?.type === 'ADD_FOE_FROM_HAND') {
+      const hasFoe = player.hand.some((c) => c.type === 'THREAT');
+      if (room.phase === 'COMBAT' && hasFoe) actions.push(legalCardAction('Use Unexpected Company', 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Choose a Foe from hand to add to combat.'));
+      return actions;
+    }
+    if (card.effect?.type === 'ADD_EXTRA_CALLING_SLOT') {
+      if (player.role) actions.push(legalCardAction(`Attach ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Attach to your Calling.'));
+      return actions;
+    }
+    if (card.effect?.type === 'ADD_EXTRA_KIN_SLOT') {
+      if (player.origin) actions.push(legalCardAction(`Attach ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Attach to your Kin.'));
+      return actions;
+    }
+    if (card.id === 'SPECIAL_STEAL_LEVEL') {
+      for (const p of room.players.filter((p) => p.id !== player.id && !p.dead)) actions.push(legalCardAction(`Steal from ${p.name}`, 'PLAY_CARD', { cardId: card.instanceId, targetPlayerId: p.id }, 'primary', 'Target this player.'));
+      return actions;
+    }
+    if (card.id === 'SPECIAL_TRANSFERRAL' && room.phase === 'COMBAT') {
+      for (const p of room.players.filter((p) => p.id !== player.id && p.id !== room.combat?.activePlayerId && !p.dead)) actions.push(legalCardAction(`Transfer to ${p.name}`, 'PLAY_CARD', { cardId: card.instanceId, targetPlayerId: p.id }, 'primary', 'Transfer this combat.'));
+      return actions;
+    }
+    if (room.phase === 'COMBAT' && ['SPECIAL_MAGIC_LAMP','SPECIAL_POLYMORPH','SPECIAL_MATCHING_PROBLEM','SPECIAL_ILLUSION'].includes(card.id) && room.combat?.threats?.length > 1) {
+      const verb = card.id === 'SPECIAL_MATCHING_PROBLEM' ? 'Copy' : card.id === 'SPECIAL_ILLUSION' ? 'Replace' : 'Remove';
+      for (const foe of room.combat.threats) actions.push(legalCardAction(`${verb} ${foe.publicName}`, 'PLAY_CARD', { cardId: card.instanceId, targetFoeInstanceId: foe.instanceId }, 'primary', `${verb} this Foe.`));
+      return actions;
+    }
+    actions.push(legalCardAction(`Play ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Play this Special.'));
+    return actions;
+  }
+
+  return actions;
+}
 
 
 function serializePendingHex(room, viewerId) {
@@ -1790,7 +2027,7 @@ function moveToPostCombat(room) {
   if (!active) return;
   room.usedLootWindowThisTurn = true;
   room.phase = 'POST_COMBAT';
-  announce(room, 'turn', 'Use Loot / Sell Before Tribute', `${active.name} may play, equip, carry, sell Gear, or trade before Tribute is checked.`, null, { importance: 'normal' });
+  announce(room, 'turn', 'Use Loot / Sell Before Tribute', `${active.name} may play, equip, carry, sell Gear, or trade before Tribute is checked.`, null, { priority: 'log', audience: 'actor', requiresAck: false, importance: 'normal' });
 }
 
 function finishPostCombat(room) {
@@ -2109,7 +2346,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.0-playtest-hardening-v070' });
+  socket.emit('ready', { version: '0.11.5-hand-decision-drawer-v075' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2425,12 +2662,9 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'ADD_FOE_FROM_HAND') {
-    if (room.phase !== 'COMBAT' || !room.combat) return emitError(socket, 'You can only add a Foe during combat.');
-    const options = player.hand.filter((c) => c.type === 'THREAT');
-    if (!options.length) return emitError(socket, 'You have no Foe cards in hand to add.');
-    createPrompt(room, { type: 'ADD_FOE_FROM_HAND', playerId: player.id, message: `Choose a Foe from hand to add to this combat.`, options, meta: { after: 'CONTINUE', optional: true } });
-    announce(room, 'combat', 'Add Foe From Hand', `${player.name} is choosing a Foe from hand to add to combat.`, null, { importance: 'major' });
-    return;
+    // Foes cannot be added just because they are in hand. The player must play the proper card
+    // such as Unexpected Company, whose effect creates the add-Foe prompt.
+    return emitError(socket, 'Play Unexpected Company to add a Foe from your hand.');
   }
 
   if (type === 'REQUEST_BACKUP') {

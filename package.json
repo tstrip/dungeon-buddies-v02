@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-backup-negotiation-popup-cleanup-v0617",
-  "version": "0.10.17",
+  "name": "loot-goblins-hand-decision-drawer-v075",
+  "version": "0.11.5",
   "private": true,
-  "description": "Loot Goblins v0.6.17: reduces Backup negotiation interruptions so only the final accepted Backup deal requires acknowledgement.",
+  "description": "Loot Goblins v0.7.5: hand drawer modes for combat, tribute, sell, trade, prompts, reactions, and body loot.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

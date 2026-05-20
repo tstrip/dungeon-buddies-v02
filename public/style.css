@@ -8314,3 +8314,393 @@ body .global-soft-card {
 .mobile-state-no-foe .mobile-opened-door-copy small {
   line-height: 1.18;
 }
+
+
+/* Loot Goblins v0.7 — Playtest Hardening + Host Language Pass */
+.hand-limit.warn {
+  color: #ffd77a !important;
+  text-shadow: 0 1px 0 rgba(0,0,0,.45);
+}
+
+.combat-host-note {
+  display: grid;
+  gap: 3px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,217,132,.26);
+  background:
+    radial-gradient(circle at 0 0, rgba(255,218,119,.12), transparent 44%),
+    rgba(0,0,0,.20);
+  text-align: left;
+}
+
+.combat-host-note strong {
+  color: var(--gold, #ffd77a);
+  font-size: .68rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.combat-host-note span {
+  color: rgba(255,246,214,.82);
+  font-size: .78rem;
+  line-height: 1.25;
+}
+
+.combat-host-note.winning {
+  border-color: rgba(112,230,160,.32);
+}
+
+.combat-host-note.losing {
+  border-color: rgba(255,120,132,.34);
+}
+
+.mobile-state-panel .mobile-state-hint,
+.playable-now-label,
+.hand-help {
+  line-height: 1.22;
+}
+
+
+/* Loot Goblins v0.7.1 — Add-Foe Legality + Combat Spacing Hotfix */
+.combat-actions {
+  display: grid !important;
+  grid-template-columns: 1fr;
+  gap: 8px !important;
+  margin-top: 10px !important;
+}
+
+.combat-actions button,
+.combat-actions .action-note {
+  min-height: 42px !important;
+}
+
+@media (min-width: 700px) {
+  .combat-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .combat-actions button.primary,
+  .combat-actions .selected-action,
+  .combat-actions .action-note {
+    grid-column: 1 / -1;
+  }
+}
+
+.hand-over-limit:not(.hand-expanded) {
+  border-color: rgba(255, 215, 122, .48) !important;
+}
+
+.hand-over-limit:not(.hand-expanded) .hand-limit.warn {
+  color: #ffd77a !important;
+}
+
+.mobile-combat-result,
+.mobile-combat-scores,
+.combat-ledger,
+.combat-host-note {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.mobile-pass-row {
+  margin-top: 8px !important;
+}
+
+.mobile-math-details {
+  margin-top: 8px !important;
+}
+
+
+/* Loot Goblins v0.7.2 — Server-Driven Legal Actions */
+.inspect-actions [data-server-card-action] {
+  position: relative;
+}
+
+.inspect-actions [data-server-card-action]::after {
+  content: '';
+  position: absolute;
+  inset: auto 10px 5px 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(127, 238, 190, .55);
+  opacity: .65;
+}
+
+.action-note {
+  display: block;
+  width: 100%;
+  text-align: center;
+  color: rgba(255,246,214,.72);
+}
+
+
+/* Loot Goblins v0.7.4 — Phase Grammar Pass */
+.phase-grammar-strip {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+  margin: 8px 0 2px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,217,132,.18);
+  background: rgba(0,0,0,.16);
+}
+
+.phase-grammar-strip span {
+  min-width: 0;
+  color: rgba(255,246,214,.78);
+  font-size: .68rem;
+  line-height: 1.15;
+}
+
+.phase-grammar-strip b {
+  display: block;
+  color: var(--gold, #ffd77a);
+  font-size: .56rem;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.phase-grammar-strip.urgency-urgent,
+.mobile-phase-guidance.urgency-urgent {
+  border-color: rgba(255,217,132,.38);
+  box-shadow: inset 0 0 0 1px rgba(255,217,132,.06);
+}
+
+.phase-grammar-strip.urgency-waiting,
+.mobile-phase-guidance.urgency-waiting {
+  opacity: .92;
+}
+
+.phase-grammar-strip.urgency-recover,
+.mobile-phase-guidance.urgency-recover {
+  border-color: rgba(255,120,132,.34);
+}
+
+.mobile-phase-guidance {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin: 8px 0 10px;
+  padding: 9px 10px;
+  border-radius: 15px;
+  border: 1px solid rgba(255,217,132,.20);
+  background:
+    radial-gradient(circle at 0 0, rgba(255,218,119,.10), transparent 46%),
+    rgba(0,0,0,.18);
+  text-align: left;
+}
+
+.mobile-phase-guidance div {
+  min-width: 0;
+}
+
+.mobile-phase-guidance b {
+  display: block;
+  color: var(--gold, #ffd77a);
+  font-size: .56rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.mobile-phase-guidance span {
+  display: block;
+  color: rgba(255,246,214,.78);
+  font-size: .70rem;
+  line-height: 1.18;
+}
+
+.mobile-state-panel.urgency-urgent {
+  border-color: rgba(255,217,132,.35);
+}
+
+.mobile-state-panel.urgency-recover {
+  border-color: rgba(255,120,132,.34);
+}
+
+@media (max-width: 760px) {
+  .phase-grammar-strip {
+    grid-template-columns: 1fr;
+    margin-top: 6px;
+    padding: 7px;
+  }
+
+  .phase-grammar-strip span {
+    font-size: .63rem;
+  }
+
+  .mobile-phase-guidance {
+    margin: 7px 0 9px;
+    padding: 8px 9px;
+  }
+
+  .mobile-phase-guidance span {
+    font-size: .64rem;
+  }
+}
+
+
+/* Loot Goblins v0.7.5 — Hand + Decision Drawer Upgrade */
+.hand-panel[class*="drawer-mode-"] {
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.hand-panel.drawer-mode-tribute,
+.hand-panel.drawer-mode-sell,
+.hand-panel.drawer-mode-trade,
+.hand-panel.drawer-mode-add-foe,
+.hand-panel.drawer-mode-discard-hand,
+.hand-panel.drawer-mode-discard-gear,
+.hand-panel.drawer-mode-body-loot,
+.hand-panel.drawer-mode-reaction,
+.hand-panel.drawer-mode-prompt {
+  border-color: rgba(255, 215, 122, .42);
+  box-shadow: 0 -12px 40px rgba(0,0,0,.38), inset 0 0 0 1px rgba(255,255,255,.05);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 218, 119, .12), transparent 42%),
+    radial-gradient(circle at 92% 0%, rgba(155, 84, 217, .16), transparent 44%),
+    rgba(20, 12, 16, .96);
+}
+
+.v075-hand-header .hand-eyebrow {
+  letter-spacing: .14em;
+}
+
+.drawer-mode-help {
+  margin-top: 4px;
+  color: rgba(255,246,214,.72);
+}
+
+.drawer-decision-panel {
+  display: grid;
+  gap: 9px;
+}
+
+.drawer-decision-copy {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 215, 122, .18);
+  background: rgba(0,0,0,.18);
+}
+
+.drawer-decision-copy strong {
+  color: var(--ink);
+  font-size: .78rem;
+  line-height: 1.1;
+}
+
+.drawer-decision-copy span {
+  color: rgba(255,246,214,.70);
+  font-size: .66rem;
+  line-height: 1.16;
+}
+
+.decision-tray {
+  max-height: 240px;
+}
+
+.decision-hand-row {
+  align-items: stretch;
+}
+
+.drawer-card-choice {
+  width: 112px;
+  min-width: 112px;
+  border: 1px solid rgba(255, 215, 122, .20);
+  border-radius: 16px;
+  background: rgba(0,0,0,.16);
+  color: var(--ink);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 6px;
+}
+
+.drawer-card-choice .hand-card {
+  pointer-events: none;
+}
+
+.drawer-card-choice > span {
+  display: block;
+  width: 100%;
+  border-radius: 999px;
+  padding: 4px 5px;
+  background: rgba(255, 215, 122, .12);
+  color: rgba(255,246,214,.82);
+  font-size: .61rem;
+  font-weight: 850;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-card-choice.selected {
+  border-color: rgba(122, 239, 167, .78);
+  box-shadow: 0 0 0 2px rgba(122, 239, 167, .18), 0 12px 26px rgba(0,0,0,.25);
+}
+
+.drawer-card-choice.selected > span {
+  background: rgba(122, 239, 167, .20);
+  color: #d8ffe6;
+}
+
+.drawer-decision-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 215, 122, .20);
+  background:
+    linear-gradient(180deg, rgba(41,23,18,.94), rgba(18,10,13,.96));
+  box-shadow: 0 -10px 24px rgba(0,0,0,.22);
+}
+
+.drawer-decision-actions .micro {
+  margin-right: auto;
+  color: rgba(255,246,214,.72);
+}
+
+.drawer-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 215, 122, .28);
+  color: rgba(255,246,214,.72);
+}
+
+.drawer-reaction-panel .mobile-center-actions {
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .decision-tray {
+    max-height: 205px;
+  }
+
+  .drawer-card-choice {
+    width: 104px;
+    min-width: 104px;
+  }
+
+  .drawer-decision-actions {
+    flex-wrap: wrap;
+  }
+
+  .drawer-decision-actions button {
+    flex: 1 1 auto;
+  }
+}

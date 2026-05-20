@@ -3,6 +3,8 @@ const SESSION_KEY = 'lootGoblinsV070Session';
 let state = null;
 let selectedTribute = new Set();
 let selectedSell = new Set();
+let selectedTrade = new Set();
+let lastDecisionKey = '';
 let handExpanded = false;
 let rollFx = null;
 let lastSeenRollKey = '';
@@ -26,6 +28,13 @@ socket.on('session', (session) => {
 });
 socket.on('toast', ({ type, message }) => showToast(message, type));
 socket.on('state', (next) => {
+  const decisionKey = next?.pendingPrompt?.id || next?.bodyLoot?.id || `${next?.phase || 'none'}:${next?.activePlayerId || ''}`;
+  if (decisionKey !== lastDecisionKey) {
+    selectedSell.clear();
+    selectedTrade.clear();
+    if (next?.phase !== 'TRIBUTE' && !['DISCARD_HAND_CARDS','DISCARD_GEAR_VALUE'].includes(next?.pendingPrompt?.type || '')) selectedTribute.clear();
+    lastDecisionKey = decisionKey;
+  }
   state = next;
   updateRollFxFromState(next);
   render();
@@ -286,6 +295,9 @@ function scheduleSoftAnnouncementDismiss() {
 
 function announcementTier(a) {
   if (!a) return 'log';
+  if (['hard','soft','log'].includes(String(a.priority || '').toLowerCase())) return String(a.priority).toLowerCase();
+
+  // Legacy fallback for older rooms/builds.
   const kind = String(a.kind || '').toLowerCase();
   const title = String(a.title || '');
   const detail = String(a.detail || '');
@@ -293,12 +305,9 @@ function announcementTier(a) {
   const type = String(card?.type || '').toUpperCase();
   const joined = `${title} ${detail}`;
 
-  // Routine bookkeeping/pass states should never stop the table.
   if (/use loot|sell before tribute|use\/sell|using loot|loot phase|tribute pending|window complete|done buffing|done nerfing|confirmed no more/i.test(joined)) return 'log';
-
-  // Hard events: immediate tactical/current-resolution moments.
   if (kind === 'backup' && !/locked|joins|accepted|deal locked/i.test(joined)) return 'log';
-  if (['bad','death','game','flee','backup','trade'].includes(kind)) return 'hard';
+  if (['bad','death','game','flee','backup','trade','zero-glory'].includes(kind)) return 'hard';
   if (kind === 'roll' && /opening roll complete|goes first|winner/i.test(joined)) return 'hard';
   if (kind === 'prompt' && /hex needs|choice required/i.test(joined)) return 'hard';
   if (kind === 'combat') return 'hard';
@@ -306,9 +315,7 @@ function announcementTier(a) {
   if (kind === 'hex') return 'soft';
   if (kind === 'card' && ['TRICK','THREAT','THREAT_MODIFIER'].includes(type)) return 'hard';
   if (/bad news|goblin down|victory|flee result|backup|trade|added .*foe|foe added|combat card|opening roll complete|goes first/i.test(joined)) return 'hard';
-
-  // Soft events: visible table updates, auto-dismissed.
-  if (['gear','draw','reveal','glory','tribute'].includes(kind)) return 'soft';
+  if (['gear','draw','reveal','glory','tribute','effect'].includes(kind)) return 'soft';
   if (kind === 'card' && ['ROLE','ORIGIN','GEAR','SPECIAL'].includes(type)) return 'soft';
   if (/kin played|calling played|gear equipped|gear carried|added to hand/i.test(joined)) return 'soft';
 
@@ -316,6 +323,8 @@ function announcementTier(a) {
 }
 
 function announcementNeedsAck(a) {
+  if (!a) return false;
+  if (typeof a.requiresAck === 'boolean') return a.requiresAck;
   return announcementTier(a) === 'hard';
 }
 
@@ -358,11 +367,11 @@ function globalAnnouncementHtml() {
   const a = state?.announcement;
   if (!a || acknowledgedAnnouncements.has(a.id)) return '';
   const tier = announcementTier(a);
-  if (tier === 'soft') {
+  if (tier === 'soft' || (tier === 'hard' && !announcementNeedsAck(a))) {
     if (dismissedSoftAnnouncements.has(a.id)) return '';
     const icon = announcementIcon(a.kind);
     const cardLine = a.card ? announcementCardLabel(a.card) : '';
-    return `<section class="global-soft-popup ${escapeHtml(a.kind || '')}" role="status" aria-live="polite">
+    return `<section class="global-soft-popup ${escapeHtml(a.kind || '')}" data-priority="${escapeHtml(a.priority || tier)}" data-category="${escapeHtml(a.category || a.kind || '')}" role="status" aria-live="polite">
       <div class="global-soft-card">
         <div class="soft-event-icon">${icon}</div>
         <div class="soft-event-copy">
@@ -375,10 +384,10 @@ function globalAnnouncementHtml() {
       </div>
     </section>`;
   }
-  if (tier !== 'hard') return '';
+  if (tier !== 'hard' || !announcementNeedsAck(a)) return '';
   const icon = announcementIcon(a.kind);
   const template = hardEventTemplate(a);
-  return `<section class="global-public-modal public-resolution-modal hard-event ${template} ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}" role="dialog" aria-modal="true">
+  return `<section class="global-public-modal public-resolution-modal hard-event ${template} ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}" data-priority="${escapeHtml(a.priority || tier)}" data-category="${escapeHtml(a.category || a.kind || '')}" role="dialog" aria-modal="true">
     <div class="global-public-backdrop" aria-hidden="true"></div>
     <div class="public-modal-card global-public-modal-card">
       <div class="public-event-pill">${escapeHtml(hardEventTypeLabel(a))}</div>
@@ -680,95 +689,251 @@ function centerZoneClass() {
   return '';
 }
 
-function renderPhaseBanner() {
-  const root = $('phaseBanner');
-  const you = me();
-  let title = '';
-  let copy = '';
-  let buttons = [];
 
-  if (state.reaction) {
+function phaseGrammar() {
+  const you = me();
+  const act = active();
+  const activeName = act?.name || 'the active goblin';
+  const legal = state?.legalActions || [];
+  const hasLegal = (a) => legal.includes(a);
+  const out = {
+    title: prettyPhase(state?.phase),
+    copy: 'The table is resolving the current step.',
+    who: activeName,
+    next: 'Wait for the current step to finish.',
+    buttons: [],
+    urgency: 'normal'
+  };
+
+  if (state?.reaction) {
     const r = state.reaction;
-    title = r.title || 'Reaction Window';
-    copy = r.message || 'A player may respond before the game continues.';
-    buttons = reactionButtons(r);
-  } else if (state.phase === 'GAME_OVER') {
+    const waiting = (r.eligiblePlayerIds || []).filter((id) => !r.passes?.[id]).map(playerName).join(', ');
+    out.title = r.title || 'Reaction Window';
+    out.copy = r.message || 'A player may respond before the game continues.';
+    out.who = r.requiresYou ? 'You' : (waiting || 'the table');
+    out.next = r.requiresYou ? 'Use a legal reaction card or pass.' : `Waiting on ${waiting || 'reaction players'}.`;
+    out.buttons = reactionButtons(r);
+    out.urgency = r.requiresYou ? 'urgent' : 'waiting';
+    return out;
+  }
+
+  if (state?.pendingPrompt) {
+    const p = state.pendingPrompt;
+    out.title = p.requiresYou ? promptTitle(p) : `${playerName(p.playerId)} has a decision`;
+    out.copy = p.message || 'A player choice is pending.';
+    out.who = p.requiresYou ? 'You' : playerName(p.playerId);
+    out.next = p.requiresYou ? promptNextText(p) : 'The table continues after this choice resolves.';
+    out.urgency = p.requiresYou ? 'urgent' : 'waiting';
+    return out;
+  }
+
+  if (state?.bodyLoot) {
+    const loot = state.bodyLoot;
+    out.title = 'Loot the Body';
+    out.copy = `${loot.victimName || 'A goblin'} is down. Looting happens in Glory order.`;
+    out.who = loot.requiresYou ? 'You' : (loot.currentLooterName || 'the current looter');
+    out.next = loot.requiresYou ? 'Choose one card from the body loot prompt.' : 'Wait for the current looter to take one card.';
+    out.urgency = loot.requiresYou ? 'urgent' : 'waiting';
+    return out;
+  }
+
+  if (state?.phase === 'GAME_OVER') {
     const winner = state.players.find((p) => p.id === state.winnerId);
-    title = `VICTORY — ${winner?.name || 'Someone'} reached 10 Glory`;
-    copy = 'History will exaggerate this.';
-  } else if (state.pendingPrompt) {
-    title = state.pendingPrompt.requiresYou ? 'Your decision required' : 'Table prompt pending';
-    copy = state.pendingPrompt.message;
-  } else if (state.phase === 'ROLL_FOR_FIRST') {
+    out.title = `VICTORY — ${winner?.name || 'Someone'} reached 10 Glory`;
+    out.copy = 'History will exaggerate this.';
+    out.who = winner?.name || 'the winner';
+    out.next = 'Start a new table when everyone is done bragging.';
+    out.urgency = 'final';
+    return out;
+  }
+
+  if (state?.phase === 'ROLL_FOR_FIRST') {
     const first = state.firstRoll || {};
-    const rolled = first.rolls?.[me()?.id];
-    const eligibleNames = (first.eligible || []).map(playerName).join(', ');
-    title = first.requiresYou ? 'Roll to See Who Goes First' : 'Opening Roll';
-    copy = first.requiresYou ? 'Tap the die. Highest roll opens the first Chamber. Ties reroll.' : `Waiting for opening rolls from ${eligibleNames || 'the table'}.`;
-    if (first.requiresYou) buttons.push(buttonHtml('Roll d6', 'ROLL_FIRST', 'primary'));
-  } else if (state.phase === 'HEX_REVEAL' && state.pendingHex) {
+    const waitingIds = (first.eligible || []).filter((id) => !first.rolls?.[id]);
+    const waitingNames = waitingIds.map(playerName).join(', ');
+    out.title = first.requiresYou ? 'Roll to See Who Goes First' : 'Opening Roll';
+    out.copy = first.requiresYou ? 'Tap the die. Highest roll opens the first Chamber. Ties reroll together.' : `Waiting for opening rolls from ${waitingNames || 'the table'}.`;
+    out.who = first.requiresYou ? 'You' : (waitingNames || 'the table');
+    out.next = 'When everyone rolls, the first goblin is announced.';
+    if (first.requiresYou) out.buttons.push(buttonHtml('Roll d6', 'ROLL_FIRST', 'primary'));
+    return out;
+  }
+
+  if (state?.phase === 'HEX_REVEAL') {
     const h = state.pendingHex;
-    title = h.requiresYou ? 'Resolve Revealed Hex' : `${h.targetPlayerName || 'A goblin'} is resolving a Hex`;
-    copy = h.card ? `${h.card.publicName}: ${h.card.publicText || 'Resolve the Hex effect.'}` : 'Read the Hex, then resolve its effect.';
-    if (h.requiresYou) buttons.push(buttonHtml('Resolve Hex', 'RESOLVE_HEX', 'primary'));
-  } else if (state.phase === 'START_TURN') {
-    title = isMyTurn() ? 'Your Turn — Open Chamber' : `${active()?.name}'s Turn`;
-    copy = isMyTurn() ? 'Open a Chamber, or play setup cards first.' : `Waiting for ${active()?.name}.`;
-    if (isMyTurn()) { buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
-  } else if (state.phase === 'NO_THREAT_CHOICE') {
-    title = isMyTurn() ? 'Your Turn · Choose Move' : `${active()?.name} chooses`;
-    copy = isMyTurn() ? 'Use the center panel or a glowing Foe in hand.' : `Waiting for ${active()?.name}.`;
-    if (isMyTurn()) {
-      buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
-      buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
+    if (h) {
+      out.title = h.requiresYou ? 'Resolve Revealed Hex' : `${h.targetPlayerName || 'A goblin'} is resolving a Hex`;
+      out.copy = h.card ? `${h.card.publicName}: ${h.card.publicText || 'Resolve the Hex effect.'}` : 'Read the Hex, then resolve its effect.';
+      out.who = h.requiresYou ? 'You' : (h.targetPlayerName || 'the target');
+      out.next = h.requiresYou ? 'Tap Resolve Hex. Any choices/reactions come after the card is shown.' : 'Wait for the target to resolve the Hex.';
+      if (h.requiresYou) out.buttons.push(buttonHtml('Resolve Hex', 'RESOLVE_HEX', 'primary'));
+    } else {
+      out.title = 'Hex resolving';
+      out.copy = 'The Hex has resolved. Waiting for the table to continue.';
+      out.who = activeName;
+      out.next = 'The table should advance automatically.';
+      out.urgency = 'recover';
     }
-  } else if (state.phase === 'COMBAT') {
-    const totals = state.combat?.totals;
+    return out;
+  }
+
+  if (state?.phase === 'START_TURN') {
+    out.title = isMyTurn() ? 'Your Turn — Open Chamber' : `${activeName}'s Turn`;
+    out.copy = isMyTurn() ? 'Play legal setup cards first, or open a Chamber when ready.' : `${activeName} can play setup cards or open a Chamber.`;
+    out.who = isMyTurn() ? 'You' : activeName;
+    out.next = 'Opening a Chamber reveals the next public card.';
+    if (isMyTurn()) {
+      if (hasLegal('OPEN_CHAMBER')) out.buttons.push(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
+      if (hasLegal('SELL_GEAR')) out.buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
+    }
+    return out;
+  }
+
+  if (state?.phase === 'NO_THREAT_CHOICE') {
+    const playableFoes = (state?.you?.hand || []).filter((c) => c.type === 'THREAT' && serverCardActions(c).length);
+    out.title = isMyTurn() ? 'No Foe — Choose Your Move' : `${activeName} chooses a move`;
+    out.copy = isMyTurn()
+      ? (playableFoes.length ? 'Start Trouble with a glowing Foe, Loot the Room, sell Gear, or play setup.' : 'No Foe appeared. Loot the Room, sell Gear, or play any legal setup card.')
+      : `Waiting for ${activeName} to Start Trouble or Loot the Room.`;
+    out.who = isMyTurn() ? 'You' : activeName;
+    out.next = isMyTurn() ? 'After your move, the game checks Loot/Tribute/end turn.' : 'The turn continues after the active goblin chooses.';
+    if (isMyTurn()) {
+      if (hasLegal('SEARCH_ROOM')) out.buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
+      if (hasLegal('SELL_GEAR')) out.buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
+    }
+    return out;
+  }
+
+  if (state?.phase === 'COMBAT') {
+    const combat = state.combat || {};
+    const totals = combat.totals;
     const outcome = combatOutcome(totals);
-    title = `Combat — ${active()?.name} vs ${state.combat?.threats?.[0]?.publicName || 'Foe'}`;
-    const done = Boolean(state.combat?.passes?.[you?.id]);
-    copy = done ? `${outcome.shortLabel}. You are locked in unless someone plays a new card.` : `${outcome.shortLabel}. Play a card, ask for Backup, or tap Done.`;
-    buttons = combatButtons();
-  } else if (state.phase === 'ESCAPE') {
+    const waiting = (state.players || []).filter((p) => !combat.passes?.[p.id]).map((p) => p.name);
+    const done = Boolean(combat.passes?.[you?.id]);
+    const foeName = combat.threats?.[0]?.publicName || 'Foe';
+    const need = combatNeedToWin(totals);
+    out.title = `Combat — ${activeName} vs ${foeName}`;
+    out.copy = done ? `${outcome.shortLabel}. You have passed unless someone changes combat.` : `${outcome.shortLabel}. ${need > 0 ? `Need +${need}. ` : ''}Play cards, negotiate Backup, or pass.`;
+    out.who = waiting.length ? waiting.join(', ') : 'the table';
+    out.next = waiting.length ? 'Combat resolves when everyone passes after the latest change.' : 'Combat should resolve now.';
+    out.buttons = combatButtons();
+    out.urgency = done ? 'waiting' : 'urgent';
+    return out;
+  }
+
+  if (state?.phase === 'ESCAPE') {
     const runner = state.players.find((p) => p.id === state.escape?.currentPlayerId);
     const foeName = state.escape?.threat?.publicName || 'the Foe';
     const bonus = state.escape?.fleeBonus || 0;
-    title = runner?.isYou ? `Your Flee Roll — ${foeName}` : `${runner?.name || 'Someone'} must Flee`;
-    copy = runner?.isYou
-      ? `Roll 1d6. Target: 5+. Your current Flee bonus: ${signed(bonus)}.`
-      : `Waiting for ${runner?.name || 'the runner'} to roll 1d6 against ${foeName}. Target: 5+.`;
+    out.title = runner?.isYou ? `Your Flee Roll — ${foeName}` : `${runner?.name || 'Someone'} must Flee`;
+    out.copy = runner?.isYou ? `Roll 1d6. Target: 5+. Current Flee bonus: ${signed(bonus)}.` : `Waiting for ${runner?.name || 'the runner'} to Flee from ${foeName}.`;
+    out.who = runner?.isYou ? 'You' : (runner?.name || 'the runner');
+    out.next = state.escape?.awaitingContinue ? 'Continue to apply or avoid Bad News.' : 'A failed roll triggers Bad News.';
     if (runner?.isYou) {
-      if (!state.escape?.awaitingContinue && hasLittleHelper(me())) buttons.push(buttonHtml('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
-      buttons.push(buttonHtml(state.escape?.awaitingContinue ? 'Continue' : (state.escape?.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee'), state.escape?.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+      if (!state.escape?.awaitingContinue && hasLittleHelper(me())) out.buttons.push(buttonHtml('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
+      out.buttons.push(buttonHtml(state.escape?.awaitingContinue ? 'Continue' : (state.escape?.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee'), state.escape?.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
     }
-  } else if (state.phase === 'POST_COMBAT') {
-    title = isMyTurn() ? 'Use Loot Before Tribute' : `${active()?.name} is using Loot`;
-    copy = isMyTurn() ? 'You may play, equip, carry, or sell legal cards you just gained. Continue when you are done.' : `Waiting for ${active()?.name} to finish using Loot.`;
-    if (isMyTurn()) { buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); buttons.push(buttonHtml('Done with Loot → Tribute', 'DONE_POST_COMBAT', 'primary')); }
-  } else if (state.phase === 'TRIBUTE') {
-    title = isMyTurn() ? 'Tribute Required' : `${active()?.name} must resolve Tribute`;
-    copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose excess cards below.` : `Waiting for ${active()?.name} to give or discard excess cards.`;
-  } else if (state.phase === 'END_TURN') {
-    title = isMyTurn() ? 'Turn Ending' : `${active()?.name}'s turn is wrapping up`;
-    copy = isMyTurn() ? 'Tap End Turn, or sell Gear first.' : `Waiting for ${active()?.name}.`;
-    if (isMyTurn()) { buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
-  } else if (state.phase === 'HEX_REVEAL') {
-    title = 'Hex resolving';
-    copy = state.pendingHex?.card ? `${state.pendingHex.card.publicName} is being resolved.` : 'The Hex has resolved. Waiting for the table to continue.';
-  } else {
-    title = `${prettyPhase(state.phase)}`;
-    copy = 'Follow the table prompt.';
+    return out;
   }
 
-  buttons = ensureCriticalActionButtons(buttons);
-  const compactStatusStrip = window.innerWidth <= 760 && ['NO_THREAT_CHOICE'].includes(state.phase);
-  root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${compactStatusStrip ? 'mobile-status-strip' : ''}`;
-  root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div><h2>${escapeHtml(title)}</h2>${copy ? `<p>${escapeHtml(copy)}</p>` : ''}<div class="primary-action">${buttons.join('')}</div>`;
-  root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
-  root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot)));
-  root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
+  if (state?.phase === 'POST_COMBAT') {
+    out.title = isMyTurn() ? 'Use Loot Before Tribute' : `${activeName} is using Loot`;
+    out.copy = isMyTurn() ? 'Play, equip, carry, sell, or trade before the hand-limit check.' : `${activeName} is counting shiny things before Tribute is checked.`;
+    out.who = isMyTurn() ? 'You' : activeName;
+    out.next = 'After this, the game checks whether Tribute is required.';
+    if (isMyTurn()) {
+      if (hasLegal('SELL_GEAR')) out.buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
+      if (hasLegal('DONE_POST_COMBAT')) out.buttons.push(buttonHtml('Done → Check Tribute', 'DONE_POST_COMBAT', 'primary'));
+    }
+    return out;
+  }
+
+  if (state?.phase === 'TRIBUTE') {
+    const count = you ? Math.max(0, Number(you.handCount || 0) - Number(you.handLimit || 0)) : 0;
+    out.title = isMyTurn() ? 'Tribute Required' : `${activeName} must resolve Tribute`;
+    out.copy = isMyTurn() ? `Your hand is ${you.handCount}/${you.handLimit}. Choose ${count} excess card${count === 1 ? '' : 's'} below.` : `Waiting for ${activeName} to give or discard excess cards.`;
+    out.who = isMyTurn() ? 'You' : activeName;
+    out.next = isMyTurn() ? 'Inspect first, Pick exact excess cards, then Confirm Tribute.' : 'The turn ends after Tribute is resolved.';
+    out.urgency = isMyTurn() ? 'urgent' : 'waiting';
+    return out;
+  }
+
+  if (state?.phase === 'END_TURN') {
+    out.title = isMyTurn() ? 'Turn Ending' : `${activeName}'s turn is wrapping up`;
+    out.copy = isMyTurn() ? 'End your turn when ready, or sell Gear first.' : `Waiting for ${activeName} to end their turn.`;
+    out.who = isMyTurn() ? 'You' : activeName;
+    out.next = 'The next goblin opens a Chamber.';
+    if (isMyTurn()) {
+      if (hasLegal('END_TURN')) out.buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary'));
+      if (hasLegal('SELL_GEAR')) out.buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
+    }
+    return out;
+  }
+
+  out.who = activeName;
+  out.next = 'The table should continue automatically. If it does not, check for a pending prompt or refresh.';
+  out.urgency = 'recover';
+  return out;
 }
 
+function promptTitle(prompt) {
+  if (!prompt) return 'Decision Required';
+  const map = {
+    ADD_FOE_FROM_HAND: 'Choose Foe to Add',
+    TRADE_OFFER_SELECT: 'Build Trade Offer',
+    TRADE_ACCEPT: 'Trade Offered',
+    SELL_GEAR: 'Sell Gear',
+    CHEAT_GEAR: 'Choose Gear',
+    LOSE_CALLING_CHOICE: 'Choose Calling to Lose',
+    LOSE_KIN_CHOICE: 'Choose Kin to Lose'
+  };
+  return map[prompt.type] || 'Decision Required';
+}
+
+function promptNextText(prompt) {
+  if (!prompt) return 'Choose an option to continue.';
+  const map = {
+    ADD_FOE_FROM_HAND: 'Pick the Foe that joins combat.',
+    TRADE_OFFER_SELECT: 'Select cards, then send or cancel the offer.',
+    TRADE_ACCEPT: 'Accept to receive the cards, or decline.',
+    SELL_GEAR: 'Select Gear to sell, or cancel/done.',
+    CHEAT_GEAR: 'Choose the Gear this permit should legalize.'
+  };
+  return map[prompt.type] || 'Resolve this choice to continue the table.';
+}
+
+function phaseGrammarStripHtml(grammar) {
+  if (!grammar) return '';
+  return `<div class="phase-grammar-strip urgency-${escapeHtml(grammar.urgency || 'normal')}">
+    <span><b>Who acts</b>${escapeHtml(grammar.who || 'the table')}</span>
+    <span><b>Next</b>${escapeHtml(grammar.next || 'continue')}</span>
+  </div>`;
+}
+
+function mobilePhaseGuidanceHtml(grammar) {
+  if (!grammar) return '';
+  return `<div class="mobile-phase-guidance urgency-${escapeHtml(grammar.urgency || 'normal')}">
+    <div><b>Who acts</b><span>${escapeHtml(grammar.who || 'the table')}</span></div>
+    <div><b>Next</b><span>${escapeHtml(grammar.next || 'continue')}</span></div>
+  </div>`;
+}
+
+function renderPhaseBanner() {
+  const root = $('phaseBanner');
+  if (!root) return;
+  const grammar = phaseGrammar();
+  let buttons = ensureCriticalActionButtons([...(grammar.buttons || [])]);
+  const compactStatusStrip = window.innerWidth <= 760 && ['NO_THREAT_CHOICE'].includes(state.phase);
+  root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} urgency-${String(grammar.urgency || 'normal')} ${compactStatusStrip ? 'mobile-status-strip' : ''}`;
+  root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div>
+    <h2>${escapeHtml(grammar.title || prettyPhase(state.phase))}</h2>
+    ${grammar.copy ? `<p>${escapeHtml(grammar.copy)}</p>` : ''}
+    ${phaseGrammarStripHtml(grammar)}
+    <div class="primary-action">${buttons.join('')}</div>`;
+  root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
+  root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot, btn.dataset.cardId)));
+  root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
+}
 
 
 function ensureCriticalActionButtons(buttons) {
@@ -854,7 +1019,8 @@ function combatButtons() {
   }
   const youAreDone = Boolean(combat.passes?.[you.id]);
   if (!youAreDone) {
-    if ((state.you?.hand || []).some((c) => c.type === 'THREAT')) buttons.push(`<button class="primary" data-combat-action="ADD_FOE_FROM_HAND">Add Foe from Hand</button>`);
+    const addFoeCard = addFoeEnablerCard();
+    if (addFoeCard && isCardPlayable(addFoeCard) && hasFoeInHand()) buttons.push(`<button class="primary" data-combat-action="USE_ADD_FOE_CARD" data-card-id="${addFoeCard.instanceId}">Use ${escapeHtml(addFoeCard.publicName)} to Add Foe</button>`);
     if (hasPublicRole(you, 'Bruiser')) buttons.push(`<button data-combat-action="BRUISER_BERSERK">Bruiser: discard for +3</button>`);
     if (hasPublicRole(you, 'Cutpurse') && combat.activePlayerId !== you.id) buttons.push(`<button data-combat-action="CUTPURSE_BACKSTAB">Cutpurse: backstab -2</button>`);
     if (hasPublicRole(you, 'Hexhand') && combat.activePlayerId === you.id) buttons.push(`<button data-combat-action="HEXHAND_CHARM">Hexhand: charm Foe</button>`);
@@ -864,8 +1030,9 @@ function combatButtons() {
   return buttons;
 }
 
-function handleCombatButton(action, target, lootCount, allLoot) {
+function handleCombatButton(action, target, lootCount, allLoot, cardId) {
   if (action === 'REQUEST_BACKUP') emitAction('REQUEST_BACKUP', { targetPlayerId: target });
+  else if (action === 'USE_ADD_FOE_CARD') emitAction('PLAY_CARD', { cardId });
   else if (action === 'SET_BACKUP_DEAL') emitAction('SET_BACKUP_DEAL', { lootCount: Number(lootCount || 0), allLoot: Boolean(allLoot) });
   else if (action === 'BRUISER_BERSERK') emitAction('BRUISER_BERSERK');
   else if (action === 'CUTPURSE_BACKSTAB') emitAction('CUTPURSE_BACKSTAB');
@@ -930,6 +1097,13 @@ function renderMobilePlayShell(root) {
       if (card) inspectCard(card);
     });
   });
+  root.querySelectorAll('[data-server-card-action]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.serverCardId;
+      const card = id ? findVisibleCardByInstance(id) : null;
+      if (card) emitServerCardAction(card, btn.dataset.serverCardAction);
+    });
+  });
   root.querySelectorAll('[data-mobile-card-action]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const cardId = btn.dataset.cardId;
@@ -944,7 +1118,7 @@ function renderMobilePlayShell(root) {
     btn.addEventListener('click', () => emitAction(btn.dataset.action));
   });
   root.querySelectorAll('[data-combat-action]').forEach((btn) => {
-    btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot));
+    btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot, btn.dataset.cardId));
   });
   root.querySelectorAll('[data-reaction-action]').forEach((btn) => {
     btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value));
@@ -1018,6 +1192,9 @@ function mobilePlayerHudHtml() {
 }
 
 function mobileStageHtml() {
+  if (state.reaction) return mobileReactionStageHtml(state.reaction);
+  if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
+  if (state.bodyLoot) return mobileBodyLootStageHtml();
   if (state.phase === 'COMBAT' && state.combat) return mobileCombatStageHtml(state.combat);
   if (state.phase === 'ESCAPE' && state.escape) return mobileFleeStageHtml(state.escape);
   if (state.phase === 'ROLL_FOR_FIRST') return mobileOpeningRollStageHtml();
@@ -1027,22 +1204,34 @@ function mobileStageHtml() {
   if (state.phase === 'NO_THREAT_CHOICE') return mobileNoFoeStageHtml();
   if (state.phase === 'POST_COMBAT') return mobilePostCombatStageHtml();
   if (state.phase === 'END_TURN') return mobileEndTurnStageHtml();
-  if (state.bodyLoot) return mobileBodyLootStageHtml();
-  if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
   if (state.phase === 'GAME_OVER') return mobileGameOverStageHtml();
   return mobileRevealOrWaitingStageHtml();
+}
+
+function mobileReactionStageHtml(reaction) {
+  const grammar = phaseGrammar();
+  return mobileStageShell('reaction', grammar.title || 'Reaction Window', grammar.copy || 'A reaction is available.', `
+    <div class="mobile-wait-card">
+      ${assetIconHtml('special', 'asset-sigil event-sigil')}
+      <span>${escapeHtml(grammar.next || 'Use a legal reaction or pass.')}</span>
+    </div>
+    ${mobileActionButtonsHtml(reactionButtons(reaction), 'reaction-actions')}
+  `, { size: 'medium', icon: 'special', guidance: grammar });
 }
 
 function mobileStageShell(kind, kicker, title, bodyHtml, options = {}) {
   const size = options.size || 'medium';
   const icon = options.icon ? `<div class="mobile-state-icon">${assetIconHtml(options.icon, 'asset-sigil event-sigil')}</div>` : '';
-  return `<section class="mobile-state-panel mobile-state-${escapeHtml(kind)} mobile-state-size-${escapeHtml(size)}">
+  const grammar = options.guidance || phaseGrammar();
+  const guidance = options.hideGuidance ? '' : mobilePhaseGuidanceHtml(grammar);
+  return `<section class="mobile-state-panel mobile-state-${escapeHtml(kind)} mobile-state-size-${escapeHtml(size)} urgency-${escapeHtml(grammar?.urgency || 'normal')}">
     <div class="mobile-state-header">
       ${icon}
       <div class="mobile-state-kicker">${escapeHtml(kicker)}</div>
     </div>
     <h2>${escapeHtml(title)}</h2>
     ${options.sub ? `<p class="mobile-state-sub">${escapeHtml(options.sub)}</p>` : ''}
+    ${guidance}
     ${bodyHtml}
   </section>`;
 }
@@ -1108,21 +1297,13 @@ function mobileStartTurnStageHtml() {
 
 
 function mobileQuickRevealButtons(card) {
-  if (!card || !isMyTurn()) return '';
-  const phaseOk = ['NO_THREAT_CHOICE','POST_COMBAT','END_TURN','START_TURN'].includes(state.phase);
+  if (!card) return '';
+  const source = serverCardSource(card);
+  const actions = serverCardActions(source).filter((a) => !['SELL_GEAR'].includes(a.type));
   const buttons = [];
-  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && phaseOk) {
-    buttons.push(`<button class="primary" data-mobile-card-action="PLAY" data-card-id="${card.instanceId}">Play ${escapeHtml(card.publicName)}</button>`);
-  } else if (card.type === 'GEAR' && !isOneUseConsumableCard(card) && phaseOk) {
-    buttons.push(`<button class="primary" data-mobile-card-action="EQUIP" data-card-id="${card.instanceId}">Equip</button>`);
-    buttons.push(`<button data-mobile-card-action="CARRY" data-card-id="${card.instanceId}">Carry</button>`);
-  } else if (card.type === 'SPECIAL') {
-    const timing = card.timing || [];
-    const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && phaseOk);
-    const needsTarget = ['SPECIAL_STEAL_LEVEL', 'SPECIAL_TRANSFERRAL'].includes(card.id);
-    if (canSpecial && !needsTarget) {
-      buttons.push(`<button class="primary" data-mobile-card-action="PLAY" data-card-id="${card.instanceId}">Play Special</button>`);
-    }
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    buttons.push(`<button class="${escapeHtml(action.style || '')}" data-server-card-action="${i}" data-server-card-id="${source.instanceId}">${escapeHtml(action.label || 'Use Card')}</button>`);
   }
   buttons.push(`<button data-mobile-inspect-card="${card.instanceId}">View Card</button>`);
   return `<div class="mobile-reveal-actions">${buttons.join('')}</div>`;
@@ -1184,16 +1365,16 @@ function mobileNoFoeStageHtml() {
 function mobilePostCombatStageHtml() {
   const mine = isMyTurn();
   const actions = mine ? mobileActionButtonsHtml([
-    mobileLegalActionButton('Done with Loot → Tribute', 'DONE_POST_COMBAT', 'primary'),
+    mobileLegalActionButton('Done → Check Tribute', 'DONE_POST_COMBAT', 'primary'),
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'post-combat-actions') : '';
-  return mobileStageShell('post-combat', mine ? 'Use Loot' : 'Loot Phase', mine ? 'Use Loot Before Tribute' : `${active()?.name || 'A goblin'} is using Loot`, `
+  return mobileStageShell('post-combat', mine ? 'Use Loot' : 'Loot Phase', mine ? 'Use Loot Before Tribute' : `${active()?.name || 'A goblin'} is counting shiny things`, `
     <div class="mobile-choice-card">
       ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-      <div><strong>${mine ? 'Play, equip, carry, or sell' : 'Loot is being managed'}</strong><span>${mine ? 'When done, continue to Tribute.' : 'Waiting for the active goblin.'}</span></div>
+      <div><strong>${mine ? 'Play, equip, carry, or sell' : 'Loot is being managed'}</strong><span>${mine ? 'Use anything legal before the hand-limit check.' : 'Waiting for the active goblin to finish loot chores.'}</span></div>
     </div>
     ${actions}
-  `, { size: 'small', icon: 'loot', sub: mine ? 'Finish using new cards.' : 'Waiting.' });
+  `, { size: 'small', icon: 'loot', sub: mine ? 'Finish legal card use, then Tribute is checked.' : 'No action needed.' });
 }
 
 function mobileEndTurnStageHtml() {
@@ -1227,7 +1408,7 @@ function mobileRevealOrWaitingStageHtml() {
           <p>${escapeHtml((card.publicText || '').slice(0, 115))}${(card.publicText || '').length > 115 ? '…' : ''}</p>
         </div>
       </div>
-      <button class="mobile-secondary-action" data-mobile-inspect-card="${card.instanceId}">View Full Card</button>
+      <button class="mobile-secondary-action" data-mobile-inspect-card="${card.instanceId}">${card.type === 'THREAT' ? 'View Foe' : card.type === 'HEX' ? 'Read Hex' : 'View Full Card'}</button>
     `, { size: 'medium', icon: cardTypeKey(card), sub });
   }
   const mine = isMyTurn();
@@ -1260,6 +1441,7 @@ function mobileCombatStageHtml(combat) {
     <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}"><strong>${escapeHtml(outcome.shortLabel)}</strong><span>${need > 0 ? `Need +${need} to win.` : 'No extra power needed if everyone passes.'}</span></div>
     <div class="mobile-combat-scores ${escapeHtml(outcome.resultClass)}"><div><span>Player Side</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</small></div><div class="mobile-vs">VS</div><div><span>Foe Side</span><b>${Number(totals.threatTotal || 0)}</b><small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small></div></div>
     <div class="combat-ledger"><div><h4>Player Side</h4>${playerLedger || '<p>No player cards yet.</p>'}</div><div><h4>Foe Side</h4>${foeLedger || '<p>No Foes yet.</p>'}</div></div>
+    ${combatWhatNowHtml(combat, totals)}
     ${actions}
     <div class="mobile-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Can play'}</span>`).join('')}</div>
     <details class="mobile-math-details"><summary>Full combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
@@ -1273,16 +1455,34 @@ function combatNeedToWin(totals) {
   return Math.max(0, foe - player + 1);
 }
 
+function combatWhatNowHtml(combat, totals) {
+  const outcome = combatOutcome(totals);
+  const waiting = state.players.filter((p) => !combat?.passes?.[p.id]);
+  const need = combatNeedToWin(totals);
+  const you = me();
+  const youDone = Boolean(combat?.passes?.[you?.id]);
+  let copy = '';
+  if (outcome.resultClass === 'winning') {
+    copy = waiting.length ? `Winning. Waiting on ${waiting.map((p) => p.name).join(', ')} to play or pass.` : 'Everyone passed. Combat should resolve.';
+  } else {
+    const foeNote = addFoeEnablerCard() && hasFoeInHand() ? ' use Unexpected Company to add a Foe,' : '';
+    copy = need > 0 ? `Need +${need} to win. Play a card, ask for Backup,${foeNote} add help, or prepare to Flee.` : 'You can still win this, but the table needs to finish responses.';
+  }
+  if (youDone) copy = `You passed. Waiting for the table unless someone changes combat.`;
+  return `<div class="combat-host-note ${escapeHtml(outcome.resultClass)}"><strong>What now?</strong><span>${escapeHtml(copy)}</span></div>`;
+}
+
+
 function mobileTributeStageHtml() {
   const you = me();
   const need = Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0));
   const selected = selectedTribute.size;
   const isYours = isMyTurn();
   const actions = isYours ? mobileActionButtonsHtml([mobileTributeConfirmButton(need, selected)], 'tribute-actions') : '';
-  return mobileStageShell('tribute', isYours ? 'Tribute Required' : 'Tribute Pending', isYours ? `Pick ${need} card${need === 1 ? '' : 's'}` : `${active()?.name || 'A player'} must resolve Tribute`, `
+  return mobileStageShell('tribute', isYours ? 'Tribute Required' : 'Tribute Pending', isYours ? `Pick ${need} excess card${need === 1 ? '' : 's'}` : `${active()?.name || 'A player'} is trimming their hand`, `
     <div class="mobile-tribute-meter ${selected === need && need > 0 ? 'ready' : ''}">
       <b>${selected}/${need}</b>
-      <span>${isYours ? 'Use Inspect/Pick controls in your hand below.' : 'Waiting for the active player.'}</span>
+      <span>${isYours ? 'Inspect first, then Pick the cards to give/discard.' : 'Waiting for the active player.'}</span>
     </div>
     ${actions}
     ${isYours ? '<p class="mobile-state-sub">Selected cards glow green. Confirm here or in the hand drawer.</p>' : ''}
@@ -1356,13 +1556,13 @@ function mobilePromptStageHtml(prompt) {
   if (prompt.requiresYou && prompt.type === 'SELL_GEAR') {
     return mobileStageShell('prompt', 'Sell Gear', 'Optional sale', `<p class="mobile-state-hint">Choose Gear to sell, or cancel and keep playing.</p><div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-sell-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>${Number(c.junkValue||c.scrapValue||0)} Junk</span></button>`).join('')}</div><div class="mobile-center-actions"><button class="primary" data-mobile-sell-confirm disabled>Sell Selected</button><button data-mobile-prompt-cancel>Cancel / Done</button></div>`, { size:'large', icon:'gear' });
   }
-  return mobileStageShell('prompt', prompt.requiresYou ? 'Decision Required' : 'Prompt Pending', prompt.requiresYou ? 'Your choice' : `Waiting on ${playerName(prompt.playerId)}`, `
+  return mobileStageShell('prompt', prompt.requiresYou ? promptTitle(prompt) : `${playerName(prompt.playerId)} has a decision`, prompt.requiresYou ? 'Your choice' : `Waiting on ${playerName(prompt.playerId)}`, `
     <div class="mobile-wait-card">
       ${assetIconHtml('special', 'asset-sigil event-sigil')}
       <span>${escapeHtml(prompt.message || 'A player decision is pending.')}</span>
     </div>
     ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if optional</button>' : ''}
-  `, { size: 'medium', icon: 'special' });
+  `, { size: 'medium', icon: 'special', guidance: phaseGrammar() });
 }
 
 function mobileGameOverStageHtml() {
@@ -1384,12 +1584,13 @@ function mobileGameOverStageHtml() {
 function findVisibleCardByInstance(id) {
   if (!id) return null;
   const all = [];
+  // Prioritize your hand copy so inspector/reveal buttons receive server-authored legal actions.
+  if (state.you?.hand) all.push(...state.you.hand);
   if (state.revealCard) all.push(state.revealCard);
   if (state.tableNotice?.card) all.push(state.tableNotice.card);
   if (state.announcement?.card) all.push(state.announcement.card);
   if (state.combat?.threats) all.push(...state.combat.threats);
   if (state.escape?.threat) all.push(state.escape.threat);
-  if (state.you?.hand) all.push(...state.you.hand);
   if (state.discardPiles?.chamber) all.push(...state.discardPiles.chamber);
   if (state.discardPiles?.loot) all.push(...state.discardPiles.loot);
   for (const p of state.players || []) {
@@ -1797,53 +1998,151 @@ function renderHand() {
   const root = $('handPanel');
   const you = me();
   if (!you) { root.innerHTML = ''; return; }
+
+  const mode = handDrawerMode();
   const over = you.handCount > you.handLimit;
-  const forceOpen = state.phase === 'TRIBUTE' && isMyTurn();
+  const forceOpen = Boolean(mode.forceOpen);
   const expanded = handExpanded || forceOpen;
-  root.classList.toggle('hand-expanded', expanded);
-  root.classList.toggle('hand-over-limit', over);
-  const toggleLabel = forceOpen ? 'Tribute' : (expanded ? 'Collapse' : 'Expand');
-  const handTitle = forceOpen ? 'Tribute Required' : 'Your Hand';
-  const handEyebrow = over ? 'Over Limit' : (state.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards');
-  const handStateClass = over ? 'bad' : (you.handCount === you.handLimit ? 'full' : '');
-  const handStateText = over ? (forceOpen ? `${you.handCount}/${you.handLimit} Tribute` : `${you.handCount}/${you.handLimit} Over Limit`) : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
-  let html = `<div class="hand-header v076-hand-header mobile-hand-header">
-    <div><span class="hand-eyebrow">${escapeHtml(handEyebrow)}</span><h3>${escapeHtml(handTitle)}</h3></div>
+  root.className = `hand-panel drawer-mode-${escapeHtml(mode.key)} ${expanded ? 'hand-expanded' : ''} ${over ? 'hand-over-limit' : ''}`;
+
+  const toggleLabel = forceOpen ? mode.toggleLabel || 'Required' : (expanded ? 'Collapse' : 'Expand');
+  const handStateClass = over ? (mode.key === 'tribute' ? 'bad' : 'warn') : (you.handCount === you.handLimit ? 'full' : '');
+  const handStateText = over
+    ? (mode.key === 'tribute' ? `${you.handCount}/${you.handLimit} Tribute Required` : `${you.handCount}/${you.handLimit} Tribute Later`)
+    : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
+
+  let html = `<div class="hand-header v075-hand-header mobile-hand-header">
+    <div><span class="hand-eyebrow">${escapeHtml(mode.eyebrow)}</span><h3>${escapeHtml(mode.title)}</h3></div>
     <div class="hand-header-actions">
       <span class="hand-limit ${handStateClass}">${handStateText}</span>
-      <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'tribute-mode' : ''}" type="button" aria-expanded="${expanded}" ${forceOpen ? 'disabled' : ''}>${toggleLabel}</button>
+      <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'decision-mode' : ''}" type="button" aria-expanded="${expanded}" ${forceOpen ? 'disabled' : ''}>${escapeHtml(toggleLabel)}</button>
     </div>
   </div>`;
-  html += `<p class="micro hand-help">Tap cards to inspect. ${expanded ? 'Scroll this drawer to see more.' : 'Expand when you need more room.'}</p>`;
-  if (state.phase === 'TRIBUTE' && isMyTurn()) {
-    const need = you.handCount - you.handLimit;
-    html += `<p class="micro tribute-instruction">Tribute: inspect cards first, then use Pick to choose exactly ${need} card${need === 1 ? '' : 's'}.</p>`;
-    html += `<div class="hand-tray v076-hand-tray tribute-tray expanded-tray"><div class="card-row hand-row tribute-card-row expanded-hand-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
+
+  html += `<p class="micro hand-help drawer-mode-help">${escapeHtml(mode.hint)}</p>`;
+
+  if (mode.key === 'tribute') {
+    const need = Math.max(0, you.handCount - you.handLimit);
+    html += `<p class="micro tribute-instruction">Inspect first, then use Pick to choose exactly ${need} excess card${need === 1 ? '' : 's'}.</p>`;
+    html += `<div class="hand-tray v075-hand-tray tribute-tray expanded-tray decision-tray"><div class="card-row hand-row tribute-card-row expanded-hand-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
     html += tributeControls(need);
+  } else if (mode.decision) {
+    html += drawerDecisionContent(mode);
   } else {
-    const playableCount = playableHandCount();
-    if (['START_TURN','NO_THREAT_CHOICE','COMBAT','POST_COMBAT','END_TURN'].includes(state.phase) || state.reaction) {
-      let phaseHint = '';
-      if (!isMyTurn() && !state.reaction) phaseHint = `Waiting on ${active()?.name || 'the active goblin'}. No reactions available.`;
-      else phaseHint = playableCount ? `${playableCount} playable card${playableCount === 1 ? '' : 's'} now — glowing first.` : 'No playable cards right now.';
-      if (isMyTurn() && state.phase === 'START_TURN' && playableCount) phaseHint = `${playableCount} setup card${playableCount === 1 ? '' : 's'} can be played before opening.`;
-      if (isMyTurn() && state.phase === 'NO_THREAT_CHOICE' && playableCount) phaseHint = `Foe cards glow — tap one to Start Trouble.`;
-      if (isMyTurn() && state.phase === 'NO_THREAT_CHOICE' && !playableCount) phaseHint = `No Foe ready — Loot the Room or play a setup card first.`;
-      html += `<p class="micro playable-now-label">${phaseHint}</p>`;
-    }
     const cardsHtml = displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('');
     if (expanded) {
-      html += `<div class="hand-tray v076-hand-tray expanded-tray"><div class="card-row hand-row expanded-hand-row">${cardsHtml}</div></div>`;
+      html += `<div class="hand-tray v075-hand-tray expanded-tray"><div class="card-row hand-row expanded-hand-row">${cardsHtml}</div></div>`;
     } else {
-      html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v076-hand-tray"><div class="card-row hand-row">${cardsHtml}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
+      html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v075-hand-tray"><div class="card-row hand-row">${cardsHtml}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
     }
   }
+
   root.innerHTML = html;
+
   const toggle = $('handToggleBtn');
   if (toggle && !forceOpen) toggle.addEventListener('click', () => {
     handExpanded = !handExpanded;
     renderHand();
   });
+
+  attachDrawerHandlers(root, mode);
+  attachHandScrollControls(root);
+  const confirm = $('confirmTribute');
+  if (confirm) confirm.addEventListener('click', () => confirmTribute());
+}
+
+
+function handDrawerMode() {
+  const you = me();
+  const p = state?.pendingPrompt;
+  if (p?.requiresYou) {
+    if (p.type === 'SELL_GEAR') return { key: 'sell', decision: true, forceOpen: true, toggleLabel: 'Selling', eyebrow: 'Decision Drawer', title: 'Sell Gear', hint: 'Choose Gear to cash in, then Sell Selected. Cancel / Done returns you to the turn.', prompt: p };
+    if (p.type === 'TRADE_OFFER_SELECT') return { key: 'trade', decision: true, forceOpen: true, toggleLabel: 'Trading', eyebrow: 'Decision Drawer', title: 'Trade Offer', hint: 'Choose cards to offer. Gifts are allowed, but the other player must accept.', prompt: p };
+    if (p.type === 'TRADE_ACCEPT') return { key: 'trade-review', decision: true, forceOpen: true, toggleLabel: 'Review', eyebrow: 'Decision Drawer', title: 'Trade Offered', hint: 'Inspect the offered cards, then accept or decline.', prompt: p };
+    if (p.type === 'ADD_FOE_FROM_HAND') return { key: 'add-foe', decision: true, forceOpen: true, toggleLabel: 'Choose Foe', eyebrow: 'Decision Drawer', title: 'Add Foe to Combat', hint: 'Choose exactly which Foe joins the current fight.', prompt: p };
+    if (p.type === 'DISCARD_HAND_CARDS') return { key: 'discard-hand', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Cards to Discard', hint: `Pick ${p.meta?.count || 1} card${(p.meta?.count || 1) === 1 ? '' : 's'} to discard. Inspect first if needed.`, prompt: p };
+    if (p.type === 'DISCARD_GEAR' || p.type === 'DISCARD_GEAR_VALUE') return { key: 'discard-gear', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Gear to Lose', hint: p.message || 'Choose the Gear required by the prompt.', prompt: p };
+    if (p.type === 'LOOT_BODY') return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: 'Choose one card from the fallen goblin. It goes to your hand.', prompt: p };
+    return { key: 'prompt', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Resolve the current choice.', prompt: p };
+  }
+  if (state?.bodyLoot?.requiresYou) return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: `Choose one card from ${state.bodyLoot.victimName || 'the fallen goblin'}.`, bodyLoot: state.bodyLoot };
+  if (state?.reaction?.requiresYou) return { key: 'reaction', decision: true, forceOpen: true, toggleLabel: 'React', eyebrow: 'Reaction Drawer', title: state.reaction.title || 'Reaction Window', hint: state.reaction.message || 'Use a legal reaction or pass.', reaction: state.reaction };
+  if (state?.phase === 'TRIBUTE' && isMyTurn()) return { key: 'tribute', forceOpen: true, toggleLabel: 'Tribute', eyebrow: 'Decision Drawer', title: 'Tribute Required', hint: `Pick ${Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0))} excess card${Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0)) === 1 ? '' : 's'} to give/discard.` };
+  if (state?.phase === 'COMBAT') {
+    const playable = playableHandCount();
+    let hint = playable ? `${playable} combat-relevant card${playable === 1 ? '' : 's'} can be played now. Glowing cards are legal.` : 'No legal combat cards right now. Pass when you are done.';
+    if (!addFoeEnablerCard() && hasFoeInHand()) hint = 'Foes in hand need Unexpected Company before they can join combat.';
+    return { key: 'combat', eyebrow: 'Combat Hand', title: 'Combat Cards', hint };
+  }
+  if (state?.phase === 'POST_COMBAT' && isMyTurn()) return { key: 'loot', eyebrow: 'Use Loot', title: 'Use Loot / Gear', hint: 'Play legal cards, equip, carry, trade, or sell before Tribute is checked.' };
+  const playable = playableHandCount();
+  return { key: 'normal', eyebrow: state?.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards', title: 'Your Hand', hint: playable ? `${playable} card${playable === 1 ? '' : 's'} can be played now — glowing first.` : 'Tap cards to inspect. Expand when you need more room.' };
+}
+
+function drawerDecisionContent(mode) {
+  const cards = mode.prompt?.options || mode.bodyLoot?.cards || [];
+  if (mode.key === 'reaction') {
+    return `<div class="drawer-decision-panel drawer-reaction-panel">
+      <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+      ${mobileActionButtonsHtml(reactionButtons(mode.reaction), 'drawer-reaction-actions')}
+    </div>`;
+  }
+  if (!cards.length && !['trade-review'].includes(mode.key)) {
+    return `<div class="drawer-empty-state">${assetIconHtml('discard', 'event-sigil')}<span>No cards are available for this decision.</span>${drawerControls(mode)}</div>`;
+  }
+  const cardHtmlList = cards.map((c) => drawerDecisionCardHtml(c, mode)).join('');
+  return `<div class="drawer-decision-panel drawer-${escapeHtml(mode.key)}">
+    <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+    <div class="hand-tray v075-hand-tray expanded-tray decision-tray"><div class="card-row hand-row expanded-hand-row decision-hand-row">${cardHtmlList}</div></div>
+    ${drawerControls(mode)}
+  </div>`;
+}
+
+function drawerDecisionCardHtml(card, mode) {
+  if (!card) return '';
+  const selectedSellCard = selectedSell.has(card.instanceId);
+  const selectedTradeCard = selectedTrade.has(card.instanceId);
+  const selectedDiscardCard = selectedTribute.has(card.instanceId);
+  if (mode.key === 'sell') {
+    const value = Number(card.junkValue || card.scrapValue || 0);
+    return `<button class="drawer-card-choice ${selectedSellCard ? 'selected' : ''}" data-drawer-sell-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedSellCard ? '✓ Selling' : `${value} Junk`}</span></button>`;
+  }
+  if (mode.key === 'trade') {
+    return `<button class="drawer-card-choice ${selectedTradeCard ? 'selected' : ''}" data-drawer-trade-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedTradeCard ? '✓ Offered' : 'Offer'}</span></button>`;
+  }
+  if (mode.key === 'discard-hand' || mode.key === 'discard-gear') {
+    return `<button class="drawer-card-choice ${selectedDiscardCard ? 'selected' : ''}" data-drawer-discard-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedDiscardCard ? '✓ Picked' : 'Pick'}</span></button>`;
+  }
+  if (mode.key === 'trade-review') {
+    return `<button class="drawer-card-choice inspect-only" data-drawer-inspect-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>Inspect</span></button>`;
+  }
+  return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Take card' : 'Choose'}</span></button>`;
+}
+
+function drawerControls(mode) {
+  if (mode.key === 'sell') {
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedSell.size}</span><button class="primary" data-drawer-sell-confirm ${selectedSell.size ? '' : 'disabled'}>Sell Selected</button><button data-drawer-prompt-cancel>Cancel / Done</button></div>`;
+  }
+  if (mode.key === 'trade') {
+    return `<div class="drawer-decision-actions"><span class="micro">Offering ${selectedTrade.size}</span><button class="primary" data-drawer-trade-confirm ${selectedTrade.size ? '' : 'disabled'}>Send Offer</button><button data-drawer-prompt-cancel>Cancel Trade</button></div>`;
+  }
+  if (mode.key === 'trade-review') {
+    return `<div class="drawer-decision-actions"><button class="primary" data-drawer-trade-accept>Accept Trade</button><button data-drawer-trade-decline>Decline</button></div>`;
+  }
+  if (mode.key === 'discard-hand') {
+    const need = mode.prompt?.meta?.count || 1;
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}/${need}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size === need ? '' : 'disabled'}>Discard Selected</button></div>`;
+  }
+  if (mode.key === 'discard-gear') {
+    const need = mode.prompt?.meta?.count || 1;
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}${need ? `/${need}` : ''}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size ? '' : 'disabled'}>Confirm Choice</button></div>`;
+  }
+  if (mode.key === 'add-foe') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel</button></div>`;
+  if (mode.key === 'prompt') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass / Cancel if optional</button></div>`;
+  return '';
+}
+
+function attachDrawerHandlers(root, mode) {
   root.querySelectorAll('[data-tribute-toggle]').forEach((btn) => {
     btn.addEventListener('click', (event) => {
       event.preventDefault();
@@ -1866,10 +2165,48 @@ function renderHand() {
       inspectCard(card);
     });
   });
-  attachHandScrollControls(root);
-  const confirm = $('confirmTribute');
-  if (confirm) confirm.addEventListener('click', () => confirmTribute());
+  root.querySelectorAll('[data-drawer-inspect-card]').forEach((btn) => btn.addEventListener('click', () => {
+    const card = findVisibleCardByInstance(btn.dataset.drawerInspectCard) || (mode.prompt?.options || []).find((c) => c.instanceId === btn.dataset.drawerInspectCard);
+    if (card) inspectCard(card);
+  }));
+  root.querySelectorAll('[data-drawer-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.drawerPromptCard })));
+  root.querySelectorAll('[data-drawer-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
+    if (selectedSell.has(btn.dataset.drawerSellCard)) selectedSell.delete(btn.dataset.drawerSellCard);
+    else selectedSell.add(btn.dataset.drawerSellCard);
+    renderHand();
+  }));
+  root.querySelectorAll('[data-drawer-sell-confirm]').forEach((btn) => btn.addEventListener('click', () => {
+    if (!selectedSell.size) return;
+    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] });
+    selectedSell.clear();
+  }));
+  root.querySelectorAll('[data-drawer-trade-card]').forEach((btn) => btn.addEventListener('click', () => {
+    if (selectedTrade.has(btn.dataset.drawerTradeCard)) selectedTrade.delete(btn.dataset.drawerTradeCard);
+    else selectedTrade.add(btn.dataset.drawerTradeCard);
+    renderHand();
+  }));
+  root.querySelectorAll('[data-drawer-trade-confirm]').forEach((btn) => btn.addEventListener('click', () => {
+    if (!selectedTrade.size) return;
+    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedTrade] });
+    selectedTrade.clear();
+  }));
+  root.querySelectorAll('[data-drawer-trade-accept]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { accept: true })));
+  root.querySelectorAll('[data-drawer-trade-decline]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { decline: true })));
+  root.querySelectorAll('[data-drawer-discard-card]').forEach((btn) => btn.addEventListener('click', () => {
+    const id = btn.dataset.drawerDiscardCard;
+    if (selectedTribute.has(id)) selectedTribute.delete(id);
+    else selectedTribute.add(id);
+    renderHand();
+  }));
+  root.querySelectorAll('[data-drawer-discard-confirm]').forEach((btn) => btn.addEventListener('click', () => {
+    if (!selectedTribute.size) return;
+    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedTribute] });
+    selectedTribute.clear();
+  }));
+  root.querySelectorAll('[data-drawer-prompt-cancel]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cancel: true })));
+  root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
 }
+
 
 function attachHandScrollControls(root) {
   const tray = root.querySelector('.hand-tray');
@@ -1917,6 +2254,15 @@ function displayHandCards(cards) {
 function playableHandCount() {
   return (myHand() || []).filter((c) => isCardPlayable(c)).length;
 }
+
+function addFoeEnablerCard() {
+  return (state?.you?.hand || []).find((c) => c.id === 'SPECIAL_UNEXPECTED_COMPANY_A' || c.effect?.type === 'ADD_FOE_FROM_HAND') || null;
+}
+
+function hasFoeInHand() {
+  return (state?.you?.hand || []).some((c) => c.type === 'THREAT');
+}
+
 
 function tributeCardHtml(card) {
   const selected = selectedTribute.has(card.instanceId);
@@ -1970,22 +2316,7 @@ function isReactionCardPlayable(card) {
 function isCardPlayable(card) {
   if (!state || !card) return false;
   if (!ownsVisibleCard(card)) return false;
-  if (state.pendingPrompt) return false;
-  if (state.reaction) return isReactionCardPlayable(card);
-  if (card.type === 'ROLE' || card.type === 'ORIGIN') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
-  if (card.type === 'GEAR') return !isOneUseConsumableCard(card) && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
-  if (card.type === 'SPECIAL') {
-    const timing = card.timing || [];
-    if (timing.includes('POST_COMBAT_WIN')) return isMyTurn() && state.phase === 'POST_COMBAT';
-    if (timing.includes('ANY_TIME')) return true;
-    if (timing.includes('DURING_COMBAT')) return state.phase === 'COMBAT';
-    if (timing.includes('OWN_TURN_OUTSIDE_COMBAT')) return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
-    return false;
-  }
-  if (card.type === 'THREAT') return isMyTurn() && state.phase === 'NO_THREAT_CHOICE';
-  if (card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') return state.phase === 'COMBAT';
-  if (card.type === 'HEX') return true;
-  return false;
+  return serverCardActions(card).length > 0;
 }
 
 
@@ -2212,6 +2543,10 @@ function inspectCard(card) {
       <section class="inspect-section"><h3>Actions</h3><div class="action-list inspect-actions">${actions}</div></section>
     </div>
   </div>`;
+  root.querySelectorAll('[data-server-card-action]').forEach((btn) => btn.addEventListener('click', () => {
+    closeInspect();
+    emitServerCardAction(card, btn.dataset.serverCardAction);
+  }));
   root.querySelectorAll('[data-inspect-action]').forEach((btn) => btn.addEventListener('click', () => {
     const a = btn.dataset.inspectAction;
     closeInspect();
@@ -2234,6 +2569,42 @@ function inspectCard(card) {
 }
 
 
+
+function serverCardSource(card) {
+  if (!card) return null;
+  const fromHand = (state?.you?.hand || []).find((c) => c.instanceId === card.instanceId);
+  return fromHand || card;
+}
+
+function serverCardActions(card) {
+  const source = serverCardSource(card);
+  if (!source) return [];
+  const direct = Array.isArray(source.legalActions) ? source.legalActions : null;
+  if (direct) return direct;
+  return state?.legalCardActions?.[source.instanceId] || [];
+}
+
+function serverCardActionButton(action, index) {
+  if (!action) return '';
+  const cls = action.style || '';
+  const reason = action.reason ? ` title="${escapeHtml(action.reason)}"` : '';
+  return `<button class="${escapeHtml(cls)}" data-server-card-action="${index}"${reason}>${escapeHtml(action.label || action.type || 'Use')}</button>`;
+}
+
+function serverActionsHtml(card) {
+  const actions = serverCardActions(card);
+  if (!actions.length) return '';
+  return actions.map((a, i) => serverCardActionButton(a, i)).join('');
+}
+
+function emitServerCardAction(card, index) {
+  const actions = serverCardActions(card);
+  const action = actions[Number(index)];
+  if (!action) return;
+  emitAction(action.type, action.payload || {});
+}
+
+
 function reactionCardActions(card) {
   const r = state.reaction;
   if (!isReactionCardPlayable(card)) return `<p>No legal reaction for this card right now.</p>`;
@@ -2245,71 +2616,23 @@ function reactionCardActions(card) {
 }
 
 function cardActions(card) {
-  const actions = [];
   if (!ownsVisibleCard(card)) {
-    return `<p>No legal actions right now.</p><p class="micro">You are viewing this card publicly. Only the player who owns the card, or the player currently prompted to resolve it, can use it.</p>`;
+    return `<p>No legal actions right now.</p><p class="micro">You are viewing this card publicly. Only the player who owns the card can use it.</p>`;
   }
-  if (state.pendingPrompt) return `<p>Resolve the current prompt first.</p>`;
-  if (state.reaction) return reactionCardActions(card);
-  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
-  if (card.type === 'GEAR' && isOneUseConsumableCard(card)) {
-    actions.push(`<p class="consumable-note">One-use cards are not equipable Gear. Use this during its timing window; it discards after use.</p>`);
-  } else if (card.type === 'GEAR' && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) {
-    actions.push(`<button class="primary" data-inspect-action="EQUIP">Equip</button>`);
-    actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
-    actions.push(`<button data-inspect-action="SELL_ONE">Sell / cash in</button>`);
-    if (card.id !== 'GEAR_HIRELING' && ownsVisibleCard(card) && hasLittleHelperCapacity(me())) actions.push(`<button data-inspect-action="ASSIGN_HIRELING_GEAR">Give to Little Helper</button>`);
-  }
-  if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
-  if (card.type === 'THREAT' && state.phase === 'COMBAT' && (card.tags || []).includes('RESTLESS') && (state.combat?.threats || []).some((t) => (t.tags || []).includes('RESTLESS'))) actions.push(`<button class="primary" data-inspect-action="PLAY">Join Restless Combat</button>`);
-  if (card.type === 'TRICK' && state.phase === 'COMBAT' && card.effect?.type === 'MODIFY_COMBAT_TOTAL') {
-    const amt = Number(card.effect.amount || 0);
-    if (amt >= 0) {
-      actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Buff Player Side ${signed(amt)}</button>`);
-      actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Buff Foe Side ${signed(amt)}</button>`);
-    } else {
-      actions.push(`<button class="primary" data-inspect-action="PLAY_PLAYER_SIDE">Nerf Player Side ${signed(amt)}</button>`);
-      actions.push(`<button data-inspect-action="PLAY_FOE_SIDE">Nerf Foe Side ${signed(amt)}</button>`);
-    }
-  } else if (card.type === 'THREAT_MODIFIER' && state.phase === 'COMBAT') {
-    const foes = state.combat?.threats || [];
-    if (foes.length > 1) {
-      for (const foe of foes) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET_FOE" data-target-foe-id="${foe.instanceId}">Attach to ${escapeHtml(foe.publicName)}</button>`);
-    } else actions.push(`<button class="primary" data-inspect-action="PLAY">Attach to Foe</button>`);
-  }
-  else if (card.type === 'TRICK' && state.phase === 'COMBAT') actions.push(`<button class="primary" data-inspect-action="PLAY">Play Combat Trick</button>`);
-  if (card.type === 'TRICK' && state.phase === 'ESCAPE' && state.escape?.currentPlayerId === me()?.id && (card.timing || []).includes('BEFORE_ESCAPE_ROLL')) actions.push(`<button class="primary" data-inspect-action="PLAY">Play before Flee roll</button>`);
-  if (card.type === 'HEX') {
-    for (const p of state.players) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Hex ${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</button>`);
-  }
-  if (card.type === 'SPECIAL') {
-    const timing = card.timing || [];
-    const canSpecial = timing.includes('ANY_TIME')
-      || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT')
-      || (timing.includes('POST_COMBAT_WIN') && isMyTurn() && state.phase === 'POST_COMBAT')
-      || (timing.includes('OWN_TURN_OUTSIDE_COMBAT') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase));
-    if (canSpecial && card.id === 'SPECIAL_STEAL_LEVEL') {
-      for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Steal from ${escapeHtml(p.name)}</button>`);
-    } else if (canSpecial && state.phase === 'COMBAT' && ['SPECIAL_MAGIC_LAMP','SPECIAL_POLYMORPH','SPECIAL_MATCHING_PROBLEM','SPECIAL_ILLUSION'].includes(card.id)) {
-      const foes = state.combat?.threats || [];
-      if (foes.length > 1) {
-        const verb = card.id === 'SPECIAL_MATCHING_PROBLEM' ? 'Copy' : card.id === 'SPECIAL_ILLUSION' ? 'Replace' : 'Remove';
-        for (const foe of foes) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET_FOE" data-target-foe-id="${foe.instanceId}">${verb} ${escapeHtml(foe.publicName)}</button>`);
-      } else actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
-    } else if (canSpecial && state.phase === 'COMBAT' && card.id === 'SPECIAL_TRANSFERRAL') {
-      for (const p of state.players.filter((p) => !p.isYou && p.id !== state.combat?.activePlayerId)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Transfer to ${escapeHtml(p.name)}</button>`);
-    } else if (canSpecial) actions.push(`<button class="primary" data-inspect-action="PLAY">Play Special</button>`);
-  }
-  if (!actions.length) actions.push(`<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`);
-  return actions.join('');
+  const actionsHtml = serverActionsHtml(card);
+  if (actionsHtml) return actionsHtml;
+  return `<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`;
 }
 
 function whyNotPlayable(card) {
-  if (!isMyTurn() && ['ROLE','ORIGIN','GEAR','SPECIAL','THREAT'].includes(card.type)) return 'This can only be used on your own turn in the correct phase, unless the card says combat/any time.';
+  if (!ownsVisibleCard(card)) return 'You are viewing this card publicly.';
+  if (state.pendingPrompt) return 'Resolve the current prompt first.';
+  if (state.pendingHex) return 'Resolve the revealed Hex first.';
+  if (state.reaction) return 'Only matching reaction cards can be used right now.';
+  if (card.type === 'THREAT') return 'Foes need the correct window: Start Trouble after no Foe appears, Restless combat, or Unexpected Company.';
+  if (card.type === 'TRICK') return 'This Trick is waiting for its timing window.';
   if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
-  if (card.type === 'TRICK') return 'This is a one-use Trick, not Gear. Use it during its timing window, then it discards.';
-  if (card.type === 'THREAT') return 'Foes are played with Start Trouble after no Foe appears.';
-  return 'The current phase does not allow this card.';
+  return 'The server says this card has no legal action right now.';
 }
 
 function closeInspect() { $('inspectOverlay').classList.add('hidden'); }
@@ -2362,8 +2685,20 @@ function prettyTiming(t) {
 }
 
 function prettyPhase(phase) {
-  const map = { LOBBY: 'Lobby', START_TURN: 'Open Chamber', NO_THREAT_CHOICE: 'Choice', COMBAT: 'Combat', ESCAPE: 'Flee', POST_COMBAT: 'Use Loot', TRIBUTE: 'Tribute', END_TURN: 'End Turn', GAME_OVER: 'Game Over' };
-  return map[phase] || phase;
+  const map = {
+    LOBBY: 'Goblin Tavern Lobby',
+    ROLL_FOR_FIRST: 'Opening Roll',
+    START_TURN: 'Open Chamber',
+    NO_THREAT_CHOICE: 'Choose Your Move',
+    HEX_REVEAL: 'Hex Revealed',
+    COMBAT: 'Combat',
+    ESCAPE: 'Flee',
+    POST_COMBAT: 'Use Loot',
+    TRIBUTE: 'Tribute',
+    END_TURN: 'End Turn',
+    GAME_OVER: 'Game Over'
+  };
+  return map[phase] || 'Table State';
 }
 function playerName(id) { return state.players.find((p) => p.id === id)?.name || 'Unknown'; }
 function signed(n) { return `${Number(n || 0) >= 0 ? '+' : ''}${Number(n || 0)}`; }

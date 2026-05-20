@@ -1214,3 +1214,323 @@ This is the moment a helper actually joins combat and affects the fight, so it s
 ## Safety net
 
 Client event tiering now treats Backup events as hard only when the event is a final locked/accepted deal.
+
+
+---
+
+# Loot Goblins v0.7 — Playtest Hardening + Host Language Pass
+
+This is a stability/experience pass, not a new mechanics pass.
+
+## Focus
+
+The app should feel more like a confident table host:
+- tell players what happened
+- show who acts next
+- show what options matter
+- avoid internal software language
+
+## Changes
+
+### Host-language polish
+- Expanded friendly phase names.
+- Removed raw/internal fallback language from the top banner.
+- Replaced generic fallback text with clearer table-host copy.
+
+### Hand limit clarity
+- Over-limit is less alarming when it is not currently your Tribute phase.
+- Non-active players now see `Tribute Later` rather than a red emergency-style state.
+- Tribute phase still clearly says `Tribute Required`.
+
+### Combat clarity
+- Added a compact "What now?" host note to the combat stage.
+- Combat now reinforces whether players are winning, losing, need help, or are waiting for passes.
+- The existing full combat math detail remains available.
+
+### Better contextual labels
+- Revealed Foe buttons now say `View Foe`.
+- Hex buttons now say `Read Hex`.
+- Tribute copy better explains inspect-then-pick behavior.
+
+### Loot phase copy
+- Use Loot / Sell Before Tribute now more clearly says the active player can use legal cards before the hand-limit check.
+- Observer copy has more personality and less generic waiting text.
+
+## What this does not do yet
+
+- No new cards.
+- No new art assets.
+- No major rules rewrite.
+- No server-driven per-card legal action list yet.
+
+## Next best future direction
+
+Move toward server-authored legal card actions so the client never guesses which buttons should appear.
+
+
+---
+
+# Loot Goblins v0.7.1 — Add-Foe Legality + Combat Spacing Hotfix
+
+## Fixed
+
+### Add Foe no longer appears just because you have a Foe in hand
+The combat action button was incorrectly checking only for any Foe card in hand.
+
+Correct rule:
+- Foes cannot join combat by themselves.
+- You need the enabling card, currently `Unexpected Company`.
+- The button now only appears as `Use Unexpected Company to Add Foe` when that card is in hand, legally playable, and you also have a Foe to add.
+
+### Server safety
+The direct `ADD_FOE_FROM_HAND` action now rejects with:
+
+> Play Unexpected Company to add a Foe from your hand.
+
+The real path is playing the card whose effect creates the add-Foe picker.
+
+## UX polish
+
+- Hand hint now explains: `Foes in hand need Unexpected Company before they can join combat.`
+- Over-limit hand state outside Tribute now says `Tribute Later` instead of yelling `Over Limit`.
+- Combat action buttons are tighter and use a two-column layout on wider screens.
+- Combat spacing around scores, ledger, actions, pass row, and math details has been tightened.
+
+## Why
+
+This prevents the game from implying illegal moves and keeps combat from getting vertically bloated.
+
+
+---
+
+# Loot Goblins v0.7.2 — Server-Driven Legal Actions
+
+This build moves card action button authority toward the server.
+
+## What changed
+
+### Server-authored hand card actions
+The server now sends legal actions for each card in the viewer's hand:
+- label
+- action type
+- payload
+- style
+- reason
+
+The client no longer has to guess most inspector buttons.
+
+### Inspector uses server actions
+The full card inspector now renders server-approved card actions instead of recreating card legality locally.
+
+### Hand glow uses server actions
+Cards glow as playable only when the server says they have at least one legal action.
+
+### Face-up reveal buttons use server actions
+If a face-up card is also in your hand, the reveal panel pulls from that hand card's server-authored legal actions.
+
+### Public card safety
+Publicly viewed cards still show no actions unless the viewer owns that exact card instance.
+
+## Legal action areas covered
+
+This pass covers:
+- Calling / Kin play
+- Gear equip / carry / sell / Little Helper assignment
+- Start Trouble
+- Restless Foes
+- combat Tricks
+- Foe modifiers
+- Hex targeting
+- Specials
+- Unexpected Company
+- Flee Tricks
+- reaction cards
+
+## Why this matters
+
+The client should not decide what is legal. The app should only show buttons the rules engine says are legal.
+
+This reduces bugs like:
+- Add Foe appearing at the wrong time
+- public cards showing use buttons
+- post-combat cards glowing too early
+- cards having inspector actions that the server would reject
+
+## Still future work
+
+Top-level phase buttons and some prompt flows still have their own UI logic. The next hardening step is to expand this same server-authority model to all combat/phase/prompt actions.
+
+
+---
+
+# Loot Goblins v0.7.3 — Event Priority Audit
+
+This build makes event interruption rules explicit instead of relying on text guessing.
+
+## New event metadata
+
+Announcements now include:
+
+- `priority`: `hard`, `soft`, or `log`
+- `category`: event category such as combat, hex, card, backup, turn
+- `audience`: currently defaults to `all`, with support for actor/affected/system use later
+- `requiresAck`: true/false
+
+The client now respects this metadata first. Text-based detection remains only as a legacy fallback.
+
+## Hard events
+
+These are table-stopping moments:
+- combat-changing cards
+- Foe added / combat state changes
+- Backup deal locked
+- Flee result / Bad News
+- death / zero Glory / victory
+- opening roll complete
+- Hex blocked/canceled or Hex choice prompts
+
+## Soft events
+
+These are visible but non-blocking:
+- Calling / Kin played
+- Gear equipped/carried
+- routine card gained/drawn
+- routine Hex reveal/resolved bookkeeping
+- Glory/Tribute/effect updates that do not demand a table stop
+
+## Log-only events
+
+These do not create popups:
+- Use Loot / Sell before Tribute bookkeeping
+- pass/done buffing
+- waiting states
+- Backup negotiation setup/offers/declines before the deal is locked
+- routine phase movement
+
+## Why this matters
+
+The game should not interrupt players based on fragile text matching. The server now tells the client exactly how each table event should behave.
+
+## Next best step
+
+v0.7.4 should focus on phase grammar: every phase should clearly answer who acts, what they can do, and what happens next.
+
+
+---
+
+# Loot Goblins v0.7.4 — Phase Grammar Pass
+
+This build makes the app act more like a confident table host.
+
+## New phase grammar system
+
+The client now centralizes player-facing phase copy through `phaseGrammar()`, which describes:
+
+- title
+- main copy
+- who needs to act
+- what happens next
+- urgency/waiting state
+- primary buttons
+
+## What changed
+
+### Top banner
+The top banner now includes a compact phase grammar strip:
+
+- Who acts
+- Next
+
+This reduces mystery states and makes waiting more understandable.
+
+### Mobile center panel
+Mobile stage panels now include a compact host guidance box with:
+
+- Who acts
+- Next
+
+This applies across:
+- Opening Roll
+- Start Turn
+- Hex Reveal
+- No Foe / Choose Move
+- Combat
+- Flee
+- Use Loot
+- Tribute
+- End Turn
+- Body Loot
+- Prompts
+- Reactions
+
+### Prompt priority
+Mobile now prioritizes active prompts/reactions/body-loot before generic phase panels, so decision states do not get buried behind normal phase UI.
+
+### Reaction stage
+Added a dedicated mobile Reaction Window stage so Wish Ring / Loaded Die / Flee reactions feel like table states rather than hidden banner actions.
+
+### Safer fallback states
+Fallback copy now tells players who is acting and what should happen next instead of using vague software language.
+
+## Goal
+
+Every screen should answer:
+
+1. What is happening?
+2. Who acts?
+3. What can they do?
+4. What happens next?
+
+
+---
+
+# Loot Goblins v0.7.5 — Hand + Decision Drawer Upgrade
+
+This build makes the bottom hand drawer adapt to the current job instead of always acting like a generic hand tray.
+
+## New drawer modes
+
+- Normal Hand
+- Combat Cards
+- Tribute Required
+- Sell Gear
+- Trade Offer
+- Trade Review
+- Add Foe to Combat
+- Discard / Lose Card prompts
+- Body Loot
+- Reaction Window
+
+## What changed
+
+### Mode-specific headers
+The drawer now changes its title, eyebrow, and hint based on what the player is being asked to do.
+
+Examples:
+- Combat Cards — "Play, interfere, or pass"
+- Sell Gear — "Choose Gear to cash in"
+- Trade Offer — "Choose cards to offer"
+- Tribute Required — "Pick excess cards"
+
+### Decision drawer content
+When the player is resolving a card-choice prompt, the drawer now shows the relevant decision cards directly in the hand area.
+
+Supported decision flows:
+- sell selected Gear
+- choose cards to offer in trade
+- accept/decline trade review
+- choose Foe for Unexpected Company
+- choose discard cards
+- choose Gear to lose
+- loot the body
+- reaction window actions
+
+### Sticky decision controls
+Sell, trade, discard, and review flows now have sticky confirm/cancel controls in the drawer.
+
+### Less generic copy
+The drawer no longer asks players to mentally translate whether they are browsing, selling, trading, tributing, discarding, or reacting.
+
+## Why this matters
+
+The hand drawer is where most player decisions happen. It now behaves more like a context-aware tool instead of one generic card shelf.
