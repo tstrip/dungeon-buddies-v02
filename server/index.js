@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.2-no-foe-gear-choice-hotfix-v0782' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.3-action-banner-sell-helper-hotfix-v0783' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -386,6 +386,7 @@ function publicPlayer(room, p, viewerId) {
     heavyLimit: heavyLimit(p),
     extraCallingSlots: p.extraCallingSlots || 0,
     extraKinSlots: p.extraKinSlots || 0,
+    usedHalfstepSale: Boolean(p.usedHalfstepSale),
     statusEffects: (p.temporaryEffects || []).filter((e) => e.visible !== false).map(publicStatusEffect),
     dead: Boolean(p.dead)
   };
@@ -395,7 +396,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.8.2-no-foe-gear-choice-hotfix-v0782',
+    version: '0.11.8.3-action-banner-sell-helper-hotfix-v0783',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -738,8 +739,16 @@ function serializePrompt(prompt, viewerId) {
   const requiresYou = prompt.playerId === viewerId;
   let options = [];
   if (requiresYou) {
-    if (prompt.type === 'CHOOSE_PLAYER') options = (prompt.options || []).map((p) => ({ id: p.id, name: p.name }));
-    else options = (prompt.options || []).map(publicCard);
+    if (prompt.type === 'CHOOSE_PLAYER' || prompt.type === 'CHOOSE_HIRELING_TARGET') {
+      options = (prompt.options || []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        renown: p.renown,
+        power: p.renown + gearCombatBonus(p),
+        helperCount: littleHelpers(p).length,
+        helperName: littleHelpers(p)[0]?.publicName || 'Little Helper'
+      }));
+    } else options = (prompt.options || []).map(publicCard);
   }
   return {
     id: prompt.id,
@@ -2357,7 +2366,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.8.2-no-foe-gear-choice-hotfix-v0782' });
+  socket.emit('ready', { version: '0.11.8.3-action-banner-sell-helper-hotfix-v0783' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2590,7 +2599,7 @@ function handleAction(socket, room, player, payload) {
     if (directIds.length) {
       const result = sellSpecificGear(room, player, directIds, effect);
       if (result.error) return emitError(socket, result.error);
-      announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
+      announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}. +${result.glory} Glory.`, null, { importance: 'major' });
       log(room, `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value.`);
       return;
     }
@@ -2626,9 +2635,15 @@ function handleAction(socket, room, player, payload) {
 
   if (type === 'SACRIFICE_HIRELING_FLEE') {
     if (room.phase !== 'ESCAPE' || room.escape?.currentPlayerId !== player.id) return emitError(socket, 'You can only sacrifice Little Helper while you are Fleeing.');
-    const hireling = littleHelpers(player)[0];
+    const hireling = activeLittleHelpers(player)[0] || littleHelpers(player)[0];
     if (!hireling) return emitError(socket, 'You have no Little Helper to sacrifice.');
-    discardSpecificGear(room, player, hireling.instanceId);
+    const removed = discardSpecificGear(room, player, hireling.instanceId);
+    if (!removed) return emitError(socket, 'Little Helper was no longer available.');
+    if (room.escape) {
+      room.escape.awaitingContinue = false;
+      room.escape.lastRoll = null;
+    }
+    room.reaction = null;
     announce(room, 'flee', 'Little Helper Distracts the Foe', `${player.name} discarded Little Helper and escaped automatically. Any Gear it carried was discarded too.`, hireling, { importance: 'major' });
     log(room, `${player.name} sacrificed Little Helper to escape.`);
     continueFlee(room);
@@ -3140,29 +3155,35 @@ function transferGearToPlayer(room, from, to, gearId) {
 function sellSpecificGear(room, player, ids, effect = {}) {
   const unique = [...new Set(ids || [])];
   if (!unique.length) return { error: 'Choose at least one Gear card to sell.' };
-  const valid = new Set(ownedGearOptions(player).map((c) => c.instanceId));
-  if (!unique.every((id) => valid.has(id))) return { error: 'Choose valid Gear to sell.' };
+  const available = ownedGearOptions(player);
+  const byId = new Map(available.map((c) => [c.instanceId, c]));
+  if (!unique.every((id) => byId.has(id))) return { error: 'Choose valid Gear to sell.' };
+
+  const selected = unique.map((id) => byId.get(id));
+  const values = selected.map(gearJunkValue);
+  let total = values.reduce((a, b) => a + b, 0);
+  let doubled = false;
+  if (player.origin?.mechanicalSlot === 'HALFLING_EQUIV' && !player.usedHalfstepSale && values.length) {
+    total += Math.max(...values);
+    doubled = true;
+  }
+
+  const threshold = effect.threshold || 1000;
+  const glory = Math.floor(total / threshold);
+  if (glory <= 0) return { error: `Select at least ${threshold} Junk Value before selling.` };
+
   const sold = [];
   for (const id of unique) {
     const card = removeOwnedGearOrHandCard(player, id);
     if (!card) return { error: 'One selected Gear card was no longer available.' };
     sold.push(card);
   }
-  const values = sold.map(gearJunkValue);
-  let total = values.reduce((a, b) => a + b, 0);
-  let doubled = false;
-  if (player.origin?.mechanicalSlot === 'HALFLING_EQUIV' && !player.usedHalfstepSale && values.length) {
-    total += Math.max(...values);
-    player.usedHalfstepSale = true;
-    doubled = true;
-  }
+  if (doubled) player.usedHalfstepSale = true;
   for (const card of sold) {
     if (card.slot === 'HEAD') clearHeadLinkedEffects(room, player, `${card.publicName} was sold`);
     discardCard(room, card);
   }
-  const threshold = effect.threshold || 1000;
-  const glory = Math.floor(total / threshold);
-  if (glory > 0) gainGlory(room, player, glory, Boolean(effect.canWin), false);
+  gainGlory(room, player, glory, Boolean(effect.canWin), false);
   return { sold, total, doubled, glory };
 }
 
@@ -3493,7 +3514,7 @@ function resolvePrompt(socket, room, player, payload) {
     if (!ids.length) { room.pendingPrompt = null; announce(room, 'gear', 'Sell Gear Skipped', `${player.name} sold no Gear.`, null, { importance: 'normal' }); if (after !== 'STAY') continueAfterPrompt(room, after); return; }
     const result = sellSpecificGear(room, player, ids, prompt.meta?.effect || {});
     if (result.error) return emitError(socket, result.error);
-    announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
+    announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}. +${result.glory} Glory.`, null, { importance: 'major' });
     log(room, `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.`);
     continueAfterPrompt(room, after);
     return;

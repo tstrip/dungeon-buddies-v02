@@ -337,6 +337,18 @@ function announcementNeedsAck(a) {
   return announcementTier(a) === 'hard';
 }
 
+function announcementEffectSummary(card) {
+  if (!card) return '';
+  let text = String(card.publicText || '').replace(/\s+/g, ' ').trim();
+  if (!text) {
+    if (card.type === 'GEAR') text = `+${Number(card.combatBonus || 0)} Power${card.escapeBonus ? `, Flee +${card.escapeBonus}` : ''}.`;
+    else if (card.type === 'THREAT') text = `STR ${Number(card.finalStrength || card.strength || 0)}. Bad News: ${card.badNewsText || 'View card.'}`;
+    else return '';
+  }
+  text = text.replace(/^Bad News:\s*/i, 'Bad News: ');
+  return text.length > 118 ? `${text.slice(0, 115).trim()}…` : text;
+}
+
 function announcementCardLabel(card) {
   if (!card) return '';
   if (card.type === 'THREAT') return `Foe · STR ${Number(card.finalStrength || card.strength || 0)} · Bad News: ${card.badNewsText || 'See card'}`;
@@ -408,13 +420,14 @@ function globalAnnouncementHtml() {
     if (dismissedSoftAnnouncements.has(a.id)) return '';
     const icon = announcementIcon(a.kind);
     const cardLine = a.card ? announcementCardLabel(a.card) : '';
+    const effectLine = a.card ? announcementEffectSummary(a.card) : '';
     return `<section class="global-soft-popup ${escapeHtml(a.kind || '')}" data-priority="${escapeHtml(a.priority || tier)}" data-category="${escapeHtml(a.category || a.kind || '')}" role="status" aria-live="polite">
       <div class="global-soft-card">
         <div class="soft-event-icon">${icon}</div>
         <div class="soft-event-copy">
           <strong>${escapeHtml(a.title || 'Table Event')}</strong>
           <span>${escapeHtml(a.detail || cardLine || '')}</span>
-          ${cardLine && a.detail ? `<em>${escapeHtml(cardLine)}</em>` : ''}
+          ${effectLine ? `<em class="soft-event-effect">${escapeHtml(effectLine)}</em>` : (cardLine && a.detail ? `<em>${escapeHtml(cardLine)}</em>` : '')}
         </div>
         ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
         <i class="soft-event-timer" aria-hidden="true"></i>
@@ -2045,12 +2058,13 @@ function handDrawerMode() {
   const you = me();
   const p = state?.pendingPrompt;
   if (p?.requiresYou) {
-    if (p.type === 'SELL_GEAR') return { key: 'sell', decision: true, forceOpen: true, toggleLabel: 'Selling', eyebrow: 'Decision Drawer', title: 'Sell Gear', hint: 'Choose Gear to cash in. Done keeps everything.', prompt: p };
+    if (p.type === 'SELL_GEAR') return { key: 'sell', decision: true, forceOpen: true, toggleLabel: 'Selling', eyebrow: 'Decision Drawer', title: 'Sell Gear', hint: 'Choose at least 1000 Junk of Gear, or tap Done.', prompt: p };
     if (p.type === 'TRADE_OFFER_SELECT') return { key: 'trade', decision: true, forceOpen: true, toggleLabel: 'Trading', eyebrow: 'Decision Drawer', title: 'Trade Offer', hint: 'Choose cards to offer. Gifts are allowed, but the other player must accept.', prompt: p };
     if (p.type === 'TRADE_ACCEPT') return { key: 'trade-review', decision: true, forceOpen: true, toggleLabel: 'Review', eyebrow: 'Decision Drawer', title: 'Trade Offered', hint: 'Inspect the offered cards, then accept or decline.', prompt: p };
     if (p.type === 'ADD_FOE_FROM_HAND') return { key: 'add-foe', decision: true, forceOpen: true, toggleLabel: 'Choose Foe', eyebrow: 'Decision Drawer', title: 'Add Foe to Combat', hint: 'Choose exactly which Foe joins the current fight.', prompt: p };
     if (p.type === 'DISCARD_HAND_CARDS') return { key: 'discard-hand', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Cards to Discard', hint: `Pick ${p.meta?.count || 1} card${(p.meta?.count || 1) === 1 ? '' : 's'} to discard. Inspect first if needed.`, prompt: p };
     if (p.type === 'DISCARD_GEAR' || p.type === 'DISCARD_GEAR_VALUE') return { key: 'discard-gear', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Gear to Lose', hint: p.message || 'Choose the Gear required by the prompt.', prompt: p };
+    if (p.type === 'CHOOSE_HIRELING_TARGET' || p.type === 'CHOOSE_PLAYER') return { key: 'player-choice', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Choose a player.', prompt: p };
     if (p.type === 'LOOT_BODY') return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: 'Choose one card from the fallen goblin. It goes to your hand.', prompt: p };
     return { key: 'prompt', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Resolve the current choice.', prompt: p };
   }
@@ -2070,6 +2084,14 @@ function handDrawerMode() {
 
 function drawerDecisionContent(mode) {
   const cards = mode.prompt?.options || mode.bodyLoot?.cards || [];
+  if (mode.key === 'player-choice') {
+    const players = mode.prompt?.options || [];
+    return `<div class="drawer-decision-panel drawer-player-choice">
+      <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+      <div class="hand-tray v075-hand-tray expanded-tray decision-tray player-choice-tray"><div class="decision-player-grid">${players.map((p) => `<button class="drawer-player-choice-card" data-drawer-player-choice="${p.id}"><strong>${escapeHtml(p.name)}</strong><span>${escapeHtml(p.helperName || `${p.helperCount || 0} Little Helper`)}</span><small>GL ${Number(p.renown || 0)} · PWR ${Number(p.power || p.renown || 0)}</small></button>`).join('')}</div></div>
+      ${drawerControls(mode)}
+    </div>`;
+  }
   if (mode.key === 'reaction') {
     return `<div class="drawer-decision-panel drawer-reaction-panel">
       <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
@@ -2108,6 +2130,16 @@ function drawerDecisionCardHtml(card, mode) {
   return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Take card' : 'Choose'}</span></button>`;
 }
 
+function drawerSelectedSellTotal(mode) {
+  const cards = mode?.prompt?.options || [];
+  const byId = new Map(cards.map((c) => [c.instanceId, c]));
+  const values = [...selectedSell].map((id) => Number(byId.get(id)?.junkValue ?? byId.get(id)?.scrapValue ?? 0)).filter((v) => Number.isFinite(v));
+  let total = values.reduce((sum, v) => sum + v, 0);
+  const you = me();
+  if (you?.origin?.mechanicalSlot === 'HALFLING_EQUIV' && !you.usedHalfstepSale && values.length) total += Math.max(...values);
+  return total;
+}
+
 function drawerSelectedGearTotal(mode) {
   const cards = mode?.prompt?.options || [];
   const byId = new Map(cards.map((c) => [c.instanceId, c]));
@@ -2119,7 +2151,9 @@ function drawerSelectedGearTotal(mode) {
 
 function drawerControls(mode) {
   if (mode.key === 'sell') {
-    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedSell.size}</span><button class="primary" data-drawer-sell-confirm ${selectedSell.size ? '' : 'disabled'}>Sell Selected</button><button data-drawer-prompt-cancel>Done</button></div>`;
+    const threshold = Number(mode.prompt?.meta?.effect?.threshold || 1000);
+    const total = drawerSelectedSellTotal(mode);
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${total}/${threshold} Junk</span><button class="primary" data-drawer-sell-confirm ${total >= threshold ? '' : 'disabled'}>Sell for Glory</button><button data-drawer-prompt-cancel>Done</button></div>`;
   }
   if (mode.key === 'trade') {
     return `<div class="drawer-decision-actions"><span class="micro">Offering ${selectedTrade.size}</span><button class="primary" data-drawer-trade-confirm ${selectedTrade.size ? '' : 'disabled'}>Send Offer</button><button data-drawer-prompt-cancel>Cancel Trade</button></div>`;
@@ -2141,6 +2175,7 @@ function drawerControls(mode) {
     return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}/${need}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size === need ? '' : 'disabled'}>Confirm Choice</button></div>`;
   }
   if (mode.key === 'add-foe') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel</button></div>`;
+  if (mode.key === 'player-choice') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel if optional</button></div>`;
   if (mode.key === 'prompt') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass / Cancel if optional</button></div>`;
   return '';
 }
@@ -2172,6 +2207,7 @@ function attachDrawerHandlers(root, mode) {
     const card = findVisibleCardByInstance(btn.dataset.drawerInspectCard) || (mode.prompt?.options || []).find((c) => c.instanceId === btn.dataset.drawerInspectCard);
     if (card) inspectCard(card);
   }));
+  root.querySelectorAll('[data-drawer-player-choice]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { targetPlayerId: btn.dataset.drawerPlayerChoice })));
   root.querySelectorAll('[data-drawer-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.drawerPromptCard })));
   root.querySelectorAll('[data-drawer-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
     if (selectedSell.has(btn.dataset.drawerSellCard)) selectedSell.delete(btn.dataset.drawerSellCard);

@@ -9498,3 +9498,111 @@ body .global-soft-card {
     grid-template-columns: 48px minmax(0, 1fr) !important;
   }
 }
+
+
+/* Loot Goblins v0.7.8.3 — Action Banner + Sell Threshold + Helper Choice Hotfix */
+
+/* Temporary soft banners now show an effect line, not just card type. */
+.global-soft-popup .soft-event-effect {
+  color: rgba(255, 246, 214, .78);
+  font-size: .66rem;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Any generic prompt with lots of cards, including Bruiser discard, should scroll like Sell/Junk. */
+.hand-panel.drawer-mode-prompt,
+.hand-panel.drawer-mode-player-choice {
+  max-height: min(78vh, 620px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.hand-panel.drawer-mode-prompt .drawer-decision-panel,
+.hand-panel.drawer-mode-player-choice .drawer-decision-panel {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.hand-panel.drawer-mode-prompt .decision-tray,
+.hand-panel.drawer-mode-player-choice .decision-tray {
+  max-height: none !important;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+.hand-panel.drawer-mode-prompt .decision-hand-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+  align-items: start;
+  overflow: visible;
+}
+
+.hand-panel.drawer-mode-prompt .drawer-card-choice {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Player-choice prompts should be player tiles, not fake cards. */
+.decision-player-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-player-choice-card {
+  border: 1px solid rgba(255, 222, 133, .28);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 222, 133, .13), transparent 42%),
+    rgba(0,0,0,.22);
+  color: var(--ink);
+  padding: 13px 14px;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+}
+
+.drawer-player-choice-card strong {
+  font-size: .95rem;
+  line-height: 1.05;
+}
+
+.drawer-player-choice-card span {
+  color: rgba(255,246,214,.78);
+  font-size: .72rem;
+}
+
+.drawer-player-choice-card small {
+  color: var(--gold);
+  font-size: .62rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 900;
+}
+
+/* Sell threshold clarity */
+.drawer-mode-sell .drawer-decision-actions .micro {
+  color: rgba(255, 246, 214, .86);
+  font-weight: 900;
+}
+
+@media (max-width: 760px) {
+  .hand-panel.drawer-mode-prompt,
+  .hand-panel.drawer-mode-player-choice {
+    max-height: min(74vh, 560px);
+  }
+
+  .hand-panel.drawer-mode-prompt .decision-hand-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
