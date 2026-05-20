@@ -280,7 +280,7 @@ function scheduleSoftAnnouncementDismiss() {
     if (lastSoftAnnouncementId === a.id) lastSoftAnnouncementId = '';
     softAnnouncementTimer = null;
     render();
-  }, 2600);
+  }, 3000);
 }
 
 
@@ -360,11 +360,17 @@ function globalAnnouncementHtml() {
   if (tier === 'soft') {
     if (dismissedSoftAnnouncements.has(a.id)) return '';
     const icon = announcementIcon(a.kind);
+    const cardLine = a.card ? announcementCardLabel(a.card) : '';
     return `<section class="global-soft-popup ${escapeHtml(a.kind || '')}" role="status" aria-live="polite">
       <div class="global-soft-card">
         <div class="soft-event-icon">${icon}</div>
-        <div class="soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+        <div class="soft-event-copy">
+          <strong>${escapeHtml(a.title || 'Table Event')}</strong>
+          <span>${escapeHtml(a.detail || cardLine || '')}</span>
+          ${cardLine && a.detail ? `<em>${escapeHtml(cardLine)}</em>` : ''}
+        </div>
         ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
+        <i class="soft-event-timer" aria-hidden="true"></i>
       </div>
     </section>`;
   }
@@ -1129,10 +1135,10 @@ function mobileOpenedDoorResultHtml(mine, actor) {
   const contextLine = isHex ? 'Hex · Resolved immediately' : `${typeName} · Face-Up Chamber`;
   const statusLine = isHex
     ? `${mine ? 'You were hit' : `${actor} was hit`} by ${card.publicName}.`
-    : 'Added to your hand';
+    : (mine ? 'Added to your hand' : `Added to ${actor}'s hand`);
   const subLine = isHex
     ? (mine ? 'No Foe appeared. Choose your next move.' : `${actor} can now choose a move.`)
-    : (isCardPlayable(card) ? 'Playable now' : 'Choose whether to use it now or keep it in hand.');
+    : (mine ? (isCardPlayable(card) ? 'Playable now' : 'Choose whether to use it now or keep it in hand.') : `${actor} may play it now or choose a move.`);
   return `<div class="mobile-opened-door-card mobile-opened-door-action-first ${cardTypeClass(card)}">
     <button class="mobile-reveal-card-preview" data-mobile-inspect-card="${card.instanceId}" aria-label="View ${escapeHtml(card.publicName)}">${cardHtml(card, { compact: true })}</button>
     <div class="mobile-opened-door-copy">

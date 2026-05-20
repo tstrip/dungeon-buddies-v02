@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.15-legal-inspector-actions-v0615' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.16-soft-popup-fit-ux-polish-v0616' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -329,7 +329,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.15-legal-inspector-actions-v0615',
+    version: '0.10.16-soft-popup-fit-ux-polish-v0616',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -2109,7 +2109,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.15-legal-inspector-actions-v0615' });
+  socket.emit('ready', { version: '0.10.16-soft-popup-fit-ux-polish-v0616' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);

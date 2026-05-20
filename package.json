@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-legal-inspector-actions-v0615",
-  "version": "0.10.15",
+  "name": "loot-goblins-soft-popup-fit-ux-polish-v0616",
+  "version": "0.10.16",
   "private": true,
-  "description": "Loot Goblins v0.6.15: prevents public card inspection from showing illegal action buttons for cards the viewer does not own.",
+  "description": "Loot Goblins v0.6.16: fixes soft popup sizing/positioning, prevents parchment-like oversized toasts, and improves observer reveal copy.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

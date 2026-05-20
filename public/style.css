@@ -8152,3 +8152,165 @@ button[data-action="RESOLVE_HEX"] {
     radial-gradient(circle at 0 0, rgba(142,78,210,.18), transparent 46%),
     rgba(0,0,0,.24);
 }
+
+
+/* Loot Goblins v0.6.16 — Soft Popup Fit + Fine-Tooth UX Polish */
+
+/* Global soft popups must be compact toasts, not full card panels. */
+.global-modal-root .global-soft-popup,
+body .global-soft-popup {
+  position: fixed !important;
+  top: calc(10px + var(--safe-top, 0px)) !important;
+  left: 12px !important;
+  right: 12px !important;
+  width: auto !important;
+  max-width: 520px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  transform: none !important;
+  z-index: 2147483002 !important;
+  pointer-events: auto !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+  animation: goblinSoftToastIn .18s ease-out both !important;
+}
+
+.global-modal-root .global-soft-card,
+body .global-soft-card {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  padding: 9px 10px !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(255,217,132,.48) !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255,218,119,.16), transparent 45%),
+    radial-gradient(circle at 94% 0%, rgba(177,91,229,.14), transparent 44%),
+    linear-gradient(180deg, rgba(54,31,25,.97), rgba(18,10,13,.97)) !important;
+  box-shadow: 0 14px 36px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.055) !important;
+  color: var(--ink) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.global-soft-card::before,
+.global-soft-card::after {
+  content: none !important;
+}
+
+.global-soft-card .soft-event-icon {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  border-radius: 12px !important;
+}
+
+.global-soft-card .soft-event-copy {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 2px !important;
+}
+
+.global-soft-card .soft-event-copy strong {
+  display: block !important;
+  width: 100% !important;
+  color: var(--ink) !important;
+  font-size: .84rem !important;
+  line-height: 1.08 !important;
+  font-weight: 1000 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.global-soft-card .soft-event-copy span,
+.global-soft-card .soft-event-copy em {
+  display: block !important;
+  width: 100% !important;
+  color: rgba(255,246,214,.72) !important;
+  font-size: .64rem !important;
+  line-height: 1.12 !important;
+  font-style: normal !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.global-soft-card .soft-event-view {
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 4px 9px !important;
+  border-radius: 999px !important;
+  font-size: .62rem !important;
+  white-space: nowrap !important;
+}
+
+.global-soft-card .soft-event-timer {
+  position: absolute !important;
+  left: 10px !important;
+  right: 10px !important;
+  bottom: 4px !important;
+  height: 2px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(90deg, rgba(255,225,121,.95), rgba(177,91,229,.72)) !important;
+  transform-origin: left center !important;
+  animation: goblinToastTimer 3s linear forwards !important;
+  opacity: .7 !important;
+}
+
+@keyframes goblinSoftToastIn {
+  from { opacity: 0; transform: translateY(-10px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes goblinToastTimer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Keep the toast off the exact browser/UI edge on compact phones and make it even tighter. */
+@media (max-width: 760px) {
+  .global-modal-root .global-soft-popup,
+  body .global-soft-popup {
+    top: calc(8px + var(--safe-top, 0px)) !important;
+    left: 10px !important;
+    right: 10px !important;
+    max-width: none !important;
+  }
+
+  .global-modal-root .global-soft-card,
+  body .global-soft-card {
+    grid-template-columns: 32px minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding: 8px 9px 10px !important;
+    border-radius: 16px !important;
+  }
+
+  .global-soft-card .soft-event-icon {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+  }
+
+  .global-soft-card .soft-event-copy strong {
+    font-size: .76rem !important;
+  }
+
+  .global-soft-card .soft-event-copy span,
+  .global-soft-card .soft-event-copy em {
+    font-size: .59rem !important;
+  }
+}
+
+/* Observer reveal copy should feel like a spectator state, not an instruction to "you." */
+.mobile-state-no-foe .mobile-opened-door-copy small {
+  line-height: 1.18;
+}
