@@ -29,7 +29,7 @@ socket.on('session', (session) => {
 });
 socket.on('toast', ({ type, message }) => showToast(message, type));
 socket.on('state', (next) => {
-  const decisionKey = next?.pendingPrompt?.id || next?.bodyLoot?.id || `${next?.phase || 'none'}:${next?.activePlayerId || ''}`;
+  const decisionKey = next?.tradeOffer?.id || next?.pendingPrompt?.id || next?.bodyLoot?.id || `${next?.phase || 'none'}:${next?.activePlayerId || ''}`;
   if (decisionKey !== lastDecisionKey) {
     selectedSell.clear();
     selectedTrade.clear();
@@ -1000,7 +1000,7 @@ function renderPhaseBanner() {
   const root = $('phaseBanner');
   if (!root) return;
   const grammar = phaseGrammar();
-  const compactTitle = grammar.title || prettyPhase(state.phase);
+  const compactTitle = state.tradeOffer ? (state.tradeOffer.isParticipant ? `Trade with ${state.tradeOffer.theirName}` : 'Trade in Progress') : (grammar.title || prettyPhase(state.phase));
   root.className = `phase-banner panel phase-status-strip phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} urgency-${String(grammar.urgency || 'normal')}`;
   root.innerHTML = `<div class="phase-strip-main"><h2>${escapeHtml(compactTitle)}</h2></div>`;
 }
@@ -1194,6 +1194,8 @@ function renderMobilePlayShell(root) {
       showToast('Pick a glowing Foe in your hand to Start Trouble.', 'ok');
     });
   });
+  root.querySelectorAll('[data-trade-ready]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_READY')));
+  root.querySelectorAll('[data-trade-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_CONFIRM')));
   root.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (btn.dataset.action === 'START_TROUBLE' && btn.dataset.cardId) emitAction('START_TROUBLE', { cardId: btn.dataset.cardId });
@@ -1240,11 +1242,7 @@ function mobileAnnouncementHtml() {
 }
 
 function mobileTradeNoticeHtml() {
-  const t = state.tradeOffer;
-  if (!t) return '';
-  if (t.canRescind) return `<div class="mobile-trade-alert">${assetIconHtml('trade', 'event-sigil')}<span>Trade offer sent to ${escapeHtml(t.toPlayerName)}.</span><button data-action="CANCEL_TRADE">Rescind</button></div>`;
-  if (t.requiresYou) return `<div class="mobile-trade-alert">${assetIconHtml('trade', 'event-sigil')}<span>${escapeHtml(t.fromPlayerName)} offered a trade. Answer the offer.</span></div>`;
-  return `<div class="mobile-trade-alert">${assetIconHtml('trade', 'event-sigil')}<span>${escapeHtml(t.fromPlayerName)} offered ${escapeHtml(t.toPlayerName)} a trade.</span></div>`;
+  return '';
 }
 
 function mobileZeroGloryNoticeHtml() {
@@ -1275,6 +1273,7 @@ function mobilePlayerHudHtml() {
 }
 
 function mobileStageHtml() {
+  if (state.tradeOffer) return mobileTradeStageHtml(state.tradeOffer);
   if (state.reaction) return mobileReactionStageHtml(state.reaction);
   if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
   if (state.bodyLoot) return mobileBodyLootStageHtml();
@@ -1290,6 +1289,52 @@ function mobileStageHtml() {
   if (state.phase === 'GAME_OVER') return mobileGameOverStageHtml();
   return mobileRevealOrWaitingStageHtml();
 }
+
+
+function tradeOfferCardsHtml(cards, emptyText = 'No cards offered') {
+  const list = cards || [];
+  if (!list.length) return `<div class="trade-empty-offer">${escapeHtml(emptyText)}</div>`;
+  return `<div class="trade-offer-card-row">${list.map((c) => `<button class="trade-offer-preview" data-mobile-inspect-card="${c.instanceId}">${cardHtml(c, { compact: true })}<span>${escapeHtml(c.publicName)}</span></button>`).join('')}</div>`;
+}
+
+function mobileTradeStageHtml(t) {
+  const participant = Boolean(t.isParticipant);
+  if (!participant) {
+    return mobileStageShell('trade-table observer', 'Trade', `${t.fromPlayerName} ↔ ${t.toPlayerName}`, `
+      <div class="trade-table-observer-card">
+        ${assetIconHtml('trade', 'asset-sigil event-sigil')}
+        <strong>Goblins are making a deal.</strong>
+        <span>Offer details stay private unless the cards hit the table.</span>
+      </div>
+    `, { size: 'medium', icon: 'trade' });
+  }
+
+  const bothReady = Boolean(t.yourReady && t.theirReady);
+  const confirmMode = t.stage === 'CONFIRM' || bothReady;
+  const status = confirmMode
+    ? (t.yourConfirmed ? `Waiting on ${t.theirName} to confirm.` : 'Both players are ready. Confirm to finish the trade.')
+    : (t.yourReady ? `Waiting on ${t.theirName}. Changing any offer resets Ready.` : 'Build your offer in the drawer, then tap Ready.');
+  return mobileStageShell('trade-table participant', 'Trade Table', `${t.yourName} ↔ ${t.theirName}`, `
+    <div class="trade-table-board ${confirmMode ? 'confirm-mode' : ''}">
+      <div class="trade-table-status">${escapeHtml(status)}</div>
+      <div class="trade-offer-columns">
+        <section class="trade-offer-box yours ${t.yourReady ? 'ready' : ''}">
+          <header><b>Your Offer</b><span>${t.yourReady ? 'Ready' : `${(t.yourOffer || []).length} card${(t.yourOffer || []).length === 1 ? '' : 's'}`}</span></header>
+          ${tradeOfferCardsHtml(t.yourOffer, 'Gift / receive only')}
+        </section>
+        <section class="trade-offer-box theirs ${t.theirReady ? 'ready' : ''}">
+          <header><b>${escapeHtml(t.theirName)}'s Offer</b><span>${t.theirReady ? 'Ready' : `${(t.theirOffer || []).length} card${(t.theirOffer || []).length === 1 ? '' : 's'}`}</span></header>
+          ${tradeOfferCardsHtml(t.theirOffer, 'Nothing yet')}
+        </section>
+      </div>
+      <div class="trade-table-actions">
+        ${confirmMode ? `<button class="primary" data-trade-confirm ${t.yourConfirmed ? 'disabled' : ''}>${t.yourConfirmed ? 'Confirmed' : 'Confirm Trade'}</button>` : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready'}</button>`}
+        <button data-action="CANCEL_TRADE">Cancel Trade</button>
+      </div>
+    </div>
+  `, { size: 'large', icon: 'trade' });
+}
+
 
 function mobileReactionStageHtml(reaction) {
   const grammar = phaseGrammar();
@@ -2000,6 +2045,38 @@ function renderPrompt() {
   root.innerHTML = '';
 }
 
+
+function myPublicPlayer() {
+  return (state?.players || []).find((p) => p.isYou) || null;
+}
+
+function myTradeableCards() {
+  const p = myPublicPlayer();
+  const publicGear = p ? [...(p.equippedGear || []), ...(p.carriedGear || [])] : [];
+  const seen = new Set();
+  return [...myHand(), ...publicGear].filter((c) => {
+    if (!c || seen.has(c.instanceId) || c.isClone) return false;
+    seen.add(c.instanceId);
+    return true;
+  });
+}
+
+function myGoblinStripHtml() {
+  const p = myPublicPlayer();
+  if (!p) return '';
+  const calls = [p.role, ...(p.extraRoles || [])].filter(Boolean).map((c) => c.publicName);
+  const kin = [p.origin, ...(p.extraOrigins || [])].filter(Boolean).map((c) => c.publicName);
+  const gearCount = Number((p.equippedGear || []).length + (p.carriedGear || []).length);
+  const statusCount = Number((p.statusEffects || []).filter((e) => e.visible !== false).length);
+  const identity = `${calls.join(' + ') || 'No Calling'} / ${kin.join(' + ') || 'No Kin'}`;
+  return `<button class="my-goblin-strip ${p.dead ? 'dead' : ''}" type="button" data-my-goblin>
+    <span class="my-goblin-eyebrow">Your Goblin</span>
+    <strong>${escapeHtml(p.name)} · ${escapeHtml(identity)}</strong>
+    <span>GL ${Number(p.renown || 0)}/10 · PWR ${playerPower(p)} · Gear ${gearCount}${statusCount ? ` · Effects ${statusCount}` : ''}</span>
+  </button>`;
+}
+
+
 function renderHand() {
   const root = $('handPanel');
   const you = me();
@@ -2025,6 +2102,7 @@ function renderHand() {
     </div>
   </div>`;
 
+  html += myGoblinStripHtml();
   html += `<p class="micro hand-help drawer-mode-help">${escapeHtml(mode.hint)}</p>`;
 
   if (mode.key === 'tribute') {
@@ -2051,6 +2129,11 @@ function renderHand() {
     renderHand();
   });
 
+  const myGoblinBtn = root.querySelector('[data-my-goblin]');
+  if (myGoblinBtn) myGoblinBtn.addEventListener('click', () => {
+    const p = myPublicPlayer();
+    if (p) inspectPlayer(p);
+  });
   attachDrawerHandlers(root, mode);
   attachHandScrollControls(root);
   const confirm = $('confirmTribute');
@@ -2060,6 +2143,9 @@ function renderHand() {
 
 function handDrawerMode() {
   const you = me();
+  if (state?.tradeOffer?.isParticipant) {
+    return { key: 'trade-session', decision: true, forceOpen: true, toggleLabel: 'Trading', eyebrow: 'Trade Table', title: 'Your Offer', hint: state.tradeOffer.stage === 'CONFIRM' ? 'Both offers are ready. Confirm above to finish, or cancel.' : 'Tap cards to add/remove them from your offer. Empty offers are allowed.', trade: state.tradeOffer };
+  }
   const p = state?.pendingPrompt;
   if (p?.requiresYou) {
     if (p.type === 'SELL_GEAR') return { key: 'sell', decision: true, forceOpen: true, toggleLabel: 'Selling', eyebrow: 'Decision Drawer', title: 'Sell Gear', hint: 'Choose at least 1000 Junk of Gear, or tap Done.', prompt: p };
@@ -2088,6 +2174,20 @@ function handDrawerMode() {
 
 function drawerDecisionContent(mode) {
   const cards = mode.prompt?.options || mode.bodyLoot?.cards || [];
+  if (mode.key === 'trade-session') {
+    syncTradeSessionSelection(mode);
+    const available = myTradeableCards();
+    const cardHtmlList = available.map((c) => {
+      const selected = selectedTrade.has(c.instanceId);
+      const source = myHand().some((h) => h.instanceId === c.instanceId) ? 'Hand' : 'Gear';
+      return `<button class="drawer-card-choice trade-session-choice ${selected ? 'selected' : ''}" data-trade-session-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>${selected ? '✓ Offered' : source}</span></button>`;
+    }).join('');
+    return `<div class="drawer-decision-panel drawer-trade-session">
+      <div class="drawer-decision-copy"><strong>Your Offer</strong><span>${available.length ? 'Tap cards to add or remove them. Gifts are allowed.' : 'You have no tradable cards, but you can still receive a gift.'}</span></div>
+      <div class="hand-tray v075-hand-tray expanded-tray decision-tray"><div class="card-row hand-row expanded-hand-row decision-hand-row">${cardHtmlList || '<div class="drawer-empty-state"><span>No tradable cards.</span></div>'}</div></div>
+      ${drawerControls(mode)}
+    </div>`;
+  }
   if (mode.key === 'player-choice') {
     const players = mode.prompt?.options || [];
     return `<div class="drawer-decision-panel drawer-player-choice">
@@ -2118,6 +2218,11 @@ function drawerDecisionCardHtml(card, mode) {
   const selectedSellCard = selectedSell.has(card.instanceId);
   const selectedTradeCard = selectedTrade.has(card.instanceId);
   const selectedDiscardCard = selectedTribute.has(card.instanceId);
+  if (mode.key === 'trade-session') {
+    const t = mode.trade || {};
+    const bothReady = Boolean(t.yourReady && t.theirReady);
+    return `<div class="drawer-decision-actions"><span class="micro">${selectedTrade.size} offered</span>${bothReady ? '<button class="primary" data-trade-confirm>Confirm Trade</button>' : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready'}</button>`}<button data-action="CANCEL_TRADE">Cancel</button></div>`;
+  }
   if (mode.key === 'sell') {
     const value = Number(card.junkValue || card.scrapValue || 0);
     return `<button class="drawer-card-choice ${selectedSellCard ? 'selected' : ''}" data-drawer-sell-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedSellCard ? '✓ Selling' : `${value} Junk`}</span></button>`;
@@ -2142,6 +2247,16 @@ function syncServerPreselectedSell(mode) {
   if (mode.prompt?.meta) mode.prompt.meta.preselected = [];
 }
 
+function syncTradeSessionSelection(mode) {
+  if (mode?.key !== 'trade-session') return;
+  const ids = mode?.trade?.yourOfferIds || [];
+  const key = `${mode.trade?.id || ''}:${ids.join('|')}`;
+  if (syncTradeSessionSelection.lastKey === key) return;
+  selectedTrade = new Set(ids);
+  syncTradeSessionSelection.lastKey = key;
+}
+
+
 function drawerSelectedSellTotal(mode) {
   const cards = mode?.prompt?.options || [];
   const byId = new Map(cards.map((c) => [c.instanceId, c]));
@@ -2162,6 +2277,11 @@ function drawerSelectedGearTotal(mode) {
 }
 
 function drawerControls(mode) {
+  if (mode.key === 'trade-session') {
+    const t = mode.trade || {};
+    const bothReady = Boolean(t.yourReady && t.theirReady);
+    return `<div class="drawer-decision-actions"><span class="micro">${selectedTrade.size} offered</span>${bothReady ? '<button class="primary" data-trade-confirm>Confirm Trade</button>' : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready'}</button>`}<button data-action="CANCEL_TRADE">Cancel</button></div>`;
+  }
   if (mode.key === 'sell') {
     syncServerPreselectedSell(mode);
     const threshold = Number(mode.prompt?.meta?.effect?.threshold || 1000);
@@ -2217,6 +2337,17 @@ function attachDrawerHandlers(root, mode) {
       inspectCard(card);
     });
   });
+  root.querySelectorAll('[data-trade-session-card]').forEach((btn) => btn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = btn.dataset.tradeSessionCard;
+    if (selectedTrade.has(id)) selectedTrade.delete(id);
+    else selectedTrade.add(id);
+    emitAction('TRADE_SET_OFFER', { cardIds: [...selectedTrade] });
+    renderHand();
+  }));
+  root.querySelectorAll('[data-trade-ready]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_READY')));
+  root.querySelectorAll('[data-trade-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_CONFIRM')));
   root.querySelectorAll('[data-drawer-inspect-card]').forEach((btn) => btn.addEventListener('click', () => {
     const card = findVisibleCardByInstance(btn.dataset.drawerInspectCard) || (mode.prompt?.options || []).find((c) => c.instanceId === btn.dataset.drawerInspectCard);
     if (card) inspectCard(card);

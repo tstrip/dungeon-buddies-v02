@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.4-turn-flow-flee-bodyloot-hotfix-v0784' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9-trade-table-my-goblin-v079' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -396,7 +396,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.8.4-turn-flow-flee-bodyloot-hotfix-v0784',
+    version: '0.11.9-trade-table-my-goblin-v079',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -476,6 +476,7 @@ function actionBlockedByTableState(room, player) {
   if (player.dead) return true;
   if (room.pendingPrompt) return true;
   if (room.pendingHex) return true;
+  if (room.tradeOffer) return true;
   return false;
 }
 
@@ -634,23 +635,58 @@ function serializePendingHex(room, viewerId) {
 }
 
 function serializeTradeOffer(room, viewerId) {
-  const offer = room.tradeOffer;
-  if (!offer) return null;
-  const from = getPlayer(room, offer.fromPlayerId);
-  const to = getPlayer(room, offer.toPlayerId);
-  const offered = (offer.cardIds || []).map((id) => findCardInPlayerZones(from, id)).filter(Boolean).map(publicCard);
-  return {
-    id: offer.id,
-    fromPlayerId: offer.fromPlayerId,
+  const t = room.tradeOffer;
+  if (!t) return null;
+  const from = getPlayer(room, t.fromPlayerId);
+  const to = getPlayer(room, t.toPlayerId);
+  const isParticipant = viewerId === t.fromPlayerId || viewerId === t.toPlayerId;
+  const yourId = isParticipant ? viewerId : null;
+  const theirId = isParticipant ? (viewerId === t.fromPlayerId ? t.toPlayerId : t.fromPlayerId) : null;
+
+  function cardsFor(playerId) {
+    const p = getPlayer(room, playerId);
+    if (!p) return [];
+    return (t.offers?.[playerId] || []).map((id) => findCardInPlayerZones(p, id)).filter(Boolean).map(publicCard);
+  }
+
+  const fromCards = cardsFor(t.fromPlayerId);
+  const toCards = cardsFor(t.toPlayerId);
+  const out = {
+    id: t.id,
+    fromPlayerId: t.fromPlayerId,
     fromPlayerName: from?.name || 'Player',
-    toPlayerId: offer.toPlayerId,
+    toPlayerId: t.toPlayerId,
     toPlayerName: to?.name || 'Player',
-    cardIds: offer.cardIds || [],
-    cards: offered,
-    stage: offer.stage || 'OFFERED',
-    requiresYou: viewerId === offer.toPlayerId,
-    canRescind: viewerId === offer.fromPlayerId
+    stage: t.stage || 'NEGOTIATING',
+    ready: t.ready || {},
+    confirmed: t.confirmed || {},
+    isParticipant,
+    canCancel: isParticipant,
+    fromCount: fromCards.length,
+    toCount: toCards.length,
+    fromReady: Boolean(t.ready?.[t.fromPlayerId]),
+    toReady: Boolean(t.ready?.[t.toPlayerId]),
+    fromConfirmed: Boolean(t.confirmed?.[t.fromPlayerId]),
+    toConfirmed: Boolean(t.confirmed?.[t.toPlayerId])
   };
+
+  if (isParticipant) {
+    out.yourPlayerId = yourId;
+    out.theirPlayerId = theirId;
+    out.yourName = getPlayer(room, yourId)?.name || 'You';
+    out.theirName = getPlayer(room, theirId)?.name || 'Other goblin';
+    out.yourOffer = cardsFor(yourId);
+    out.theirOffer = cardsFor(theirId);
+    out.yourReady = Boolean(t.ready?.[yourId]);
+    out.theirReady = Boolean(t.ready?.[theirId]);
+    out.yourConfirmed = Boolean(t.confirmed?.[yourId]);
+    out.theirConfirmed = Boolean(t.confirmed?.[theirId]);
+    out.yourOfferIds = t.offers?.[yourId] || [];
+  } else {
+    out.summary = `${from?.name || 'Player'} and ${to?.name || 'Player'} are trading.`;
+  }
+
+  return out;
 }
 
 function serializeReaction(room, viewerId) {
@@ -1996,6 +2032,10 @@ function legalActions(room, player) {
     if (room.players[0]?.id === player.id && room.players.length === 3) actions.push('START_GAME');
     return actions;
   }
+  if (room.tradeOffer) {
+    if ([room.tradeOffer.fromPlayerId, room.tradeOffer.toPlayerId].includes(player.id)) actions.push('TRADE_ACTIONS', 'CANCEL_TRADE');
+    return actions;
+  }
   if (room.pendingPrompt?.playerId === player.id) actions.push('RESOLVE_PROMPT');
   if (room.phase === 'HEX_REVEAL' && room.pendingHex?.targetPlayerId === player.id) actions.push('RESOLVE_HEX');
   if (room.phase === 'ROLL_FOR_FIRST' && room.firstRoll?.eligible?.includes(player.id) && !room.firstRoll.rolls?.[player.id]) actions.push('ROLL_FIRST');
@@ -2396,7 +2436,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.8.4-turn-flow-flee-bodyloot-hotfix-v0784' });
+  socket.emit('ready', { version: '0.11.9-trade-table-my-goblin-v079' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2435,7 +2475,67 @@ io.on('connection', (socket) => {
     broadcast(room);
   });
 
-  socket.on('action', (payload = {}) => {
+  
+function tradeParticipantIds(trade) {
+  return trade ? [trade.fromPlayerId, trade.toPlayerId] : [];
+}
+
+function isTradeParticipant(trade, playerId) {
+  return tradeParticipantIds(trade).includes(playerId);
+}
+
+function availableTradeCardMap(player) {
+  return new Map(tradeOfferOptions(player).map((c) => [c.instanceId, c]));
+}
+
+function resetTradeCommitment(trade) {
+  trade.ready = {};
+  trade.confirmed = {};
+  trade.stage = 'NEGOTIATING';
+}
+
+function completeTrade(room, trade) {
+  const from = getPlayer(room, trade.fromPlayerId);
+  const to = getPlayer(room, trade.toPlayerId);
+  if (!from || !to) return { error: 'A trading player is gone.' };
+
+  const fromIds = [...new Set(trade.offers?.[from.id] || [])];
+  const toIds = [...new Set(trade.offers?.[to.id] || [])];
+  const fromMap = availableTradeCardMap(from);
+  const toMap = availableTradeCardMap(to);
+  if (!fromIds.every((id) => fromMap.has(id)) || !toIds.every((id) => toMap.has(id))) return { error: 'One of the offered cards is no longer available.' };
+
+  const fromCards = [];
+  const toCards = [];
+  for (const id of fromIds) {
+    const card = removeOwnedGearOrHandCardAny(from, id);
+    if (card) {
+      if (card.type === 'GEAR' && card.slot === 'HEAD') clearHeadLinkedEffects(room, from, `${card.publicName} was traded away`);
+      fromCards.push(card);
+    }
+  }
+  for (const id of toIds) {
+    const card = removeOwnedGearOrHandCardAny(to, id);
+    if (card) {
+      if (card.type === 'GEAR' && card.slot === 'HEAD') clearHeadLinkedEffects(room, to, `${card.publicName} was traded away`);
+      toCards.push(card);
+    }
+  }
+
+  for (const c of fromCards) markFresh(c, 'TRADE', 'TRADE_GAIN');
+  for (const c of toCards) markFresh(c, 'TRADE', 'TRADE_GAIN');
+  to.hand.push(...fromCards);
+  from.hand.push(...toCards);
+
+  movement(room, 'PLAYER_HAND', 'PLAYER_HAND', 'Trade Complete', `${from.name} and ${to.name} exchanged cards.`, fromCards[0] || toCards[0] || null);
+  announce(room, 'trade', 'Trade Complete', `${from.name} and ${to.name} made a deal.`, null, { importance: 'normal' });
+  log(room, `${from.name} and ${to.name} traded. ${from.name} gave ${fromCards.length}; ${to.name} gave ${toCards.length}.`);
+  room.tradeOffer = null;
+  return { fromCards, toCards };
+}
+
+
+socket.on('action', (payload = {}) => {
     const room = rooms.get(socket.data.roomCode);
     const player = room && getPlayer(room, socket.data.playerId);
     if (!room || !player) return emitError(socket, 'You are not in a room.');
@@ -2645,22 +2745,70 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'START_TRADE') {
+    if (room.tradeOffer) return emitError(socket, 'Finish the current trade first.');
     if (!canActOutsideCombat(room) || !isOwnTurn(room, socket)) return emitError(socket, 'Trades can only be proposed on your own turn outside combat.');
     const target = getPlayer(room, payload.targetPlayerId);
     if (!target || target.id === player.id || target.dead) return emitError(socket, 'Choose another living player to trade with.');
-    const options = tradeOfferOptions(player);
-    if (!options.length) return emitError(socket, 'You have no cards available to offer.');
-    createPrompt(room, { type: 'TRADE_OFFER_SELECT', playerId: player.id, message: `Choose cards to offer ${target.name}. Gifts are allowed; the other player must still accept.`, options, meta: { targetPlayerId: target.id, optional: true, after: 'STAY' } });
-    announce(room, 'trade', 'Trade Started', `${player.name} is preparing an offer for ${target.name}.`, null, { importance: 'normal' });
+    room.tradeOffer = {
+      id: instanceId(),
+      fromPlayerId: player.id,
+      toPlayerId: target.id,
+      offers: { [player.id]: [], [target.id]: [] },
+      ready: {},
+      confirmed: {},
+      stage: 'NEGOTIATING',
+      createdAt: Date.now()
+    };
+    announce(room, 'trade', 'Trade Started', `${player.name} started a trade with ${target.name}.`, null, { importance: 'normal' });
+    log(room, `${player.name} started a trade with ${target.name}.`);
     return;
   }
 
   if (type === 'CANCEL_TRADE') {
-    if (!room.tradeOffer || room.tradeOffer.fromPlayerId !== player.id) return emitError(socket, 'You have no trade offer to rescind.');
-    const target = getPlayer(room, room.tradeOffer.toPlayerId);
-    announce(room, 'trade', 'Trade Rescinded', `${player.name} rescinded the trade offer${target ? ` to ${target.name}` : ''}.`, null, { importance: 'normal' });
+    const trade = room.tradeOffer;
+    if (!trade || !isTradeParticipant(trade, player.id)) return emitError(socket, 'You are not in a trade.');
+    const otherId = trade.fromPlayerId === player.id ? trade.toPlayerId : trade.fromPlayerId;
+    const other = getPlayer(room, otherId);
+    announce(room, 'trade', 'Trade Canceled', `${player.name} walked away from the trade${other ? ` with ${other.name}` : ''}.`, null, { importance: 'normal' });
     room.tradeOffer = null;
-    if (room.pendingPrompt?.type === 'TRADE_ACCEPT') room.pendingPrompt = null;
+    room.pendingPrompt = null;
+    return;
+  }
+
+  if (type === 'TRADE_SET_OFFER') {
+    const trade = room.tradeOffer;
+    if (!trade || !isTradeParticipant(trade, player.id)) return emitError(socket, 'You are not in a trade.');
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
+    const valid = availableTradeCardMap(player);
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose cards you still own.');
+    trade.offers = trade.offers || {};
+    trade.offers[player.id] = ids;
+    resetTradeCommitment(trade);
+    return;
+  }
+
+  if (type === 'TRADE_READY') {
+    const trade = room.tradeOffer;
+    if (!trade || !isTradeParticipant(trade, player.id)) return emitError(socket, 'You are not in a trade.');
+    trade.ready = trade.ready || {};
+    trade.ready[player.id] = true;
+    trade.confirmed = {};
+    if (trade.ready[trade.fromPlayerId] && trade.ready[trade.toPlayerId]) trade.stage = 'CONFIRM';
+    else trade.stage = 'NEGOTIATING';
+    return;
+  }
+
+  if (type === 'TRADE_CONFIRM') {
+    const trade = room.tradeOffer;
+    if (!trade || !isTradeParticipant(trade, player.id)) return emitError(socket, 'You are not in a trade.');
+    if (!(trade.ready?.[trade.fromPlayerId] && trade.ready?.[trade.toPlayerId])) return emitError(socket, 'Both players must be Ready before the trade can finish.');
+    trade.stage = 'CONFIRM';
+    trade.confirmed = trade.confirmed || {};
+    trade.confirmed[player.id] = true;
+    if (trade.confirmed[trade.fromPlayerId] && trade.confirmed[trade.toPlayerId]) {
+      const result = completeTrade(room, trade);
+      if (result?.error) return emitError(socket, result.error);
+    }
     return;
   }
 
@@ -3508,7 +3656,7 @@ function resolvePrompt(socket, room, player, payload) {
     const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
     if (payload.cancel) { room.pendingPrompt = null; announce(room, 'trade', 'Trade Canceled', `${player.name} canceled the trade offer.`, null, { importance: 'normal' }); return; }
     const valid = new Set((prompt.options || []).map((c) => c.instanceId));
-    if (!ids.length) return emitError(socket, 'Choose at least one card to offer, or cancel.');
+    /* zero-card gift offers allowed */
     if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid cards you own.');
     const target = getPlayer(room, prompt.meta?.targetPlayerId);
     if (!target) return emitError(socket, 'Trade target is no longer available.');

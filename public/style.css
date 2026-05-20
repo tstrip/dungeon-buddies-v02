@@ -9745,3 +9745,246 @@ body .global-soft-card {
     text-align: left;
   }
 }
+
+
+/* Loot Goblins v0.7.9 — Trade Table + My Goblin Tray */
+
+/* Persistent player identity strip in the hand tray */
+.my-goblin-strip {
+  width: 100%;
+  border: 1px solid rgba(255, 222, 133, .22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(122, 235, 171, .14), transparent 42%),
+    rgba(0,0,0,.18);
+  color: var(--ink);
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  margin: 5px 0 4px;
+}
+
+.my-goblin-strip .my-goblin-eyebrow {
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: .55rem;
+  font-weight: 1000;
+}
+
+.my-goblin-strip strong {
+  font-size: .74rem;
+  line-height: 1.08;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-goblin-strip span:last-child {
+  color: rgba(255,246,214,.72);
+  font-size: .65rem;
+  line-height: 1.08;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-goblin-strip.dead {
+  border-color: rgba(255, 126, 134, .35);
+  background: rgba(70,20,30,.22);
+}
+
+/* Trade table stage */
+.mobile-state-trade-table {
+  gap: 10px;
+}
+
+.trade-table-board {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(255, 222, 133, .20);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 222, 133, .10), transparent 44%),
+    rgba(0,0,0,.18);
+  padding: 12px;
+}
+
+.trade-table-status {
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.18);
+  color: rgba(255,246,214,.82);
+  padding: 9px 10px;
+  text-align: center;
+  font-size: .74rem;
+  font-weight: 850;
+}
+
+.trade-offer-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.trade-offer-box {
+  min-width: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 222, 133, .22);
+  background: rgba(0,0,0,.18);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.trade-offer-box.ready {
+  border-color: rgba(123, 236, 178, .48);
+  box-shadow: inset 0 0 0 1px rgba(123,236,178,.12);
+}
+
+.trade-offer-box header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.trade-offer-box header b {
+  font-size: .72rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trade-offer-box header span {
+  color: var(--gold);
+  font-size: .58rem;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .10em;
+}
+
+.trade-offer-card-row {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.trade-offer-preview {
+  width: 82px;
+  min-width: 82px;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.16);
+  color: var(--ink);
+  padding: 5px;
+}
+
+.trade-offer-preview .hand-card {
+  pointer-events: none;
+}
+
+.trade-offer-preview span {
+  width: 100%;
+  font-size: .52rem;
+  color: rgba(255,246,214,.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trade-empty-offer {
+  display: grid;
+  place-items: center;
+  min-height: 92px;
+  color: rgba(255,246,214,.55);
+  font-size: .68rem;
+  border: 1px dashed rgba(255,255,255,.10);
+  border-radius: 14px;
+}
+
+.trade-table-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.trade-table-observer-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  border-radius: 22px;
+  border: 1px solid rgba(255,222,133,.20);
+  background: rgba(0,0,0,.20);
+  padding: 18px;
+}
+
+.trade-table-observer-card strong {
+  font-size: 1rem;
+}
+
+.trade-table-observer-card span {
+  color: rgba(255,246,214,.70);
+  font-size: .75rem;
+}
+
+/* Trade drawer */
+.hand-panel.drawer-mode-trade-session {
+  max-height: min(78vh, 620px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.drawer-mode-trade-session .drawer-decision-panel {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.drawer-mode-trade-session .decision-tray {
+  max-height: none !important;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawer-mode-trade-session .decision-hand-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px;
+  align-items: start;
+  overflow: visible;
+}
+
+.drawer-mode-trade-session .drawer-card-choice {
+  width: 100%;
+  min-width: 0;
+}
+
+.trade-session-choice.selected {
+  outline: 3px solid rgba(123,236,178,.9);
+  box-shadow: 0 0 0 4px rgba(123,236,178,.15), 0 12px 24px rgba(0,0,0,.32);
+}
+
+@media (max-width: 420px) {
+  .trade-offer-columns {
+    grid-template-columns: 1fr;
+  }
+  .trade-table-actions {
+    grid-template-columns: 1fr;
+  }
+  .drawer-mode-trade-session .decision-hand-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
