@@ -1951,6 +1951,7 @@ function confirmTribute() {
 function isReactionCardPlayable(card) {
   const r = state?.reaction;
   if (!r || !card) return false;
+  if (!ownsVisibleCard(card)) return false;
   if (!r.requiresYou) return false;
   if (r.type === 'HEX_CANCEL_REACTION') return card.id === 'SPECIAL_WISHING_RING_A';
   if (r.type === 'DIE_ROLL_REACTION') return card.id === 'SPECIAL_LOADED_DIE';
@@ -1961,15 +1962,18 @@ function isReactionCardPlayable(card) {
 
 function isCardPlayable(card) {
   if (!state || !card) return false;
+  if (!ownsVisibleCard(card)) return false;
   if (state.pendingPrompt) return false;
   if (state.reaction) return isReactionCardPlayable(card);
   if (card.type === 'ROLE' || card.type === 'ORIGIN') return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
   if (card.type === 'GEAR') return !isOneUseConsumableCard(card) && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
+    if (timing.includes('POST_COMBAT_WIN')) return isMyTurn() && state.phase === 'POST_COMBAT';
     if (timing.includes('ANY_TIME')) return true;
     if (timing.includes('DURING_COMBAT')) return state.phase === 'COMBAT';
-    return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
+    if (timing.includes('OWN_TURN_OUTSIDE_COMBAT')) return isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase);
+    return false;
   }
   if (card.type === 'THREAT') return isMyTurn() && state.phase === 'NO_THREAT_CHOICE';
   if (card.type === 'TRICK' || card.type === 'THREAT_MODIFIER') return state.phase === 'COMBAT';
@@ -2235,6 +2239,9 @@ function reactionCardActions(card) {
 
 function cardActions(card) {
   const actions = [];
+  if (!ownsVisibleCard(card)) {
+    return `<p>No legal actions right now.</p><p class="micro">You are viewing this card publicly. Only the player who owns the card, or the player currently prompted to resolve it, can use it.</p>`;
+  }
   if (state.pendingPrompt) return `<p>Resolve the current prompt first.</p>`;
   if (state.reaction) return reactionCardActions(card);
   if ((card.type === 'ROLE' || card.type === 'ORIGIN') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) actions.push(`<button class="primary" data-inspect-action="PLAY">Play ${typeLabel(card)}</button>`);
@@ -2270,7 +2277,10 @@ function cardActions(card) {
   }
   if (card.type === 'SPECIAL') {
     const timing = card.timing || [];
-    const canSpecial = timing.includes('ANY_TIME') || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT') || (isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase));
+    const canSpecial = timing.includes('ANY_TIME')
+      || (timing.includes('DURING_COMBAT') && state.phase === 'COMBAT')
+      || (timing.includes('POST_COMBAT_WIN') && isMyTurn() && state.phase === 'POST_COMBAT')
+      || (timing.includes('OWN_TURN_OUTSIDE_COMBAT') && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase));
     if (canSpecial && card.id === 'SPECIAL_STEAL_LEVEL') {
       for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button class="primary" data-inspect-action="PLAY_TARGET" data-target-player-id="${p.id}">Steal from ${escapeHtml(p.name)}</button>`);
     } else if (canSpecial && state.phase === 'COMBAT' && ['SPECIAL_MAGIC_LAMP','SPECIAL_POLYMORPH','SPECIAL_MATCHING_PROBLEM','SPECIAL_ILLUSION'].includes(card.id)) {
