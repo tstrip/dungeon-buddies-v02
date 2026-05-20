@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-game-surface-simplification-v076",
-  "version": "0.11.6",
+  "name": "loot-goblins-action-first-board-flow-v077",
+  "version": "0.11.7",
   "private": true,
-  "description": "Loot Goblins v0.7.6: slimmer status strip, less repeated guidance, and compact combat board centered around Foe cards and actions.",
+  "description": "Loot Goblins v0.7.7: action-first board flow, redesigned Chamber door tile, No Foe choice parity, and combat copy cleanup.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

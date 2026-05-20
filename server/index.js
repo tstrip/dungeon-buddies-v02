@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.6-game-surface-simplification-v076' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.7-action-first-board-flow-v077' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -165,7 +165,16 @@ function describeBadNews(threat) {
   if (!e || !e.type) return threat?.publicText || 'Bad News resolves.';
   if (e.type === 'LOSE_RENOWN') return `Lose ${e.amount || 1} Glory.`;
   if (e.type === 'DISCARD_HAND_CARDS') return `Discard ${e.count || e.amount || 1} card${(e.count || e.amount || 1) === 1 ? '' : 's'} from hand.`;
-  if (e.type === 'DISCARD_GEAR') return 'Discard Gear.';
+  if (e.type === 'DISCARD_GEAR') {
+    if (e.slot === 'HEAD') return 'Lose one equipped Head Gear. If you have no matching Gear, nothing is discarded.';
+    if (e.target === 'NON_HEAVY_GEAR') return 'Choose one non-Heavy Gear to discard.';
+    return 'Discard Gear matching the card effect.';
+  }
+  if (e.type === 'LOSE_HEAD_OR_GLORY') return 'Lose one Head Gear. If you have no Head Gear, lose 1 Glory.';
+  if (e.type === 'HIGHEST_TAKE_GEAR') return 'The highest-Glory players each take one Gear from you.';
+  if (e.type === 'KNOCKOUT') return 'You are knocked out. Other goblins may loot the body.';
+  if (e.type === 'ROLL_LOSE_GLORY') return 'Roll a die, then lose Glory based on the result.';
+  if (e.type === 'LAWYERS_BAD_NEWS') return 'Legal trouble hits. Resolve the card’s Bad News exactly as written.';
   if (e.type === 'DISCARD_OWNED_CARDS') return `Discard ${e.count || 1} owned card${(e.count || 1) === 1 ? '' : 's'}.`;
   if (e.type === 'DEATH') return 'Death. Loot the body.';
   if (e.type === 'BAD_NEWS_CHOICE' || e.type === 'CHOOSE_BAD_NEWS_OPTION') return 'Choose how the Bad News hits you.';
@@ -384,7 +393,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.6-game-surface-simplification-v076',
+    version: '0.11.7-action-first-board-flow-v077',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -2346,7 +2355,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.6-game-surface-simplification-v076' });
+  socket.emit('ready', { version: '0.11.7-action-first-board-flow-v077' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);

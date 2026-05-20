@@ -950,13 +950,9 @@ function renderPhaseBanner() {
   const root = $('phaseBanner');
   if (!root) return;
   const grammar = phaseGrammar();
-  const status = compactPhaseStatus(grammar);
   const compactTitle = grammar.title || prettyPhase(state.phase);
   root.className = `phase-banner panel phase-status-strip phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} urgency-${String(grammar.urgency || 'normal')}`;
-  root.innerHTML = `<div class="phase-strip-main">
-    <h2>${escapeHtml(compactTitle)}</h2>
-    ${status ? `<p>${escapeHtml(status)}</p>` : ''}
-  </div>`;
+  root.innerHTML = `<div class="phase-strip-main"><h2>${escapeHtml(compactTitle)}</h2></div>`;
 }
 
 function ensureCriticalActionButtons(buttons) {
@@ -1043,13 +1039,13 @@ function combatButtons() {
   const youAreDone = Boolean(combat.passes?.[you.id]);
   if (!youAreDone) {
     const addFoeCard = addFoeEnablerCard();
-    if (addFoeCard && isCardPlayable(addFoeCard) && hasFoeInHand()) buttons.push(`<button class="primary" data-combat-action="USE_ADD_FOE_CARD" data-card-id="${addFoeCard.instanceId}">Use ${escapeHtml(addFoeCard.publicName)} to Add Foe</button>`);
+    if (addFoeCard && isCardPlayable(addFoeCard) && hasFoeInHand()) buttons.push(`<button class="primary" data-combat-action="USE_ADD_FOE_CARD" data-card-id="${addFoeCard.instanceId}">Add Foe with ${escapeHtml(addFoeCard.publicName)}</button>`);
     if (hasPublicRole(you, 'Bruiser')) buttons.push(`<button data-combat-action="BRUISER_BERSERK">Bruiser: discard for +3</button>`);
     if (hasPublicRole(you, 'Cutpurse') && combat.activePlayerId !== you.id) buttons.push(`<button data-combat-action="CUTPURSE_BACKSTAB">Cutpurse: backstab -2</button>`);
     if (hasPublicRole(you, 'Hexhand') && combat.activePlayerId === you.id) buttons.push(`<button data-combat-action="HEXHAND_CHARM">Hexhand: charm Foe</button>`);
   }
-  if (youAreDone) buttons.push(`<button class="selected-action" disabled>✓ Done — Waiting on Others</button>`);
-  else buttons.push(`<button data-combat-action="PASS_COMBAT">Done — No More Plays</button>`);
+  if (youAreDone) buttons.push(`<button class="selected-action" disabled>✓ Passed — Waiting</button>`);
+  else buttons.push(`<button data-combat-action="PASS_COMBAT">Pass Combat</button>`);
   return buttons;
 }
 
@@ -1137,8 +1133,22 @@ function renderMobilePlayShell(root) {
       if (action === 'CARRY') emitAction('PLAY_CARD', { cardId, mode: 'CARRY' });
     });
   });
+  root.querySelectorAll('[data-nofoe-start-trouble]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      handExpanded = false;
+      renderHand();
+      const hand = document.getElementById('handPanel');
+      if (hand) hand.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      const firstFoe = document.querySelector('.hand-card.playable.card-type-threat, .hand-card.playable.type-threat, [data-card-type="THREAT"].playable');
+      if (firstFoe) firstFoe.classList.add('attention-pulse');
+      showToast('Pick a glowing Foe in your hand to Start Trouble.', 'ok');
+    });
+  });
   root.querySelectorAll('[data-action]').forEach((btn) => {
-    btn.addEventListener('click', () => emitAction(btn.dataset.action));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.action === 'START_TROUBLE' && btn.dataset.cardId) emitAction('START_TROUBLE', { cardId: btn.dataset.cardId });
+      else emitAction(btn.dataset.action);
+    });
   });
   root.querySelectorAll('[data-combat-action]').forEach((btn) => {
     btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot, btn.dataset.cardId));
@@ -1307,17 +1317,21 @@ function mobileStartTurnStageHtml() {
   const mine = isMyTurn();
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
-  ], 'start-turn-actions secondary-only') : '';
-  return mobileStageShell('start-turn', mine ? 'Your Turn' : 'Turn Start', mine ? 'Open a Chamber' : `${active()?.name || 'A goblin'} is up`, `
-    <button class="mobile-choice-card mobile-choice-button mobile-primary-choice mobile-draw-choice ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'}>
-      ${mobileDeckCardPreviewHtml('CHAMBER')}
-      <div><strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong><span>${mine ? 'Draw the top Chamber card face-up.' : `${Number(state.decks?.chamber || 0)} cards remain`}</span></div>
+  ], 'start-turn-actions chamber-secondary-actions') : '';
+  return mobileStageShell('start-turn open-chamber-flow', mine ? 'Your Turn' : 'Turn Start', mine ? 'Open a Chamber' : `${active()?.name || 'A goblin'} is up`, `
+    <button class="open-chamber-door-tile ${mine ? '' : 'disabled'}" ${mine ? 'data-action="OPEN_CHAMBER"' : 'disabled'} aria-label="Open Chamber">
+      <div class="open-chamber-door-art">
+        ${mobileDeckCardPreviewHtml('CHAMBER')}
+      </div>
+      <div class="open-chamber-door-copy">
+        <strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong>
+        <span>${mine ? 'Reveal top Chamber' : `${Number(state.decks?.chamber || 0)} cards remain`}</span>
+      </div>
     </button>
-    <p class="mobile-state-hint">${mine ? 'Setup cards in your hand glow if they can be played first.' : `${active()?.name || 'The active goblin'} can open a Chamber or play setup cards.`}</p>
+    ${mine ? `<p class="mobile-state-hint setup-glow-hint">Setup cards glow in your hand.</p>` : `<p class="mobile-state-hint">${escapeHtml(active()?.name || 'The active goblin')} can play setup or open the door.</p>`}
     ${actions}
-  `, { size: 'small', icon: 'chamber', sub: mine ? 'Choose when to open the door.' : 'Waiting for the active goblin.' });
+  `, { size: 'small', icon: null, sub: '' });
 }
-
 
 function mobileQuickRevealButtons(card) {
   if (!card) return '';
@@ -1361,28 +1375,29 @@ function mobileNoFoeStageHtml() {
   const mine = isMyTurn();
   const actor = active()?.name || 'The active goblin';
   const openedDoor = mobileOpenedDoorResultHtml(mine, actor);
+  const legalFoes = (state?.you?.hand || []).filter((c) => c.type === 'THREAT' && serverCardActions(c).some((a) => a.type === 'START_TROUBLE'));
+  const startTroubleState = !mine ? 'disabled is-observer' : (legalFoes.length ? 'actionable' : 'soft-disabled');
+  const startTroubleAttrs = !mine ? 'disabled' : (legalFoes.length === 1 ? `data-action="START_TROUBLE" data-card-id="${legalFoes[0].instanceId}"` : `data-nofoe-start-trouble="1"`);
+  const startTroubleSub = !mine
+    ? 'They may play a Foe from hand.'
+    : (legalFoes.length === 1 ? `Play ${legalFoes[0].publicName}` : legalFoes.length > 1 ? 'Choose a glowing Foe from hand' : 'No playable Foe in hand');
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
-  ], 'no-foe-actions secondary-only') : '';
-  const heading = openedDoor ? 'Choose your move' : (mine ? 'Choose your move' : `Waiting on ${actor}`);
-  const troubleHint = mine
-    ? `<p class="mobile-state-hint mobile-trouble-hint">Foe cards in your hand glow when they can Start Trouble.</p>`
-    : `<p class="mobile-state-hint">${escapeHtml(actor)} can Start Trouble or Loot the Room.</p>`;
-  return mobileStageShell('no-foe', mine ? 'Choose Move' : `${actor} chooses`, heading, `
+  ], 'no-foe-actions tertiary-actions') : '';
+  return mobileStageShell('no-foe no-foe-action-first', mine ? 'No Foe Revealed' : `${actor} chooses`, openedDoor ? 'No Foe Revealed' : (mine ? 'Choose Next Move' : `Waiting on ${actor}`), `
     ${openedDoor}
-    ${troubleHint}
-    <div class="mobile-choice-grid mobile-no-foe-grid ${openedDoor ? 'after-opened-door' : ''}">
-      <div class="mobile-choice-card mobile-choice-linked-hand ${mine ? '' : 'is-observer'}">
+    <div class="move-choice-pair">
+      <button class="move-choice-tile start-trouble ${startTroubleState}" ${startTroubleAttrs}>
         ${assetIconHtml('strength', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${mine ? 'Tap a glowing Foe in your hand.' : 'They may play a Foe from hand.'}</span></div>
-      </div>
-      <button class="mobile-choice-card mobile-choice-button mobile-primary-choice ${mine ? '' : 'disabled is-observer'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
+        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${escapeHtml(startTroubleSub)}</span></div>
+      </button>
+      <button class="move-choice-tile loot-room ${mine ? '' : 'disabled is-observer'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
         ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw a hidden Chamber card.' : 'They may draw a hidden Chamber card.'}</span></div>
+        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw hidden Chamber' : 'They may draw hidden Chamber'}</span></div>
       </button>
     </div>
     ${actions}
-  `, { size: 'small', icon: openedDoor ? null : (mine ? 'chamber' : 'loot'), sub: '' });
+  `, { size: 'small', icon: null, sub: '' });
 }
 
 function mobilePostCombatStageHtml() {
@@ -1463,7 +1478,6 @@ function mobileCombatStageHtml(combat) {
     <section class="combat-board-card ${escapeHtml(outcome.resultClass)}">
       <div class="combat-board-result">
         <strong>${escapeHtml(outcome.shortLabel)}</strong>
-        <span>${need > 0 ? `Need +${need} to win.` : 'Win holds if everyone passes.'}</span>
       </div>
       <div class="combat-board-scorebar">
         <div class="score-side player"><span>Player</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(actorName)}${helperName ? ` + ${escapeHtml(helperName)}` : ''}</small></div>
@@ -1473,12 +1487,11 @@ function mobileCombatStageHtml(combat) {
       ${foeCards}
       ${modifiers}
       ${badNews}
-      ${combatStatusChipHtml(combat, totals)}
     </section>
     ${actions}
     <div class="mobile-pass-row combat-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Can play'}</span>`).join('')}</div>
     <details class="mobile-math-details compact-math-details"><summary>Full combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
-  `, { size: 'large', icon: 'strength', sub: waiting.length ? `Waiting on ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
+  `, { size: 'large', icon: null, sub: '' });
 }
 
 function combatBoardFoeCards(combat) {
@@ -1492,11 +1505,27 @@ function combatBoardFoeCards(combat) {
   `).join('')}</div>`;
 }
 
+function fullBadNewsText(card) {
+  if (!card) return 'See Foe card.';
+  const publicText = String(card.publicText || '');
+  const match = publicText.match(/Bad News:\s*([^]+)$/i);
+  if (match && match[1]) {
+    return match[1].replace(/\s+/g, ' ').replace(/\.$/, '') + '.';
+  }
+  const text = String(card.badNewsText || '').trim();
+  if (!text) return 'See Foe card.';
+  const lower = text.toLowerCase();
+  if (lower === 'lose head or glory') return 'Lose one Head Gear. If you have no Head Gear, lose 1 Glory.';
+  if (lower === 'discard gear.') return 'Discard Gear chosen by the card effect.';
+  if (lower === 'death. loot the body.') return 'You are knocked out. Other goblins may loot the body.';
+  return text;
+}
+
 function combatBoardBadNews(combat) {
   const threats = combat.threats || [];
   if (!threats.length) return '';
-  if (threats.length === 1) return `<div class="combat-bad-news-chip"><b>Bad News</b><span>${escapeHtml(threats[0].badNewsText || 'See Foe card.')}</span></div>`;
-  return `<div class="combat-bad-news-chip"><b>Bad News</b><span>${escapeHtml(threats.map((t) => `${t.publicName}: ${t.badNewsText || 'See card'}`).join(' · '))}</span></div>`;
+  if (threats.length === 1) return `<div class="combat-bad-news-chip"><b>Bad News if Flee fails</b><span>${escapeHtml(fullBadNewsText(threats[0]))}</span></div>`;
+  return `<div class="combat-bad-news-chip"><b>Bad News if Flee fails</b><span>${escapeHtml(threats.map((t) => `${t.publicName}: ${fullBadNewsText(t)}`).join(' · '))}</span></div>`;
 }
 
 function combatBoardModifierBadges(combat) {
