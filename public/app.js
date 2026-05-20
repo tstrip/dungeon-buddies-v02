@@ -918,23 +918,46 @@ function mobilePhaseGuidanceHtml(grammar) {
   </div>`;
 }
 
+function compactPhaseStatus(grammar) {
+  if (!state) return '';
+  if (state.reaction) return grammar?.copy || 'A reaction window is open.';
+  if (state.pendingPrompt) return grammar?.copy || 'A player decision is pending.';
+  if (state.bodyLoot) return grammar?.copy || 'Body Loot is resolving.';
+  if (state.phase === 'COMBAT' && state.combat) {
+    const totals = state.combat.totals || {};
+    const outcome = combatOutcome(totals);
+    const waiting = (state.players || []).filter((p) => !state.combat.passes?.[p.id]).map((p) => p.name);
+    const you = me();
+    const youPassed = Boolean(state.combat.passes?.[you?.id]);
+    if (youPassed) return `${outcome.shortLabel}. You passed unless combat changes.`;
+    if (waiting.length) return `${outcome.shortLabel}. Waiting on ${waiting.join(', ')}.`;
+    return `${outcome.shortLabel}. Everyone passed.`;
+  }
+  if (state.phase === 'ROLL_FOR_FIRST') {
+    const first = state.firstRoll || {};
+    if (first.requiresYou) return 'Tap Roll d6.';
+    const waiting = (first.eligible || []).filter((id) => !first.rolls?.[id]).map(playerName).join(', ');
+    return waiting ? `Waiting on ${waiting}.` : 'Opening roll is resolving.';
+  }
+  if (state.phase === 'HEX_REVEAL' && state.pendingHex) {
+    return state.pendingHex.requiresYou ? 'Read the Hex, then resolve it.' : `Waiting on ${state.pendingHex.targetPlayerName || 'the target'}.`;
+  }
+  if (state.phase === 'TRIBUTE') return isMyTurn() ? 'Pick excess cards in your drawer.' : `Waiting on ${active()?.name || 'the active goblin'}.`;
+  return grammar?.copy || grammar?.next || '';
+}
+
 function renderPhaseBanner() {
   const root = $('phaseBanner');
   if (!root) return;
   const grammar = phaseGrammar();
-  let buttons = ensureCriticalActionButtons([...(grammar.buttons || [])]);
-  const compactStatusStrip = window.innerWidth <= 760 && ['NO_THREAT_CHOICE'].includes(state.phase);
-  root.className = `phase-banner panel phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} urgency-${String(grammar.urgency || 'normal')} ${compactStatusStrip ? 'mobile-status-strip' : ''}`;
-  root.innerHTML = `<div class="eyebrow">Room ${state.code} · Turn ${state.turnNumber || 0}</div>
-    <h2>${escapeHtml(grammar.title || prettyPhase(state.phase))}</h2>
-    ${grammar.copy ? `<p>${escapeHtml(grammar.copy)}</p>` : ''}
-    ${phaseGrammarStripHtml(grammar)}
-    <div class="primary-action">${buttons.join('')}</div>`;
-  root.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', () => emitAction(btn.dataset.action)));
-  root.querySelectorAll('[data-combat-action]').forEach((btn) => btn.addEventListener('click', () => handleCombatButton(btn.dataset.combatAction, btn.dataset.target, btn.dataset.lootCount, btn.dataset.allLoot, btn.dataset.cardId)));
-  root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
+  const status = compactPhaseStatus(grammar);
+  const compactTitle = grammar.title || prettyPhase(state.phase);
+  root.className = `phase-banner panel phase-status-strip phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} urgency-${String(grammar.urgency || 'normal')}`;
+  root.innerHTML = `<div class="phase-strip-main">
+    <h2>${escapeHtml(compactTitle)}</h2>
+    ${status ? `<p>${escapeHtml(status)}</p>` : ''}
+  </div>`;
 }
-
 
 function ensureCriticalActionButtons(buttons) {
   const legal = state?.legalActions || [];
@@ -1223,7 +1246,7 @@ function mobileStageShell(kind, kicker, title, bodyHtml, options = {}) {
   const size = options.size || 'medium';
   const icon = options.icon ? `<div class="mobile-state-icon">${assetIconHtml(options.icon, 'asset-sigil event-sigil')}</div>` : '';
   const grammar = options.guidance || phaseGrammar();
-  const guidance = options.hideGuidance ? '' : mobilePhaseGuidanceHtml(grammar);
+  const guidance = options.showGuidance ? mobilePhaseGuidanceHtml(grammar) : '';
   return `<section class="mobile-state-panel mobile-state-${escapeHtml(kind)} mobile-state-size-${escapeHtml(size)} urgency-${escapeHtml(grammar?.urgency || 'normal')}">
     <div class="mobile-state-header">
       ${icon}
@@ -1429,23 +1452,77 @@ function mobileCombatStageHtml(combat) {
   const need = combatNeedToWin(totals);
   const primaryFoe = combat.threats?.[0] || null;
   const waiting = state.players.filter((p) => !combat.passes?.[p.id]);
-  const actions = mobileActionButtonsHtml(combatButtons(), 'combat-actions');
-  const activeP = findPlayer(combat.activePlayerId);
-  const helperP = combat.helperPlayerId ? findPlayer(combat.helperPlayerId) : null;
-  const playerCards = (combat.playedTricks || []).filter((c) => c.effect?.side !== 'THREAT');
-  const foeCards = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT');
-  const playerLedger = `${activeP ? `<div><span>${escapeHtml(activeP.name)}</span><b>PWR ${playerPower(activeP)}</b></div>` : ''}${helperP ? `<div><span>${escapeHtml(helperP.name)} Backup</span><b>PWR ${playerPower(helperP)}</b></div>` : ''}${playerCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('')}${Number(combat.playerDelta||0) ? `<div><span>Other cards/abilities</span><b>${signed(combat.playerDelta)}</b></div>` : ''}`;
-  const foeLedger = (combat.threats || []).map((foe) => `<div class="combat-ledger-foe"><span>${escapeHtml(foe.publicName)}</span><b>STR ${Number(foe.finalStrength || foe.strength || 0)}</b><small>Bad News: ${escapeHtml(foe.badNewsText || 'See card')}</small>${(foe.modifiers||[]).map((m)=>`<small>${escapeHtml(m.publicName)} ${signed(m.strengthDelta||0)}</small>`).join('')}<button class="mini-ledger-view" data-mobile-inspect-card="${foe.instanceId}">View Foe</button></div>`).join('') + foeCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('') + (Number(combat.threatDelta||0) ? `<div><span>Other Foe bonuses</span><b>${signed(combat.threatDelta)}</b></div>` : '');
+  const actions = mobileActionButtonsHtml(combatButtons(), 'combat-actions combat-action-rail');
   const foeText = primaryFoe ? `${primaryFoe.publicName}${(combat.threats || []).length > 1 ? ` + ${(combat.threats || []).length - 1}` : ''}` : 'Foe';
-  return mobileStageShell('combat', 'Combat', `${playerName(combat.activePlayerId)} vs ${foeText}`, `
-    <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}"><strong>${escapeHtml(outcome.shortLabel)}</strong><span>${need > 0 ? `Need +${need} to win.` : 'No extra power needed if everyone passes.'}</span></div>
-    <div class="mobile-combat-scores ${escapeHtml(outcome.resultClass)}"><div><span>Player Side</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(playerName(combat.activePlayerId))}${combat.helperPlayerId ? ` + ${escapeHtml(playerName(combat.helperPlayerId))}` : ''}</small></div><div class="mobile-vs">VS</div><div><span>Foe Side</span><b>${Number(totals.threatTotal || 0)}</b><small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small></div></div>
-    <div class="combat-ledger"><div><h4>Player Side</h4>${playerLedger || '<p>No player cards yet.</p>'}</div><div><h4>Foe Side</h4>${foeLedger || '<p>No Foes yet.</p>'}</div></div>
-    ${combatWhatNowHtml(combat, totals)}
+  const actorName = playerName(combat.activePlayerId);
+  const helperName = combat.helperPlayerId ? playerName(combat.helperPlayerId) : '';
+  const modifiers = combatBoardModifierBadges(combat);
+  const foeCards = combatBoardFoeCards(combat);
+  const badNews = combatBoardBadNews(combat);
+  return mobileStageShell('combat compact-combat', 'Combat', `${actorName} vs ${foeText}`, `
+    <section class="combat-board-card ${escapeHtml(outcome.resultClass)}">
+      <div class="combat-board-result">
+        <strong>${escapeHtml(outcome.shortLabel)}</strong>
+        <span>${need > 0 ? `Need +${need} to win.` : 'Win holds if everyone passes.'}</span>
+      </div>
+      <div class="combat-board-scorebar">
+        <div class="score-side player"><span>Player</span><b>${Number(totals.playerTotal || 0)}</b><small>${escapeHtml(actorName)}${helperName ? ` + ${escapeHtml(helperName)}` : ''}</small></div>
+        <div class="score-vs">VS</div>
+        <div class="score-side foe"><span>Foe</span><b>${Number(totals.threatTotal || 0)}</b><small>${(combat.threats || []).length} Foe${(combat.threats || []).length === 1 ? '' : 's'}</small></div>
+      </div>
+      ${foeCards}
+      ${modifiers}
+      ${badNews}
+      ${combatStatusChipHtml(combat, totals)}
+    </section>
     ${actions}
-    <div class="mobile-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Can play'}</span>`).join('')}</div>
-    <details class="mobile-math-details"><summary>Full combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
-  `, { size: 'large', icon: 'strength', sub: waiting.length ? `Waiting on: ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
+    <div class="mobile-pass-row combat-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Can play'}</span>`).join('')}</div>
+    <details class="mobile-math-details compact-math-details"><summary>Full combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
+  `, { size: 'large', icon: 'strength', sub: waiting.length ? `Waiting on ${waiting.map((p) => p.name).join(', ')}` : 'Everyone has passed.' });
+}
+
+function combatBoardFoeCards(combat) {
+  const threats = combat.threats || [];
+  if (!threats.length) return '';
+  return `<div class="combat-foe-card-lane ${threats.length > 1 ? 'multi' : 'single'}">${threats.map((foe) => `
+    <button class="combat-foe-card-preview" data-mobile-inspect-card="${foe.instanceId}">
+      ${cardHtml(foe, { compact: true })}
+      <span>${escapeHtml(foe.publicName)} · STR ${Number(foe.finalStrength || foe.strength || 0)}</span>
+    </button>
+  `).join('')}</div>`;
+}
+
+function combatBoardBadNews(combat) {
+  const threats = combat.threats || [];
+  if (!threats.length) return '';
+  if (threats.length === 1) return `<div class="combat-bad-news-chip"><b>Bad News</b><span>${escapeHtml(threats[0].badNewsText || 'See Foe card.')}</span></div>`;
+  return `<div class="combat-bad-news-chip"><b>Bad News</b><span>${escapeHtml(threats.map((t) => `${t.publicName}: ${t.badNewsText || 'See card'}`).join(' · '))}</span></div>`;
+}
+
+function combatBoardModifierBadges(combat) {
+  const playerMods = (combat.playedTricks || []).filter((c) => c.effect?.side !== 'THREAT');
+  const foeMods = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT');
+  const foeAttached = (combat.threats || []).flatMap((foe) => (foe.modifiers || []).map((m) => ({...m, foeName: foe.publicName})));
+  const badges = [];
+  playerMods.forEach((c) => badges.push(`<span class="combat-mod-badge player">Player ${signed(c.effect?.amount || 0)} · ${escapeHtml(c.publicName)}</span>`));
+  foeMods.forEach((c) => badges.push(`<span class="combat-mod-badge foe">Foe ${signed(c.effect?.amount || 0)} · ${escapeHtml(c.publicName)}</span>`));
+  foeAttached.forEach((m) => badges.push(`<span class="combat-mod-badge foe">${escapeHtml(m.foeName)} ${signed(m.strengthDelta || 0)} · ${escapeHtml(m.publicName)}</span>`));
+  if (Number(combat.playerDelta || 0)) badges.push(`<span class="combat-mod-badge player">Player ${signed(combat.playerDelta)} · cards/abilities</span>`);
+  if (Number(combat.threatDelta || 0)) badges.push(`<span class="combat-mod-badge foe">Foe ${signed(combat.threatDelta)} · cards/abilities</span>`);
+  return badges.length ? `<div class="combat-mod-badges">${badges.join('')}</div>` : '';
+}
+
+function combatStatusChipHtml(combat, totals) {
+  const outcome = combatOutcome(totals);
+  const waiting = state.players.filter((p) => !combat?.passes?.[p.id]);
+  const need = combatNeedToWin(totals);
+  const you = me();
+  const youDone = Boolean(combat?.passes?.[you?.id]);
+  let copy = '';
+  if (youDone) copy = 'You passed · waiting for the table.';
+  else if (outcome.resultClass === 'winning') copy = waiting.length ? `Winning · waiting on ${waiting.map((p) => p.name).join(', ')}` : 'Winning · resolving now.';
+  else copy = need > 0 ? `Need +${need} · play, bargain, or pass to Flee` : 'Table needs to finish responses.';
+  return `<div class="combat-status-chip ${escapeHtml(outcome.resultClass)}">${escapeHtml(copy)}</div>`;
 }
 
 function combatNeedToWin(totals) {
@@ -1456,22 +1533,8 @@ function combatNeedToWin(totals) {
 }
 
 function combatWhatNowHtml(combat, totals) {
-  const outcome = combatOutcome(totals);
-  const waiting = state.players.filter((p) => !combat?.passes?.[p.id]);
-  const need = combatNeedToWin(totals);
-  const you = me();
-  const youDone = Boolean(combat?.passes?.[you?.id]);
-  let copy = '';
-  if (outcome.resultClass === 'winning') {
-    copy = waiting.length ? `Winning. Waiting on ${waiting.map((p) => p.name).join(', ')} to play or pass.` : 'Everyone passed. Combat should resolve.';
-  } else {
-    const foeNote = addFoeEnablerCard() && hasFoeInHand() ? ' use Unexpected Company to add a Foe,' : '';
-    copy = need > 0 ? `Need +${need} to win. Play a card, ask for Backup,${foeNote} add help, or prepare to Flee.` : 'You can still win this, but the table needs to finish responses.';
-  }
-  if (youDone) copy = `You passed. Waiting for the table unless someone changes combat.`;
-  return `<div class="combat-host-note ${escapeHtml(outcome.resultClass)}"><strong>What now?</strong><span>${escapeHtml(copy)}</span></div>`;
+  return combatStatusChipHtml(combat, totals);
 }
-
 
 function mobileTributeStageHtml() {
   const you = me();

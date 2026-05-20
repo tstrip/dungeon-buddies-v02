@@ -8704,3 +8704,310 @@ body .global-soft-card {
     flex: 1 1 auto;
   }
 }
+
+
+/* Loot Goblins v0.7.6 — Game Surface Simplification + Combat Board Pass */
+
+/* Top banner is now a slim status strip, not a second rules panel. */
+.phase-banner.phase-status-strip {
+  padding: 9px 14px !important;
+  border-radius: 18px !important;
+  margin-bottom: 8px !important;
+}
+
+.phase-status-strip .eyebrow,
+.phase-status-strip .phase-guidance,
+.phase-status-strip .primary-action {
+  display: none !important;
+}
+
+.phase-status-strip .phase-strip-main {
+  display: grid;
+  gap: 1px;
+}
+
+.phase-status-strip h2 {
+  font-size: clamp(.92rem, 4.1vw, 1.08rem) !important;
+  line-height: 1.05 !important;
+  margin: 0 !important;
+}
+
+.phase-status-strip p {
+  margin: 0 !important;
+  font-size: .68rem !important;
+  line-height: 1.12 !important;
+  color: rgba(255, 246, 214, .68) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The center board should teach through state/card/action, not repeated Who Acts/Next blocks. */
+.mobile-phase-guidance {
+  display: none !important;
+}
+
+.mobile-state-panel {
+  gap: 10px;
+}
+
+.mobile-state-panel > h2 {
+  margin-bottom: 0;
+}
+
+/* Compact combat board */
+.mobile-state-compact-combat {
+  padding-bottom: 14px;
+}
+
+.combat-board-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(255, 215, 122, .20);
+  border-radius: 24px;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(139, 78, 204, .16), transparent 48%),
+    rgba(0,0,0,.20);
+}
+
+.combat-board-result {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 18px;
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.combat-board-result strong {
+  font-size: 1.06rem;
+  line-height: 1.05;
+}
+
+.combat-board-result span {
+  font-size: .70rem;
+  color: rgba(255,246,214,.74);
+}
+
+.combat-board-card.winning .combat-board-result {
+  border-color: rgba(124,235,163,.34);
+}
+
+.combat-board-card.losing .combat-board-result,
+.combat-board-card.tied .combat-board-result {
+  border-color: rgba(255,120,132,.34);
+}
+
+.combat-board-scorebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.score-side {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 10px 6px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.20);
+}
+
+.score-side span {
+  color: var(--gold);
+  font-size: .60rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-weight: 900;
+}
+
+.score-side b {
+  font-size: 2.15rem;
+  line-height: .92;
+}
+
+.score-side small {
+  max-width: 100%;
+  font-size: .63rem;
+  color: rgba(255,246,214,.68);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.score-vs {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  background: linear-gradient(135deg, #baff75, #5ee796);
+  color: #102313;
+  font-weight: 1000;
+  box-shadow: 0 8px 22px rgba(0,0,0,.28);
+}
+
+.combat-foe-card-lane {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 4px 4px;
+  scrollbar-width: thin;
+}
+
+.combat-foe-card-preview {
+  width: 118px;
+  min-width: 118px;
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  border: 1px solid rgba(255,215,122,.22);
+  border-radius: 16px;
+  background: rgba(0,0,0,.16);
+  color: var(--ink);
+  padding: 6px;
+}
+
+.combat-foe-card-preview .hand-card {
+  pointer-events: none;
+}
+
+.combat-foe-card-preview > span {
+  width: 100%;
+  font-size: .60rem;
+  color: rgba(255,246,214,.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combat-bad-news-chip {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,122,132,.28);
+  background: rgba(65, 15, 24, .22);
+  text-align: left;
+}
+
+.combat-bad-news-chip b {
+  color: #ffb3b3;
+  font-size: .64rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.combat-bad-news-chip span {
+  color: rgba(255,246,214,.78);
+  font-size: .74rem;
+  line-height: 1.18;
+}
+
+.combat-mod-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+}
+
+.combat-mod-badge {
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: .58rem;
+  line-height: 1;
+  font-weight: 850;
+  color: rgba(255,246,214,.84);
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combat-mod-badge.player {
+  border-color: rgba(124,235,163,.22);
+}
+
+.combat-mod-badge.foe {
+  border-color: rgba(255,122,132,.24);
+}
+
+.combat-status-chip {
+  justify-self: stretch;
+  padding: 8px 10px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: .72rem;
+  font-weight: 900;
+  color: rgba(255,246,214,.86);
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+.combat-status-chip.winning {
+  border-color: rgba(124,235,163,.34);
+  color: #dfffe8;
+}
+
+.combat-status-chip.losing,
+.combat-status-chip.tied {
+  border-color: rgba(255,122,132,.34);
+  color: #ffd9d9;
+}
+
+.mobile-center-actions.combat-action-rail {
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-center-actions.combat-action-rail button {
+  min-height: 48px;
+}
+
+.combat-pass-row {
+  justify-content: center;
+}
+
+.compact-math-details {
+  margin-top: 0;
+}
+
+/* Keep combat hand lower in authority when the live board needs attention. */
+.drawer-mode-combat .drawer-mode-help {
+  font-size: .62rem;
+}
+
+.drawer-mode-combat:not(.hand-expanded) .hand-tray {
+  max-height: 132px;
+}
+
+/* If over limit is not actionable now, make it visible but not dominant. */
+.hand-limit.warn {
+  color: rgba(255,215,122,.82) !important;
+  font-size: .92em;
+}
+
+/* Desktop/tablet gets a little more breathing room without changing mobile hierarchy. */
+@media (min-width: 761px) {
+  .phase-banner.phase-status-strip {
+    padding: 10px 16px !important;
+  }
+
+  .combat-board-card {
+    padding: 14px;
+  }
+
+  .combat-foe-card-preview {
+    width: 132px;
+    min-width: 132px;
+  }
+}
