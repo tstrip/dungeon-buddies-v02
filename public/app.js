@@ -1636,20 +1636,24 @@ function mobileFleeStageHtml(esc) {
   const buttons = [];
   if (runner?.isYou) {
     if (!esc.awaitingContinue && hasLittleHelper(me())) buttons.push(mobileLegalActionButton('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
-    buttons.push(mobileLegalActionButton(isRollFx('flee') ? 'Rolling...' : (esc.awaitingContinue ? 'Continue' : (esc.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee')), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+    buttons.push(mobileLegalActionButton(isRollFx('flee') ? 'Rolling...' : (esc.awaitingContinue ? (last?.total >= 5 ? 'Continue' : 'Take Bad News') : (esc.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee')), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
   }
-  const result = last ? `${last.raw} ${signed(last.bonus || 0)} = ${last.total}` : 'Target 5+';
-  const body = `<div class="mobile-flee-grid mobile-flee-roll-grid">
-    ${mobileRollMoment('flee', last?.raw ?? '—', last ? (last.total >= 5 ? 'Escaped!' : 'Failed to Flee') : (isRollFx('flee') ? 'Rolling...' : 'Ready to roll'), result)}
-    <div class="mobile-flee-copy">
-      <strong>Target 5+</strong>
-      <span>Flee bonus ${signed(esc.fleeBonus || 0)}</span>
-      ${esc.threat ? `<button class="flee-foe-preview" data-mobile-inspect-card="${esc.threat.instanceId}">${cardHtml(esc.threat, { compact: true })}<span>View Foe</span></button>` : ''}
-      <div class="bad-news-preview"><b>Bad News if you fail</b><span>${escapeHtml(esc.badNewsText || esc.threat?.badNewsText || esc.threat?.publicText || 'Bad News happens if you fail.')}</span></div>
-      ${last ? `<b>${last.total >= 5 ? 'Bad News avoided.' : 'Bad News happens. Tap Continue.'}</b>` : '<b>Roll before the Bad News hits.</b>'}
+  const math = last ? `${last.raw} ${signed(last.bonus || 0)} = ${last.total}` : `Target 5+ · Flee ${signed(esc.fleeBonus || 0)}`;
+  const outcome = last ? (last.total >= 5 ? 'Escaped!' : 'Failed to Flee') : (isRollFx('flee') ? 'Rolling...' : 'Ready to roll');
+  const badNews = esc.badNewsText || esc.threat?.badNewsText || esc.threat?.publicText || 'Bad News happens if you fail.';
+  const resultClass = last ? (last.total >= 5 ? 'success' : 'failed') : 'ready';
+  const body = `<div class="flee-board ${resultClass}">
+    <div class="flee-board-roll">${mobileRollMoment('flee', last?.raw ?? '—', outcome, math)}</div>
+    <div class="flee-board-foe">
+      ${esc.threat ? `<button class="flee-foe-card" data-mobile-inspect-card="${esc.threat.instanceId}">${cardHtml(esc.threat, { compact: true })}<span>View Foe</span></button>` : ''}
+      <div class="flee-target-chip"><b>Target 5+</b><span>Flee ${signed(esc.fleeBonus || 0)}</span></div>
+    </div>
+    <div class="bad-news-card ${last && last.total < 5 ? 'active' : ''}">
+      <b>${last && last.total < 5 ? 'Bad News hits next' : 'Bad News if you fail'}</b>
+      <span>${escapeHtml(badNews)}</span>
     </div>
   </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
-  return mobileStageShell('flee', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
+  return mobileStageShell('flee flee-clean', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
 }
 
 function mobileOpeningRollStageHtml() {
@@ -2130,6 +2134,14 @@ function drawerDecisionCardHtml(card, mode) {
   return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Take card' : 'Choose'}</span></button>`;
 }
 
+function syncServerPreselectedSell(mode) {
+  if (mode?.key !== 'sell') return;
+  const ids = mode?.prompt?.meta?.preselected || [];
+  if (!Array.isArray(ids) || !ids.length) return;
+  ids.forEach((id) => selectedSell.add(id));
+  if (mode.prompt?.meta) mode.prompt.meta.preselected = [];
+}
+
 function drawerSelectedSellTotal(mode) {
   const cards = mode?.prompt?.options || [];
   const byId = new Map(cards.map((c) => [c.instanceId, c]));
@@ -2151,6 +2163,7 @@ function drawerSelectedGearTotal(mode) {
 
 function drawerControls(mode) {
   if (mode.key === 'sell') {
+    syncServerPreselectedSell(mode);
     const threshold = Number(mode.prompt?.meta?.effect?.threshold || 1000);
     const total = drawerSelectedSellTotal(mode);
     return `<div class="drawer-decision-actions"><span class="micro">Selected ${total}/${threshold} Junk</span><button class="primary" data-drawer-sell-confirm ${total >= threshold ? '' : 'disabled'}>Sell for Glory</button><button data-drawer-prompt-cancel>Done</button></div>`;
@@ -2197,7 +2210,8 @@ function attachDrawerHandlers(root, mode) {
     });
   });
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
-    cardEl.addEventListener('click', () => {
+    cardEl.addEventListener('click', (event) => {
+      if (cardEl.closest('.drawer-card-choice')) return;
       const card = myHand().find((c) => c.instanceId === cardEl.dataset.cardId);
       if (!card) return;
       inspectCard(card);
@@ -2209,7 +2223,9 @@ function attachDrawerHandlers(root, mode) {
   }));
   root.querySelectorAll('[data-drawer-player-choice]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { targetPlayerId: btn.dataset.drawerPlayerChoice })));
   root.querySelectorAll('[data-drawer-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.drawerPromptCard })));
-  root.querySelectorAll('[data-drawer-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
+  root.querySelectorAll('[data-drawer-sell-card]').forEach((btn) => btn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (selectedSell.has(btn.dataset.drawerSellCard)) selectedSell.delete(btn.dataset.drawerSellCard);
     else selectedSell.add(btn.dataset.drawerSellCard);
     renderHand();

@@ -9606,3 +9606,142 @@ body .global-soft-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* Loot Goblins v0.7.8.4 — Turn Flow + Flee + Body Loot Hotfix */
+
+/* Sell drawer multi-select should feel like a checklist. */
+.drawer-mode-sell .drawer-card-choice.selected {
+  outline: 3px solid rgba(123, 236, 178, .9);
+  box-shadow: 0 0 0 4px rgba(123, 236, 178, .18), 0 14px 24px rgba(0,0,0,.32);
+}
+
+.drawer-mode-sell .drawer-card-choice span {
+  font-weight: 1000;
+}
+
+/* Rebuilt bad stuff/flee screen. No skinny right rail, no vertical text. */
+.mobile-state-flee-clean {
+  overflow: hidden;
+}
+
+.flee-board {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.flee-board-roll {
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 22px;
+  background: rgba(0,0,0,.20);
+  padding: 10px;
+}
+
+.flee-board .mobile-roll-moment {
+  min-height: 120px;
+}
+
+.flee-board-foe {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.flee-foe-card {
+  min-width: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 222, 133, .25);
+  background: rgba(0,0,0,.22);
+  padding: 8px;
+  color: var(--ink);
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+}
+
+.flee-foe-card .hand-card {
+  pointer-events: none;
+}
+
+.flee-foe-card > span {
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 218, 119, .12);
+  padding: 4px 6px;
+  font-size: .62rem;
+  font-weight: 1000;
+  text-align: center;
+}
+
+.flee-target-chip {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 222, 133, .20);
+  background: rgba(0,0,0,.20);
+  padding: 12px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+}
+
+.flee-target-chip b {
+  color: var(--gold);
+  font-size: 1rem;
+}
+
+.flee-target-chip span {
+  color: rgba(255,246,214,.78);
+  font-weight: 850;
+}
+
+.bad-news-card {
+  border-radius: 20px;
+  border: 1px solid rgba(255, 126, 134, .35);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 126, 134, .14), transparent 42%),
+    rgba(0,0,0,.24);
+  padding: 13px 14px;
+  display: grid;
+  gap: 5px;
+}
+
+.bad-news-card b {
+  color: #ffbfc2;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: .64rem;
+}
+
+.bad-news-card span {
+  color: rgba(255,246,214,.88);
+  font-size: .82rem;
+  line-height: 1.25;
+}
+
+.bad-news-card.active {
+  border-color: rgba(255, 126, 134, .72);
+  box-shadow: 0 0 0 2px rgba(255,126,134,.12);
+}
+
+.mobile-state-flee-clean .flee-actions {
+  margin-top: 8px;
+}
+
+/* Body loot should remain usable while several cards are being distributed. */
+.mobile-state-death .mobile-death-card,
+.mobile-state-death .mobile-death-turn {
+  border-radius: 20px;
+}
+
+@media (max-width: 420px) {
+  .flee-board-foe {
+    grid-template-columns: 1fr;
+  }
+
+  .flee-foe-card {
+    grid-template-columns: 72px 1fr;
+    justify-items: start;
+    text-align: left;
+  }
+}

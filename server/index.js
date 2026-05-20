@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.3-action-banner-sell-helper-hotfix-v0783' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8.4-turn-flow-flee-bodyloot-hotfix-v0784' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -396,7 +396,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.8.3-action-banner-sell-helper-hotfix-v0783',
+    version: '0.11.8.4-turn-flow-flee-bodyloot-hotfix-v0784',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -528,7 +528,7 @@ function legalCardActionsForCard(room, player, card) {
     if (!validateGearEquip(player, card)) actions.push(legalCardAction('Equip', 'PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' }, 'primary', 'Equip this Gear.'));
     const combinedHeavy = heavyCount(player) + (card.isHeavy ? 1 : 0);
     if (combinedHeavy <= heavyLimit(player)) actions.push(legalCardAction('Carry', 'PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' }, '', 'Carry this Gear without equipping it.'));
-    actions.push(legalCardAction('Sell / cash in', 'SELL_GEAR', { cardIds: [card.instanceId] }, '', 'Sell this Gear for Junk.'));
+    actions.push(legalCardAction('Open Sell Drawer', 'SELL_GEAR', {}, '', 'Choose enough Gear to total at least 1000 Junk.'));
     if (card.id !== 'GEAR_HIRELING' && hasLittleHelperWithCapacity(player)) actions.push(legalCardAction('Give to Little Helper', 'ASSIGN_HIRELING_GEAR', { cardId: card.instanceId }, '', 'Assign this Gear to your Little Helper.'));
     return actions;
   }
@@ -1743,8 +1743,24 @@ function startDeathLooting(room, victim, sourceCard, context = {}) {
 function promptNextBodyLooter(room) {
   const loot = room.bodyLoot;
   if (!loot) return;
-  while ((loot.index || 0) < (loot.looterIds || []).length) {
-    const looter = getPlayer(room, loot.looterIds[loot.index || 0]);
+  if (!(loot.cards || []).length) {
+    finishBodyLooting(room);
+    return;
+  }
+  const ids = (loot.looterIds || []).filter((id) => {
+    const p = getPlayer(room, id);
+    return p && !p.dead;
+  });
+  if (!ids.length) {
+    finishBodyLooting(room);
+    return;
+  }
+  loot.looterIds = ids;
+  loot.index = Number(loot.index || 0) % ids.length;
+
+  let attempts = 0;
+  while (attempts < ids.length) {
+    const looter = getPlayer(room, ids[loot.index]);
     if (looter && !looter.dead) {
       const victim = getPlayer(room, loot.victimId);
       createPrompt(room, {
@@ -1756,7 +1772,8 @@ function promptNextBodyLooter(room) {
       });
       return;
     }
-    loot.index += 1;
+    loot.index = (loot.index + 1) % ids.length;
+    attempts += 1;
   }
   finishBodyLooting(room);
 }
@@ -1770,7 +1787,14 @@ function finishBodyLooting(room) {
   const after = loot.after || 'CONTINUE_ESCAPE';
   room.bodyLoot = null;
   room.pendingPrompt = null;
-  announce(room, 'death', 'Body Looting Complete', count ? `${count} unclaimed card${count === 1 ? '' : 's'} were discarded.` : 'No cards remain to loot.', null, { importance: 'major' });
+  announce(room, 'death', 'Body Looting Complete', count ? `${count} unclaimed card${count === 1 ? '' : 's'} were discarded.` : 'The body was fully looted.', null, { importance: 'major' });
+
+  const active = getActive(room);
+  if (active?.dead && after !== 'CONTINUE_ESCAPE') {
+    room.usedLootWindowThisTurn = true;
+    room.phase = 'END_TURN';
+    return;
+  }
   continueAfterPrompt(room, after);
 }
 
@@ -2269,7 +2293,13 @@ function continueFlee(room) {
   if (room.escape.index >= (room.escape.queue || []).length) {
     announce(room, 'flee', 'Flee Complete', 'All Flee rolls are done. Combat is over.', null, { importance: 'normal' });
     cleanupCombatToDiscard(room);
-    moveToPostCombat(room);
+    const active = getActive(room);
+    if (active?.dead) {
+      room.usedLootWindowThisTurn = true;
+      room.phase = 'END_TURN';
+    } else {
+      moveToPostCombat(room);
+    }
   } else {
     const current = currentEscapeEntry(room);
     room.escape.currentPlayerId = current?.playerId || null;
@@ -2366,7 +2396,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.8.3-action-banner-sell-helper-hotfix-v0783' });
+  socket.emit('ready', { version: '0.11.8.4-turn-flow-flee-bodyloot-hotfix-v0784' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2598,7 +2628,12 @@ function handleAction(socket, room, player, payload) {
     const directIds = Array.isArray(payload.cardIds) ? payload.cardIds : [];
     if (directIds.length) {
       const result = sellSpecificGear(room, player, directIds, effect);
-      if (result.error) return emitError(socket, result.error);
+      if (result.error) {
+        const options = ownedGearOptions(player);
+        createPrompt(room, { type: 'SELL_GEAR', playerId: player.id, message: `${player.name} may sell Gear for Glory. Select at least 1000 Junk.`, options, meta: { effect, after: 'STAY', optional: true, preselected: directIds } });
+        emitOk(socket, 'Select enough Gear to total at least 1000 Junk.');
+        return;
+      }
       announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}. +${result.glory} Glory.`, null, { importance: 'major' });
       log(room, `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value.`);
       return;
@@ -2947,7 +2982,11 @@ function playCard(socket, room, player, card, payload) {
     }
     const real = findAndRemoveFromHand(player, card.instanceId);
     if (!real) return emitError(socket, 'Special must be in your hand.');
-    const after = room.phase === 'COMBAT' ? 'CONTINUE' : (room.phase === 'POST_COMBAT' ? 'TO_POST_COMBAT' : 'TO_TRIBUTE_OR_END');
+    const after = room.phase === 'COMBAT'
+      ? 'CONTINUE'
+      : (room.phase === 'POST_COMBAT'
+        ? 'TO_POST_COMBAT'
+        : (room.phase === 'START_TURN' ? 'STAY' : 'TO_TRIBUTE_OR_END'));
     const ok = applyEffect(room, player, real.effect, real, { after, targetPlayerId: payload.targetPlayerId, targetFoeInstanceId: payload.targetFoeInstanceId });
     // Fine Print Permit attaches to Gear and remains with that Gear instead of going to discard.
     if (real.effect?.type !== 'CHEAT_GEAR') discardCard(room, real);
@@ -3248,9 +3287,9 @@ function resolvePrompt(socket, room, player, payload) {
     movement(room, 'BODY_LOOT', 'PLAYER_HAND', 'Body Loot → Hand', `${player.name} looted ${card.publicName} from ${victim?.name || 'the fallen goblin'}.`, card);
     announce(room, 'effect', 'Body Looted', `${player.name} took ${card.publicName} from ${victim?.name || 'the fallen goblin'}.`, card, { importance: 'major' });
     log(room, `${player.name} looted ${card.publicName} from ${victim?.name || 'a fallen goblin'}.`);
-    loot.index = (loot.index || 0) + 1;
+    loot.index = ((loot.index || 0) + 1) % Math.max(1, (loot.looterIds || []).length);
     room.pendingPrompt = null;
-    if (!loot.cards.length || loot.index >= (loot.looterIds || []).length) finishBodyLooting(room);
+    if (!loot.cards.length) finishBodyLooting(room);
     else promptNextBodyLooter(room);
     return;
   }
