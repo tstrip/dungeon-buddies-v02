@@ -299,8 +299,10 @@ function announcementTier(a) {
   // Hard events: immediate tactical/current-resolution moments.
   if (['bad','death','game','flee','backup','trade'].includes(kind)) return 'hard';
   if (kind === 'roll' && /opening roll complete|goes first|winner/i.test(joined)) return 'hard';
+  if (kind === 'prompt' && /hex needs|choice required/i.test(joined)) return 'hard';
   if (kind === 'combat') return 'hard';
-  if (kind === 'hex') return 'hard';
+  if (kind === 'hex' && /hex needs|choice required|hex canceled|hex blocked/i.test(joined)) return 'hard';
+  if (kind === 'hex') return 'soft';
   if (kind === 'card' && ['TRICK','THREAT','THREAT_MODIFIER'].includes(type)) return 'hard';
   if (/bad news|goblin down|victory|flee result|backup|trade|added .*foe|foe added|combat card|opening roll complete|goes first/i.test(joined)) return 'hard';
 
@@ -743,6 +745,9 @@ function renderPhaseBanner() {
     title = isMyTurn() ? 'Turn Ending' : `${active()?.name}'s turn is wrapping up`;
     copy = isMyTurn() ? 'Tap End Turn, or sell Gear first.' : `Waiting for ${active()?.name}.`;
     if (isMyTurn()) { buttons.push(buttonHtml('End Turn', 'END_TURN', 'primary')); buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR')); }
+  } else if (state.phase === 'HEX_REVEAL') {
+    title = 'Hex resolving';
+    copy = state.pendingHex?.card ? `${state.pendingHex.card.publicName} is being resolved.` : 'The Hex has resolved. Waiting for the table to continue.';
   } else {
     title = `${prettyPhase(state.phase)}`;
     copy = 'Follow the table prompt.';

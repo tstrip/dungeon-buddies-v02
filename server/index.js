@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.13-source-first-resolution-v0613' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.14-hex-flow-hotfix-v0614' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -329,7 +329,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.13-source-first-resolution-v0613',
+    version: '0.10.14-hex-flow-hotfix-v0614',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1642,6 +1642,32 @@ function finishDieReaction(room, runner) {
   clearReaction(room);
   setPostFleeRollReaction(room, runner);
 }
+function finishHexReturnPhase(room, after = 'CONTINUE') {
+  const returnPhase = room.hexReturnPhase;
+  room.hexReturnPhase = null;
+  room.revealCard = null;
+  if (after === 'TO_NO_THREAT_CHOICE') {
+    room.phase = 'NO_THREAT_CHOICE';
+    return;
+  }
+  if (after === 'TO_TRIBUTE_OR_END') {
+    moveToTributeOrEnd(room);
+    return;
+  }
+  if (after === 'TO_POST_COMBAT') {
+    moveToPostCombat(room);
+    return;
+  }
+  if (after === 'CONTINUE_ESCAPE') {
+    room.phase = returnPhase && returnPhase !== 'HEX_REVEAL' ? returnPhase : 'ESCAPE';
+    return;
+  }
+  if (after === 'CONTINUE' || after === 'STAY') {
+    if (returnPhase && returnPhase !== 'HEX_REVEAL') room.phase = returnPhase;
+    return;
+  }
+}
+
 function completeHexResolution(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE') {
   let complete = true;
   for (const effect of card.effects || []) {
@@ -1651,8 +1677,7 @@ function completeHexResolution(room, card, targetPlayer, after = 'TO_NO_THREAT_C
   discardCard(room, card);
   if (complete) {
     if (!room.tableNotice || room.tableNotice.kind === 'hex') announce(room, 'hex', 'Hex Resolved', `${card.publicName} finished resolving for ${targetPlayer.name}.`, card, { importance: 'normal' });
-    room.revealCard = null;
-    room.phase = after === 'TO_NO_THREAT_CHOICE' ? 'NO_THREAT_CHOICE' : room.phase;
+    finishHexReturnPhase(room, after);
   } else {
     announce(room, 'prompt', 'Hex Needs a Choice', `${targetPlayer.name} must choose how ${card.publicName} resolves.`, card, { importance: 'major' });
   }
@@ -1668,6 +1693,14 @@ function startHexCancelReactionIfAvailable(room, card, targetPlayer, after, sour
 
 function continueAfterPrompt(room, after) {
   room.pendingPrompt = null;
+  if (room.hexReturnPhase && (after === 'STAY' || after === 'CONTINUE')) {
+    finishHexReturnPhase(room, after);
+    return;
+  }
+  if (room.hexReturnPhase && after === 'TO_NO_THREAT_CHOICE') {
+    finishHexReturnPhase(room, after);
+    return;
+  }
   if (after === 'TO_NO_THREAT_CHOICE') room.phase = 'NO_THREAT_CHOICE';
   else if (after === 'CONTINUE_ESCAPE') continueFlee(room);
   else if (after === 'TO_TRIBUTE_OR_END') moveToTributeOrEnd(room);
@@ -1837,7 +1870,8 @@ function setupGame(room) {
 
 function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE', source = 'REVEAL') {
   log(room, `Hex revealed: ${card.publicName}.`);
-  room.pendingHex = { card, targetPlayerId: targetPlayer.id, after, source };
+  const previousPhase = room.phase;
+  room.pendingHex = { card, targetPlayerId: targetPlayer.id, after, source, previousPhase };
   room.revealCard = card;
   room.phase = 'HEX_REVEAL';
   announce(room, 'hex', 'Hex Revealed', `${card.publicName} affects ${targetPlayer.name}. Read the card, then resolve the Hex.`, card, { importance: 'major' });
@@ -1852,6 +1886,7 @@ function finishPendingHexResolution(room, player) {
   const card = pending.card;
   const after = pending.after || 'TO_NO_THREAT_CHOICE';
   const source = pending.source || 'REVEAL';
+  room.hexReturnPhase = pending.previousPhase || room.phase;
   room.pendingHex = null;
   if (after === 'TO_NO_THREAT_CHOICE' && targetPlayer.equippedGear.some((g) => g.id === 'GEAR_SANDALS_PROTECTION')) {
     announce(room, 'hex', 'Hex Blocked', `${targetPlayer.name}'s Sandals of Protection blocked ${card.publicName}.`, card, { importance: 'major' });
@@ -2074,7 +2109,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.13-source-first-resolution-v0613' });
+  socket.emit('ready', { version: '0.10.14-hex-flow-hotfix-v0614' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2141,7 +2176,7 @@ io.on('connection', (socket) => {
 
 function handleAction(socket, room, player, payload) {
   const type = payload.type;
-  if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION'].includes(type)) return emitError(socket, 'Dead players wait for their next turn to return.');
+  if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION', 'RESOLVE_HEX'].includes(type)) return emitError(socket, 'Dead players wait for their next turn to return.');
   if (type === 'MARK_CARD_SEEN') {
     const card = player.hand.find((c) => c.instanceId === payload.cardId);
     if (card) { card.fresh = false; card.freshAt = null; }
@@ -2199,7 +2234,7 @@ function handleAction(socket, room, player, payload) {
     clearReaction(room);
     announce(room, 'hex', 'Hex Canceled', `${player.name} used Wish Ring to cancel ${hex.publicName}.`, ring, { importance: 'major' });
     log(room, `${player.name} canceled ${hex.publicName} with Wish Ring.`);
-    if (after === 'TO_NO_THREAT_CHOICE') room.phase = 'NO_THREAT_CHOICE';
+    finishHexReturnPhase(room, after);
     return;
   }
 
