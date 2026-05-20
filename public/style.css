@@ -9210,9 +9210,9 @@ body .global-soft-card {
 }
 
 
-/* Loot Goblins v0.7.8 — Streamlined Table Language + Loot Reveal + Sell Drawer Fix */
+/* Loot Goblins v0.7.8.1 — Hotfix for v0.7.8 blank-screen regression + preserved UX fixes */
 
-/* The game should stop narrating itself. Keep prompt stages compact. */
+/* Keep prompt stages compact. */
 .mobile-state-prompt {
   gap: 8px;
 }
@@ -9222,7 +9222,7 @@ body .global-soft-card {
   text-align: center;
 }
 
-/* Sell/decision drawer must be a real scrollable decision surface. */
+/* Sell/decision drawer must be scrollable without breaking the main game shell. */
 .hand-panel.drawer-mode-sell,
 .hand-panel.drawer-mode-trade,
 .hand-panel.drawer-mode-discard-hand,
@@ -9293,12 +9293,6 @@ body .global-soft-card {
   position: sticky;
   bottom: 0;
   margin-top: 6px;
-}
-
-/* Hide old standalone prompt panel if any layout still renders it. */
-#promptPanel.mobile-suppressed-prompt,
-#promptPanel.hidden {
-  display: none !important;
 }
 
 /* Private card gain splash */
@@ -9397,15 +9391,9 @@ body .global-soft-card {
   min-height: 50px;
 }
 
-/* Hex language cleanup: less admin, more action. */
 .mobile-state-clean-hex .mobile-state-sub,
 .mobile-state-clean-hex .mobile-opened-door-status {
   display: none !important;
-}
-
-/* Remove repeated instruction weight in small task screens. */
-.mobile-state-size-small .mobile-state-sub {
-  display: none;
 }
 
 @media (max-width: 760px) {

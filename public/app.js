@@ -385,16 +385,9 @@ function privateCardGainHtml() {
   if (!cards.length) return '';
   const chamber = cards.filter((c) => String(c.freshFrom || '').toUpperCase().includes('CHAMBER')).length;
   const loot = cards.filter((c) => String(c.freshFrom || '').toUpperCase().includes('LOOT')).length;
-  const title = cards.length === 1
-    ? `You gained ${cards[0].publicName}`
-    : `You gained ${cards.length} cards`;
-  const source = cards.some((c) => c.freshReason === 'LOOT_ROOM')
-    ? 'Loot the Room'
-    : (loot && chamber ? 'New cards' : loot ? 'Loot gained' : 'Hidden Chamber gained');
-  const summary = [
-    chamber ? `${chamber} Chamber` : '',
-    loot ? `${loot} Loot` : ''
-  ].filter(Boolean).join(' · ');
+  const title = cards.length === 1 ? `You gained ${cards[0].publicName}` : `You gained ${cards.length} cards`;
+  const source = cards.some((c) => c.freshReason === 'LOOT_ROOM') ? 'Loot the Room' : (loot && chamber ? 'New Cards' : loot ? 'Loot Gained' : 'Hidden Chamber Gained');
+  const summary = [chamber ? `${chamber} Chamber` : '', loot ? `${loot} Loot` : ''].filter(Boolean).join(' · ');
   return `<section class="global-public-modal private-gain-modal" role="dialog" aria-modal="true">
     <div class="private-gain-card">
       <div class="private-gain-kicker">${escapeHtml(source)}</div>
@@ -1990,6 +1983,669 @@ function renderPrompt() {
   root.innerHTML = '';
 }
 
+function renderHand() {
+  const root = $('handPanel');
+  const you = me();
+  if (!you) { root.innerHTML = ''; return; }
+
+  const mode = handDrawerMode();
+  const over = you.handCount > you.handLimit;
+  const forceOpen = Boolean(mode.forceOpen);
+  const expanded = handExpanded || forceOpen;
+  root.className = `hand-panel drawer-mode-${escapeHtml(mode.key)} ${expanded ? 'hand-expanded' : ''} ${over ? 'hand-over-limit' : ''}`;
+
+  const toggleLabel = forceOpen ? mode.toggleLabel || 'Required' : (expanded ? 'Collapse' : 'Expand');
+  const handStateClass = over ? (mode.key === 'tribute' ? 'bad' : 'warn') : (you.handCount === you.handLimit ? 'full' : '');
+  const handStateText = over
+    ? (mode.key === 'tribute' ? `${you.handCount}/${you.handLimit} Tribute Required` : `${you.handCount}/${you.handLimit} Tribute Later`)
+    : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
+
+  let html = `<div class="hand-header v075-hand-header mobile-hand-header">
+    <div><span class="hand-eyebrow">${escapeHtml(mode.eyebrow)}</span><h3>${escapeHtml(mode.title)}</h3></div>
+    <div class="hand-header-actions">
+      <span class="hand-limit ${handStateClass}">${handStateText}</span>
+      <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'decision-mode' : ''}" type="button" aria-expanded="${expanded}" ${forceOpen ? 'disabled' : ''}>${escapeHtml(toggleLabel)}</button>
+    </div>
+  </div>`;
+
+  html += `<p class="micro hand-help drawer-mode-help">${escapeHtml(mode.hint)}</p>`;
+
+  if (mode.key === 'tribute') {
+    const need = Math.max(0, you.handCount - you.handLimit);
+    html += `<p class="micro tribute-instruction">Inspect first, then use Pick to choose exactly ${need} excess card${need === 1 ? '' : 's'}.</p>`;
+    html += `<div class="hand-tray v075-hand-tray tribute-tray expanded-tray decision-tray"><div class="card-row hand-row tribute-card-row expanded-hand-row">${myHand().map((c) => tributeCardHtml(c)).join('')}</div></div>`;
+    html += tributeControls(need);
+  } else if (mode.decision) {
+    html += drawerDecisionContent(mode);
+  } else {
+    const cardsHtml = displayHandCards(myHand()).map((c) => cardHtml(c, { compact: true, playable: isCardPlayable(c) })).join('');
+    if (expanded) {
+      html += `<div class="hand-tray v075-hand-tray expanded-tray"><div class="card-row hand-row expanded-hand-row">${cardsHtml}</div></div>`;
+    } else {
+      html += `<div class="hand-scroll-shell"><button class="hand-scroll-btn hand-scroll-prev" type="button" aria-label="Scroll hand left">‹</button><div class="hand-tray v075-hand-tray"><div class="card-row hand-row">${cardsHtml}</div></div><button class="hand-scroll-btn hand-scroll-next" type="button" aria-label="Scroll hand right">›</button></div>`;
+    }
+  }
+
+  root.innerHTML = html;
+
+  const toggle = $('handToggleBtn');
+  if (toggle && !forceOpen) toggle.addEventListener('click', () => {
+    handExpanded = !handExpanded;
+    renderHand();
+  });
+
+  attachDrawerHandlers(root, mode);
+  attachHandScrollControls(root);
+  const confirm = $('confirmTribute');
+  if (confirm) confirm.addEventListener('click', () => confirmTribute());
+}
+
+
+function handDrawerMode() {
+  const you = me();
+  const p = state?.pendingPrompt;
+  if (p?.requiresYou) {
+    if (p.type === 'SELL_GEAR') return { key: 'sell', decision: true, forceOpen: true, toggleLabel: 'Selling', eyebrow: 'Decision Drawer', title: 'Sell Gear', hint: 'Choose Gear to cash in. Done keeps everything.', prompt: p };
+    if (p.type === 'TRADE_OFFER_SELECT') return { key: 'trade', decision: true, forceOpen: true, toggleLabel: 'Trading', eyebrow: 'Decision Drawer', title: 'Trade Offer', hint: 'Choose cards to offer. Gifts are allowed, but the other player must accept.', prompt: p };
+    if (p.type === 'TRADE_ACCEPT') return { key: 'trade-review', decision: true, forceOpen: true, toggleLabel: 'Review', eyebrow: 'Decision Drawer', title: 'Trade Offered', hint: 'Inspect the offered cards, then accept or decline.', prompt: p };
+    if (p.type === 'ADD_FOE_FROM_HAND') return { key: 'add-foe', decision: true, forceOpen: true, toggleLabel: 'Choose Foe', eyebrow: 'Decision Drawer', title: 'Add Foe to Combat', hint: 'Choose exactly which Foe joins the current fight.', prompt: p };
+    if (p.type === 'DISCARD_HAND_CARDS') return { key: 'discard-hand', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Cards to Discard', hint: `Pick ${p.meta?.count || 1} card${(p.meta?.count || 1) === 1 ? '' : 's'} to discard. Inspect first if needed.`, prompt: p };
+    if (p.type === 'DISCARD_GEAR' || p.type === 'DISCARD_GEAR_VALUE') return { key: 'discard-gear', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Gear to Lose', hint: p.message || 'Choose the Gear required by the prompt.', prompt: p };
+    if (p.type === 'LOOT_BODY') return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: 'Choose one card from the fallen goblin. It goes to your hand.', prompt: p };
+    return { key: 'prompt', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Resolve the current choice.', prompt: p };
+  }
+  if (state?.bodyLoot?.requiresYou) return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: `Choose one card from ${state.bodyLoot.victimName || 'the fallen goblin'}.`, bodyLoot: state.bodyLoot };
+  if (state?.reaction?.requiresYou) return { key: 'reaction', decision: true, forceOpen: true, toggleLabel: 'React', eyebrow: 'Reaction Drawer', title: state.reaction.title || 'Reaction Window', hint: state.reaction.message || 'Use a legal reaction or pass.', reaction: state.reaction };
+  if (state?.phase === 'TRIBUTE' && isMyTurn()) return { key: 'tribute', forceOpen: true, toggleLabel: 'Tribute', eyebrow: 'Decision Drawer', title: 'Tribute Required', hint: `Pick ${Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0))} excess card${Math.max(0, Number(you?.handCount || 0) - Number(you?.handLimit || 0)) === 1 ? '' : 's'} to give/discard.` };
+  if (state?.phase === 'COMBAT') {
+    const playable = playableHandCount();
+    let hint = playable ? `${playable} combat-relevant card${playable === 1 ? '' : 's'} can be played now. Glowing cards are legal.` : 'No legal combat cards right now. Pass when you are done.';
+    if (!addFoeEnablerCard() && hasFoeInHand()) hint = 'Foes in hand need Unexpected Company before they can join combat.';
+    return { key: 'combat', eyebrow: 'Combat Hand', title: 'Combat Cards', hint };
+  }
+  if (state?.phase === 'POST_COMBAT' && isMyTurn()) return { key: 'loot', eyebrow: 'Use Loot', title: 'Use Loot / Gear', hint: 'Play legal cards, equip, carry, trade, or sell before Tribute is checked.' };
+  const playable = playableHandCount();
+  return { key: 'normal', eyebrow: state?.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards', title: 'Your Hand', hint: playable ? `${playable} card${playable === 1 ? '' : 's'} can be played now — glowing first.` : 'Tap cards to inspect. Expand when you need more room.' };
+}
+
+function drawerDecisionContent(mode) {
+  const cards = mode.prompt?.options || mode.bodyLoot?.cards || [];
+  if (mode.key === 'reaction') {
+    return `<div class="drawer-decision-panel drawer-reaction-panel">
+      <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+      ${mobileActionButtonsHtml(reactionButtons(mode.reaction), 'drawer-reaction-actions')}
+    </div>`;
+  }
+  if (!cards.length && !['trade-review'].includes(mode.key)) {
+    return `<div class="drawer-empty-state">${assetIconHtml('discard', 'event-sigil')}<span>No cards are available for this decision.</span>${drawerControls(mode)}</div>`;
+  }
+  const cardHtmlList = cards.map((c) => drawerDecisionCardHtml(c, mode)).join('');
+  return `<div class="drawer-decision-panel drawer-${escapeHtml(mode.key)}">
+    <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+    <div class="hand-tray v075-hand-tray expanded-tray decision-tray"><div class="card-row hand-row expanded-hand-row decision-hand-row">${cardHtmlList}</div></div>
+    ${drawerControls(mode)}
+  </div>`;
+}
+
+function drawerDecisionCardHtml(card, mode) {
+  if (!card) return '';
+  const selectedSellCard = selectedSell.has(card.instanceId);
+  const selectedTradeCard = selectedTrade.has(card.instanceId);
+  const selectedDiscardCard = selectedTribute.has(card.instanceId);
+  if (mode.key === 'sell') {
+    const value = Number(card.junkValue || card.scrapValue || 0);
+    return `<button class="drawer-card-choice ${selectedSellCard ? 'selected' : ''}" data-drawer-sell-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedSellCard ? '✓ Selling' : `${value} Junk`}</span></button>`;
+  }
+  if (mode.key === 'trade') {
+    return `<button class="drawer-card-choice ${selectedTradeCard ? 'selected' : ''}" data-drawer-trade-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedTradeCard ? '✓ Offered' : 'Offer'}</span></button>`;
+  }
+  if (mode.key === 'discard-hand' || mode.key === 'discard-gear') {
+    return `<button class="drawer-card-choice ${selectedDiscardCard ? 'selected' : ''}" data-drawer-discard-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${selectedDiscardCard ? '✓ Picked' : 'Pick'}</span></button>`;
+  }
+  if (mode.key === 'trade-review') {
+    return `<button class="drawer-card-choice inspect-only" data-drawer-inspect-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>Inspect</span></button>`;
+  }
+  return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Take card' : 'Choose'}</span></button>`;
+}
+
+function drawerControls(mode) {
+  if (mode.key === 'sell') {
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedSell.size}</span><button class="primary" data-drawer-sell-confirm ${selectedSell.size ? '' : 'disabled'}>Sell Selected</button><button data-drawer-prompt-cancel>Done</button></div>`;
+  }
+  if (mode.key === 'trade') {
+    return `<div class="drawer-decision-actions"><span class="micro">Offering ${selectedTrade.size}</span><button class="primary" data-drawer-trade-confirm ${selectedTrade.size ? '' : 'disabled'}>Send Offer</button><button data-drawer-prompt-cancel>Cancel Trade</button></div>`;
+  }
+  if (mode.key === 'trade-review') {
+    return `<div class="drawer-decision-actions"><button class="primary" data-drawer-trade-accept>Accept Trade</button><button data-drawer-trade-decline>Decline</button></div>`;
+  }
+  if (mode.key === 'discard-hand') {
+    const need = mode.prompt?.meta?.count || 1;
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}/${need}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size === need ? '' : 'disabled'}>Discard Selected</button></div>`;
+  }
+  if (mode.key === 'discard-gear') {
+    const need = mode.prompt?.meta?.count || 1;
+    return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}${need ? `/${need}` : ''}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size ? '' : 'disabled'}>Confirm Choice</button></div>`;
+  }
+  if (mode.key === 'add-foe') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel</button></div>`;
+  if (mode.key === 'prompt') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass / Cancel if optional</button></div>`;
+  return '';
+}
+
+function attachDrawerHandlers(root, mode) {
+  root.querySelectorAll('[data-tribute-toggle]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTribute(btn.dataset.tributeToggle);
+    });
+  });
+  root.querySelectorAll('[data-tribute-inspect]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const card = myHand().find((c) => c.instanceId === btn.dataset.tributeInspect);
+      if (card) inspectCard(card);
+    });
+  });
+  root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
+    cardEl.addEventListener('click', () => {
+      const card = myHand().find((c) => c.instanceId === cardEl.dataset.cardId);
+      if (!card) return;
+      inspectCard(card);
+    });
+  });
+  root.querySelectorAll('[data-drawer-inspect-card]').forEach((btn) => btn.addEventListener('click', () => {
+    const card = findVisibleCardByInstance(btn.dataset.drawerInspectCard) || (mode.prompt?.options || []).find((c) => c.instanceId === btn.dataset.drawerInspectCard);
+    if (card) inspectCard(card);
+  }));
+  root.querySelectorAll('[data-drawer-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.drawerPromptCard })));
+  root.querySelectorAll('[data-drawer-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
+    if (selectedSell.has(btn.dataset.drawerSellCard)) selectedSell.delete(btn.dataset.drawerSellCard);
+    else selectedSell.add(btn.dataset.drawerSellCard);
+    renderHand();
+  }));
+  root.querySelectorAll('[data-drawer-sell-confirm]').forEach((btn) => btn.addEventListener('click', () => {
+    if (!selectedSell.size) return;
+    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] });
+    selectedSell.clear();
+  }));
+  root.querySelectorAll('[data-drawer-trade-card]').forEach((btn) => btn.addEventListener('click', () => {
+    if (selectedTrade.has(btn.dataset.drawerTradeCard)) selectedTrade.delete(btn.dataset.drawerTradeCard);
+    else selectedTrade.add(btn.dataset.drawerTradeCard);
+    renderHand();
+  }));
+  root.querySelectorAll('[data-drawer-trade-confirm]').forEach((btn) => btn.addEventListener('click', () => {
+    if (!selectedTrade.size) return;
+    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedTrade] });
+    selectedTrade.clear();
+  }));
+  root.querySelectorAll('[data-drawer-trade-accept]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { accept: true })));
+  root.querySelectorAll('[data-drawer-trade-decline]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { decline: true })));
+  root.querySelectorAll('[data-drawer-discard-card]').forEach((btn) => btn.addEventListener('click', () => {
+    const id = btn.dataset.drawerDiscardCard;
+    if (selectedTribute.has(id)) selectedTribute.delete(id);
+    else selectedTribute.add(id);
+    renderHand();
+  }));
+  root.querySelectorAll('[data-drawer-discard-confirm]').forEach((btn) => btn.addEventListener('click', () => {
+    if (!selectedTribute.size) return;
+    emitAction('RESOLVE_PROMPT', { cardIds: [...selectedTribute] });
+    selectedTribute.clear();
+  }));
+  root.querySelectorAll('[data-drawer-prompt-cancel]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cancel: true })));
+  root.querySelectorAll('[data-reaction-action]').forEach((btn) => btn.addEventListener('click', () => handleReactionButton(btn.dataset.reactionAction, btn.dataset.value)));
+}
+
+
+function attachHandScrollControls(root) {
+  const tray = root.querySelector('.hand-tray');
+  if (!tray) return;
+  if (tray.classList.contains('expanded-tray')) return;
+  const scrollByAmount = () => Math.max(160, Math.floor(tray.clientWidth * 0.72));
+  root.querySelector('.hand-scroll-prev')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    tray.scrollBy({ left: -scrollByAmount(), behavior: 'smooth' });
+  });
+  root.querySelector('.hand-scroll-next')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    tray.scrollBy({ left: scrollByAmount(), behavior: 'smooth' });
+  });
+  tray.addEventListener('wheel', (event) => {
+    if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+      tray.scrollLeft += event.deltaY;
+      event.preventDefault();
+    }
+  }, { passive: false });
+  tray.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.target.closest('button')) return;
+    handDrag = { tray, x: event.clientX, left: tray.scrollLeft, moved: false };
+    tray.setPointerCapture?.(event.pointerId);
+  });
+  tray.addEventListener('pointermove', (event) => {
+    if (!handDrag || handDrag.tray !== tray) return;
+    const dx = event.clientX - handDrag.x;
+    if (Math.abs(dx) > 4) handDrag.moved = true;
+    tray.scrollLeft = handDrag.left - dx;
+  });
+  tray.addEventListener('pointerup', () => { handDrag = null; });
+  tray.addEventListener('pointercancel', () => { handDrag = null; });
+}
+
+function displayHandCards(cards) {
+  const list = [...(cards || [])];
+  if (state?.phase === 'COMBAT' || state?.reaction) {
+    return list.sort((a, b) => Number(isCardPlayable(b)) - Number(isCardPlayable(a)));
+  }
+  return list;
+}
+
+function playableHandCount() {
+  return (myHand() || []).filter((c) => isCardPlayable(c)).length;
+}
+
+function addFoeEnablerCard() {
+  return (state?.you?.hand || []).find((c) => c.id === 'SPECIAL_UNEXPECTED_COMPANY_A' || c.effect?.type === 'ADD_FOE_FROM_HAND') || null;
+}
+
+function hasFoeInHand() {
+  return (state?.you?.hand || []).some((c) => c.type === 'THREAT');
+}
+
+
+function tributeCardHtml(card) {
+  const selected = selectedTribute.has(card.instanceId);
+  return `<div class="tribute-card-shell ${selected ? 'selected' : ''}" data-card-id="${card.instanceId || ''}">
+    ${cardHtml(card, { compact: true })}
+    <div class="tribute-card-actions">
+      <button type="button" class="tribute-inspect-btn" data-tribute-inspect="${card.instanceId}">Inspect</button>
+      <button type="button" class="tribute-pick-btn ${selected ? 'selected' : ''}" data-tribute-toggle="${card.instanceId}" aria-pressed="${selected ? 'true' : 'false'}">${selected ? '✓ Picked' : 'Pick'}</button>
+    </div>
+  </div>`;
+}
+
+function tributeControls(need) {
+  const selectedCount = selectedTribute.size;
+  const minGlory = Math.min(...state.players.map((p) => p.renown));
+  const you = me();
+  const recipients = state.players.filter((p) => p.id !== you.id && p.renown === minGlory);
+  let html = `<div class="primary-action"><span class="micro">Selected ${selectedCount}/${need}</span>`;
+  if (you.renown !== minGlory && recipients.length > 1) {
+    html += `<select id="tributeTarget">${recipients.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>`;
+  }
+  html += `<button id="confirmTribute" class="primary" ${selectedCount !== need ? 'disabled' : ''}>Confirm Tribute</button></div>`;
+  return html;
+}
+
+function toggleTribute(cardId) {
+  if (selectedTribute.has(cardId)) selectedTribute.delete(cardId);
+  else selectedTribute.add(cardId);
+  renderHand();
+}
+
+function confirmTribute() {
+  const target = $('tributeTarget')?.value;
+  emitAction('GIVE_TRIBUTE', { cardIds: [...selectedTribute], targetPlayerId: target });
+  selectedTribute.clear();
+}
+
+
+function isReactionCardPlayable(card) {
+  const r = state?.reaction;
+  if (!r || !card) return false;
+  if (!ownsVisibleCard(card)) return false;
+  if (!r.requiresYou) return false;
+  if (r.type === 'HEX_CANCEL_REACTION') return card.id === 'SPECIAL_WISHING_RING_A';
+  if (r.type === 'DIE_ROLL_REACTION') return card.id === 'SPECIAL_LOADED_DIE';
+  if (r.type === 'FLEE_FAILURE_REACTION') return card.id === 'TRICK_INVISIBILITY';
+  if (r.type === 'FLEE_SUCCESS_REACTION') return card.id === 'TRICK_FLASK_GLUE';
+  return false;
+}
+
+function isCardPlayable(card) {
+  if (!state || !card) return false;
+  if (!ownsVisibleCard(card)) return false;
+  return serverCardActions(card).length > 0;
+}
+
+
+function cardTypeClass(card) {
+  return `card-type-${String(card?.type || 'card').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
+function cardTypeIcon(card) {
+  const t = String(card?.type || '').toUpperCase();
+  if (t === 'THREAT') return 'F';
+  if (t === 'HEX') return 'X';
+  if (t === 'GEAR') return 'G';
+  if (t === 'TRICK') return 'T';
+  if (t === 'THREAT_MODIFIER') return 'M';
+  if (t === 'ROLE') return 'C';
+  if (t === 'ORIGIN') return 'K';
+  if (t === 'SPECIAL') return 'S';
+  return '•';
+}
+
+function cardTypeKey(card) {
+  const t = String(card?.type || card || '').toUpperCase();
+  if (t === 'THREAT') return 'foe';
+  if (t === 'HEX') return 'hex';
+  if (t === 'GEAR') return 'gear';
+  if (t === 'TRICK') return 'trick';
+  if (t === 'THREAT_MODIFIER') return 'modifier';
+  if (t === 'ROLE') return 'calling';
+  if (t === 'ORIGIN') return 'kin';
+  if (t === 'SPECIAL') return 'special';
+  return 'card';
+}
+
+function cardTypeSigilHtml(card, cls = 'asset-sigil card-type-sigil') {
+  return assetIconHtml(cardTypeKey(card), cls);
+}
+
+function deckPileIconHtml(key) {
+  if (/CHAMBER/.test(key)) return assetIconHtml('chamber', 'asset-sigil pile-sigil');
+  if (/LOOT/.test(key)) return assetIconHtml('loot', 'asset-sigil pile-sigil');
+  if (/DISCARD/.test(key)) return assetIconHtml('discard', 'asset-sigil pile-sigil');
+  return assetIconHtml('card', 'asset-sigil pile-sigil');
+}
+
+function assetIconHtml(key, cls = 'asset-sigil') {
+  const k = String(key || 'special').toLowerCase().replace(/[^a-z0-9-]+/g, '');
+  const core = {
+    glory: '/assets/loot-goblins/core-icons/glory.png',
+    junk: '/assets/loot-goblins/core-icons/junk.png',
+    strength: '/assets/loot-goblins/core-icons/strength.png',
+    combat: '/assets/loot-goblins/core-icons/combat.png',
+    loot: '/assets/loot-goblins/core-icons/loot.png',
+    flee: '/assets/loot-goblins/core-icons/flee.png',
+    die: '/assets/loot-goblins/core-icons/die.png',
+    roll: '/assets/loot-goblins/core-icons/roll.png',
+    death: '/assets/loot-goblins/core-icons/death.png',
+    backup: '/assets/loot-goblins/core-icons/backup.png',
+    hex: '/assets/loot-goblins/core-icons/hex.png',
+    chamber: '/assets/loot-goblins/core-icons/chamber.png',
+    draw: '/assets/loot-goblins/core-icons/draw.png',
+    discard: '/assets/loot-goblins/core-icons/discard.png',
+    trade: '/assets/loot-goblins/core-icons/trade.png',
+    give: '/assets/loot-goblins/core-icons/give.png',
+    'trade-give': '/assets/loot-goblins/core-icons/trade-give.png'
+  };
+  const types = {
+    foe: '/assets/loot-goblins/card-type-icons/foe.png',
+    gear: '/assets/loot-goblins/card-type-icons/gear.png',
+    trick: '/assets/loot-goblins/card-type-icons/trick.png',
+    modifier: '/assets/loot-goblins/card-type-icons/modifier.png',
+    calling: '/assets/loot-goblins/card-type-icons/calling.png',
+    kin: '/assets/loot-goblins/card-type-icons/kin.png',
+    special: '/assets/loot-goblins/card-type-icons/special.png',
+    card: '/assets/loot-goblins/card-type-icons/special.png',
+    prompt: '/assets/loot-goblins/core-icons/chamber.png',
+    turn: '/assets/loot-goblins/core-icons/chamber.png'
+  };
+  // Preserve Hex parity: core contexts use the bigger Hex icon, card-type contexts use D2.
+  let src = core[k] || types[k] || types.special;
+  if (String(cls || '').includes('card-type') || String(cls || '').includes('corner-sigil') || String(cls || '').includes('hand-sigil') || String(cls || '').includes('tiny-sigil')) {
+    src = types[k] || core[k] || types.special;
+  }
+  return `<img class="${escapeHtml(cls)} icon-img sigil-${escapeHtml(k)}" src="${src}" alt="" aria-hidden="true" loading="lazy" decoding="async" />`;
+}
+
+function cardHtml(card, opts = {}) {
+  if (!card) return '';
+  if (opts.compact) return compactCardHtml(card, opts);
+  const classes = ['card', cardTypeClass(card)];
+  if (opts.tableSmall) classes.push('table-small');
+  if (opts.feature) classes.push('feature-card');
+  if (opts.playable) classes.push('playable');
+  if (opts.selectableTribute && selectedTribute.has(card.instanceId)) classes.push('playable');
+  if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
+  const bottom = cardBottom(card);
+  return `<article class="${classes.join(' ')}" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
+    <div class="card-corner-sigil" aria-hidden="true">${cardTypeSigilHtml(card, 'asset-sigil corner-sigil')}</div>
+    <div class="type"><span class="inline-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil tiny-sigil')}</span>${escapeHtml(typeLabel(card))}</div>
+    <div class="title">${escapeHtml(card.publicName)}</div>
+    <div class="art"><span>${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</span></div>
+    <div class="text">${escapeHtml(card.publicText || '')}</div>
+    ${card.flavorText ? `<div class="flavor">${escapeHtml(card.flavorText)}</div>` : ''}
+    ${card.attachmentNames?.length ? `<div class="micro attached-line">Attached: ${escapeHtml(card.attachmentNames.join(', '))}</div>` : ''}
+    <div class="stats">${escapeHtml(bottom)}</div>
+  </article>`;
+}
+
+function compactCardHtml(card, opts = {}) {
+  const classes = ['hand-card', cardTypeClass(card)];
+  const tributeSelected = opts.selectableTribute && selectedTribute.has(card.instanceId);
+  if (opts.playable) classes.push('playable');
+  if (tributeSelected) classes.push('tribute-selected');
+  if (opts.playable === false && state?.status !== 'LOBBY') classes.push('dim');
+  if (card.fresh) classes.push('new-card');
+  return `<article class="${classes.join(' ')} compact-v076" data-card-id="${card.instanceId || ''}" data-card-icon="${escapeHtml(cardTypeIcon(card))}">
+    ${card.fresh ? '<div class="new-badge">NEW</div>' : ''}
+    ${opts.selectableTribute ? `<button class="tribute-select-btn" type="button" data-tribute-toggle="${card.instanceId}" aria-pressed="${tributeSelected ? 'true' : 'false'}">${tributeSelected ? '✓' : 'Pick'}</button>` : ''}
+    <div class="hand-card-sigil" aria-hidden="true">${cardTypeSigilHtml(card, 'asset-sigil hand-sigil')}</div>
+    <div class="hand-card-copy">
+      <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
+      <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
+      <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
+    </div>
+    ${(card.attachmentNames || []).length ? `<div class="hand-card-attach-dot" title="Has attached cards">+</div>` : ''}
+  </article>`;
+}
+
+
+function isOneUseConsumableCard(card) {
+  if (!card) return false;
+  return Boolean(card.oneUse || card.consumable || card.type === 'TRICK' || /\bOne-use\b/i.test(card.publicText || '') || /\b(Potion|Poison|Drink|Water)\b/i.test(card.publicName || ''));
+}
+
+function cardGlance(card) {
+  if (card.type === 'THREAT') return `STR ${card.strength}`;
+  if (card.type === 'GEAR') return `+${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)}`;
+  if (card.type === 'TRICK') return `One-use · ${trickGlance(card)}`;
+  if (card.type === 'HEX') return hexGlance(card);
+  if (card.type === 'ROLE') return 'Calling';
+  if (card.type === 'ORIGIN') return 'Kin';
+  if (card.type === 'SPECIAL') return 'Special';
+  return card.type || 'Card';
+}
+
+function cardGlanceSub(card) {
+  if (card.type === 'THREAT') return `${card.renownReward} Glory · ${card.lootReward} Loot`;
+  if (card.type === 'GEAR') return `${card.slot || 'Gear'}${card.handsUsed ? ` · ${card.handsUsed}H` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Loot ${signed(card.lootDelta)}`;
+  if (card.type === 'TRICK') return `Single-use ${((card.timing || []).map(prettyTiming).join(' / ') || 'Trick')}`;
+  if (card.type === 'HEX') return (card.timing || []).map(prettyTiming).join(' / ') || 'Any time';
+  if (card.type === 'ROLE' || card.type === 'ORIGIN') return 'Play on your turn';
+  return (card.publicText || '').slice(0, 42);
+}
+
+function trickGlance(card) {
+  const e = card.effect || {};
+  if (typeof e.amount === 'number') return `${e.amount >= 0 ? '+' : ''}${e.amount} ${e.side === 'THREAT' ? 'Foe' : e.side === 'PLAYER' ? 'Player' : 'Side'}`;
+  if ((card.timing || []).includes('BEFORE_ESCAPE_ROLL')) return 'Flee help';
+  return 'One-use';
+}
+
+function hexGlance(card) {
+  const text = card.publicText || 'Bad thing';
+  return text.replace(/^Curse:?\s*/i, '').slice(0, 28);
+}
+
+function cardBottom(card) {
+  if (card.type === 'THREAT') return `STR ${card.strength} · ${card.renownReward} Glory · ${card.lootReward} Loot`;
+  if (card.type === 'GEAR') return `${card.slot || 'Gear'} · +${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''} · ${card.junkValue ?? card.scrapValue ?? 0} Junk${card.isHeavy ? ' · Heavy' : ''}`;
+  if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)} · Loot ${signed(card.lootDelta)}`;
+  if (card.type === 'TRICK') return `One-use Trick · ${(card.timing || []).map(prettyTiming).join(' / ') || 'Combat'} · ${card.junkValue ?? card.scrapValue ?? 0} Junk`;
+  if (card.type === 'ROLE') return 'Calling';
+  if (card.type === 'ORIGIN') return 'Kin';
+  if (card.type === 'HEX') return card.timing?.join(', ') || 'Hex';
+  return card.type || 'Card';
+}
+
+function typeLabel(card) {
+  const map = { THREAT: 'Foe', HEX: 'Hex', ROLE: 'Calling', ORIGIN: 'Kin', GEAR: 'Gear', TRICK: 'Trick · One-use', SPECIAL: 'Special', THREAT_MODIFIER: 'Modifier' };
+  return map[card.type] || card.type;
+}
+
+
+function shortTypeLabel(card) {
+  const map = { THREAT: 'FOE', HEX: 'HEX', ROLE: 'CALL', ORIGIN: 'KIN', GEAR: 'GEAR', TRICK: 'TRICK', SPECIAL: 'SPEC', THREAT_MODIFIER: 'MOD' };
+  return map[card?.type] || String(card?.type || 'CARD').slice(0, 5);
+}
+
+function discardViewerCardHtml(c) {
+  return `<button class="discard-viewer-card full-discard-card" data-discard-card-id="${c.instanceId}">
+    ${cardHtml(c,{compact:true})}
+    <div class="discard-card-copy"><strong>${escapeHtml(c.publicName)}</strong><span>${escapeHtml(typeLabel(c))} · ${escapeHtml(cardBottom(c))}</span><p>${escapeHtml(c.publicText || 'No rules text.')}</p></div>
+  </button>`;
+}
+
+function showDiscardViewer(kind = 'chamber') {
+  const cards = state.discardPiles?.[kind] || [];
+  const label = kind === 'loot' ? 'Loot Discard' : 'Chamber Discard';
+  const root = $('inspectContent');
+  root.innerHTML = `<h2>${escapeHtml(label)}</h2><p class="micro">Any player can inspect discarded cards at any time. Tap a card for the full inspector.</p><div class="discard-viewer-grid full-discard-grid">${cards.length ? cards.slice().reverse().map(discardViewerCardHtml).join('') : '<p>No discarded cards yet.</p>'}</div>`;
+  root.querySelectorAll('[data-discard-card-id]').forEach((btn) => btn.addEventListener('click', () => {
+    const card = cards.find((c) => c.instanceId === btn.dataset.discardCardId);
+    if (card) inspectCard(card);
+  }));
+  $('inspectOverlay').classList.remove('hidden');
+}
+
+function inspectCard(card) {
+  if (!card) return;
+  if (card.fresh) emitAction('MARK_CARD_SEEN', { cardId: card.instanceId });
+  const root = $('inspectContent');
+  const actions = cardActions(card);
+  const statLine = cardBottom(card);
+  root.innerHTML = `<div class="inspect-layout inspect-v071">
+    <div class="inspect-preview">${cardHtml(card, { feature: true })}</div>
+    <div class="inspect-copy">
+      <div class="inspect-kicker"><span class="inline-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil tiny-sigil')}</span>${escapeHtml(typeLabel(card))}</div>
+      <h2>${escapeHtml(card.publicName)}</h2>
+      ${statLine ? `<div class="inspect-stat-row"><span>${escapeHtml(statLine)}</span></div>` : ''}
+      <section class="inspect-section"><h3>Rules</h3><p>${escapeHtml(card.publicText || 'No rules text.')}</p></section>
+      ${card.flavorText ? `<section class="inspect-section flavor-section"><h3>Flavor</h3><p class="inspect-flavor">${escapeHtml(card.flavorText)}</p></section>` : ''}
+      ${(card.attachmentNames || []).length ? `<section class="inspect-section"><h3>Attached</h3><p>${escapeHtml(card.attachmentNames.join(', '))}</p></section>` : ''}
+      <section class="inspect-section"><h3>Actions</h3><div class="action-list inspect-actions">${actions}</div></section>
+    </div>
+  </div>`;
+  root.querySelectorAll('[data-server-card-action]').forEach((btn) => btn.addEventListener('click', () => {
+    closeInspect();
+    emitServerCardAction(card, btn.dataset.serverCardAction);
+  }));
+  root.querySelectorAll('[data-inspect-action]').forEach((btn) => btn.addEventListener('click', () => {
+    const a = btn.dataset.inspectAction;
+    closeInspect();
+    if (a === 'PLAY') emitAction('PLAY_CARD', { cardId: card.instanceId });
+    if (a === 'PLAY_TARGET_FOE') emitAction('PLAY_CARD', { cardId: card.instanceId, targetFoeInstanceId: btn.dataset.targetFoeId });
+    if (a === 'PLAY_PLAYER_SIDE') emitAction('PLAY_CARD', { cardId: card.instanceId, side: 'PLAYER' });
+    if (a === 'PLAY_FOE_SIDE') emitAction('PLAY_CARD', { cardId: card.instanceId, side: 'THREAT' });
+    if (a === 'PLAY_TARGET') emitAction('PLAY_CARD', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
+    if (a === 'EQUIP') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' });
+    if (a === 'CARRY') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' });
+    if (a === 'SELL_ONE') emitAction('SELL_GEAR', { cardIds: [card.instanceId] });
+    if (a === 'ASSIGN_HIRELING_GEAR') emitAction('ASSIGN_HIRELING_GEAR', { cardId: card.instanceId });
+    if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
+    if (a === 'USE_WISH_RING') emitAction('USE_WISH_RING');
+    if (a === 'USE_LOADED_DIE') emitAction('USE_LOADED_DIE', { value: Number(btn.dataset.value) });
+    if (a === 'USE_INVISIBILITY_ESCAPE') emitAction('USE_INVISIBILITY_ESCAPE');
+    if (a === 'USE_FLASK_GLUE') emitAction('USE_FLASK_GLUE');
+  }));
+  $('inspectOverlay').classList.remove('hidden');
+}
+
+
+
+function serverCardSource(card) {
+  if (!card) return null;
+  const fromHand = (state?.you?.hand || []).find((c) => c.instanceId === card.instanceId);
+  return fromHand || card;
+}
+
+function serverCardActions(card) {
+  const source = serverCardSource(card);
+  if (!source) return [];
+  const direct = Array.isArray(source.legalActions) ? source.legalActions : null;
+  if (direct) return direct;
+  return state?.legalCardActions?.[source.instanceId] || [];
+}
+
+function serverCardActionButton(action, index) {
+  if (!action) return '';
+  const cls = action.style || '';
+  const reason = action.reason ? ` title="${escapeHtml(action.reason)}"` : '';
+  return `<button class="${escapeHtml(cls)}" data-server-card-action="${index}"${reason}>${escapeHtml(action.label || action.type || 'Use')}</button>`;
+}
+
+function serverActionsHtml(card) {
+  const actions = serverCardActions(card);
+  if (!actions.length) return '';
+  return actions.map((a, i) => serverCardActionButton(a, i)).join('');
+}
+
+function emitServerCardAction(card, index) {
+  const actions = serverCardActions(card);
+  const action = actions[Number(index)];
+  if (!action) return;
+  emitAction(action.type, action.payload || {});
+}
+
+
+function reactionCardActions(card) {
+  const r = state.reaction;
+  if (!isReactionCardPlayable(card)) return `<p>No legal reaction for this card right now.</p>`;
+  if (r.type === 'HEX_CANCEL_REACTION' && card.id === 'SPECIAL_WISHING_RING_A') return `<button class="primary" data-inspect-action="USE_WISH_RING">Cancel Hex</button>`;
+  if (r.type === 'DIE_ROLL_REACTION' && card.id === 'SPECIAL_LOADED_DIE') return `<p>Choose the new die face:</p>${[1,2,3,4,5,6].map((n)=>`<button class="die-choice" data-inspect-action="USE_LOADED_DIE" data-value="${n}">${n}</button>`).join('')}`;
+  if (r.type === 'FLEE_FAILURE_REACTION' && card.id === 'TRICK_INVISIBILITY') return `<button class="primary" data-inspect-action="USE_INVISIBILITY_ESCAPE">Escape Automatically</button>`;
+  if (r.type === 'FLEE_SUCCESS_REACTION' && card.id === 'TRICK_FLASK_GLUE') return `<button class="primary" data-inspect-action="USE_FLASK_GLUE">Force Reroll</button>`;
+  return `<p>No legal reaction right now.</p>`;
+}
+
+function cardActions(card) {
+  if (!ownsVisibleCard(card)) {
+    return `<p>No legal actions right now.</p><p class="micro">You are viewing this card publicly. Only the player who owns the card can use it.</p>`;
+  }
+  const actionsHtml = serverActionsHtml(card);
+  if (actionsHtml) return actionsHtml;
+  return `<p>No legal actions right now.</p><p class="micro">${whyNotPlayable(card)}</p>`;
+}
+
+function whyNotPlayable(card) {
+  if (!ownsVisibleCard(card)) return 'You are viewing this card publicly.';
+  if (state.pendingPrompt) return 'Resolve the current prompt first.';
+  if (state.pendingHex) return 'Resolve the revealed Hex first.';
+  if (state.reaction) return 'Only matching reaction cards can be used right now.';
+  if (card.type === 'THREAT') return 'Foes need the correct window: Start Trouble after no Foe appears, Restless combat, or Unexpected Company.';
+  if (card.type === 'TRICK') return 'This Trick is waiting for its timing window.';
+  if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
+  return 'The server says this card has no legal action right now.';
+}
+
+function closeInspect() { $('inspectOverlay').classList.add('hidden'); }
+
+function inspectPlayer(p) {
+  const root = $('inspectContent');
+  const gearCards = [...(p.equippedGear || []), ...(p.carriedGear || [])];
+  const effects = (p.statusEffects || []).filter((e) => e.visible !== false);
+  root.innerHTML = `<h2>${escapeHtml(p.name)}</h2><p>Glory ${p.renown}/10 · Hand ${p.handCount}/${p.handLimit} · ${p.connected ? 'online' : 'offline'}</p>
+    <p>Calling/Kin: ${escapeHtml(identityLine(p))}</p>
+    ${p.callingPermit || p.kinPermit ? `<h3>Permits</h3><div class="status-list">${p.callingPermit ? `<div class="status-detail"><strong>${escapeHtml(p.callingPermit.publicName)}</strong><span>Attached to ${escapeHtml(p.callingPermit.attachedToName || 'a Calling')}. ${((p.extraRoles || []).length) ? 'Two Callings: all normal advantages and disadvantages apply.' : 'One Calling: disadvantages are ignored.'}</span></div>` : ''}${p.kinPermit ? `<div class="status-detail"><strong>${escapeHtml(p.kinPermit.publicName)}</strong><span>Attached to ${escapeHtml(p.kinPermit.attachedToName || 'a Kin')}. ${((p.extraOrigins || []).length) ? 'Two Kin: all normal advantages and disadvantages apply.' : 'One Kin: disadvantages are ignored.'}</span></div>` : ''}</div>` : ''}
+    ${effects.length ? `<h3>Ongoing Effects</h3><div class="status-list">${effects.map((e) => `<div class="status-detail"><strong>${escapeHtml(e.publicName || 'Effect')}</strong><span>${escapeHtml(e.description || '')}</span></div>`).join('')}</div>` : ''}
+    <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>
+    ${(!p.isYou && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) ? `<div class="action-list player-trade-actions"><button class="primary" id="tradeWithPlayer">Trade with ${escapeHtml(p.name)}</button></div>` : ''}`;
+  const tradeBtn = $('tradeWithPlayer');
+  if (tradeBtn) tradeBtn.addEventListener('click', () => { closeInspect(); emitAction('START_TRADE', { targetPlayerId: p.id }); });
+  root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
+    cardEl.addEventListener('click', () => {
+      const gear = gearCards.find((g) => g.instanceId === cardEl.dataset.cardId);
+      if (gear) inspectCard(gear);
+    });
+  });
+  $('inspectOverlay').classList.remove('hidden');
+}
 
 function renderEventHistory() {
   const logBox = $('logBox');
