@@ -227,6 +227,11 @@ function renderGame() {
   renderPrompt();
   renderHand();
   renderEventHistory();
+  renderGlobalModal();
+  attachGlobalEventHandlers();
+}
+
+function attachGlobalEventHandlers() {
   document.querySelectorAll('[data-mobile-inspect-card]').forEach((btn) => {
     if (btn.dataset.boundInspect === '1') return;
     btn.dataset.boundInspect = '1';
@@ -235,7 +240,22 @@ function renderGame() {
       if (card) inspectCard(card);
     });
   });
-  document.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => { if (btn.dataset.ackAnnouncement) acknowledgedAnnouncements.add(btn.dataset.ackAnnouncement); render(); }));
+  document.querySelectorAll('[data-ack-announcement]').forEach((btn) => {
+    if (btn.dataset.boundAck === '1') return;
+    btn.dataset.boundAck = '1';
+    btn.addEventListener('click', () => {
+      if (btn.dataset.ackAnnouncement) acknowledgedAnnouncements.add(btn.dataset.ackAnnouncement);
+      render();
+    });
+  });
+}
+
+function renderGlobalModal() {
+  const root = $('globalModalRoot');
+  if (!root) return;
+  const html = globalAnnouncementHtml();
+  root.innerHTML = html;
+  root.classList.toggle('active', Boolean(html));
 }
 
 
@@ -274,28 +294,66 @@ function announcementCardLabel(card) {
   return typeLabel(card);
 }
 
+function hardEventTemplate(a) {
+  const kind = String(a?.kind || '').toLowerCase();
+  const title = String(a?.title || '');
+  const card = a?.card;
+  if (kind === 'bad' || /bad news/i.test(title)) return 'outcome';
+  if (kind === 'death' || kind === 'game' || kind === 'roll' || kind === 'flee') return 'outcome';
+  if (kind === 'combat' || kind === 'card' || kind === 'hex' || card) return 'card-played';
+  return 'outcome';
+}
+
+function hardEventTypeLabel(a) {
+  const kind = String(a?.kind || '').toLowerCase();
+  const title = String(a?.title || '');
+  if (kind === 'bad' || /bad news/i.test(title)) return 'Bad News';
+  if (kind === 'death') return 'Goblin Down';
+  if (kind === 'game') return 'Victory';
+  if (kind === 'roll') return 'Opening Roll';
+  if (kind === 'flee') return 'Flee Result';
+  if (kind === 'backup') return 'Backup';
+  if (kind === 'trade') return 'Trade';
+  if (kind === 'hex') return 'Hex Resolved';
+  if (kind === 'combat') return 'Combat Change';
+  if (a?.card?.type === 'TRICK') return 'Trick Played';
+  if (a?.card?.type === 'THREAT') return 'Foe Added';
+  return 'Table Event';
+}
+
+function globalAnnouncementHtml() {
+  const a = state?.announcement;
+  if (!a || acknowledgedAnnouncements.has(a.id) || announcementTier(a) !== 'hard') return '';
+  const icon = announcementIcon(a.kind);
+  const template = hardEventTemplate(a);
+  return `<section class="global-public-modal public-resolution-modal hard-event ${template} ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}" role="dialog" aria-modal="true">
+    <div class="global-public-backdrop" aria-hidden="true"></div>
+    <div class="public-modal-card global-public-modal-card">
+      <div class="public-event-pill">${escapeHtml(hardEventTypeLabel(a))}</div>
+      <div class="public-modal-header">
+        <div class="announce-icon">${icon}</div>
+        <div class="public-modal-copy">
+          <div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div>
+          <div class="announce-detail">${escapeHtml(a.detail || '')}</div>
+        </div>
+      </div>
+      ${a.card ? `<button class="announce-card-preview public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { modalPreview: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
+      <button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>
+    </div>
+  </section>`;
+}
+
+
 function announcementHtml() {
   const a = state?.announcement;
   if (!a || acknowledgedAnnouncements.has(a.id)) return '';
   const tier = announcementTier(a);
-  if (tier === 'log') return '';
+  if (tier !== 'soft') return '';
   const icon = announcementIcon(a.kind);
-  if (tier === 'soft') {
-    return `<section class="table-announcement public-event-soft ${escapeHtml(a.kind || '')}">
-      <div class="soft-event-icon">${icon}</div>
-      <div class="soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
-      ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
-    </section>`;
-  }
-  return `<section class="table-announcement public-resolution-modal hard-event ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
-    <div class="public-modal-card">
-      <div class="public-modal-header">
-        <div class="announce-icon">${icon}</div>
-        <div class="public-modal-copy"><div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div><div class="announce-detail">${escapeHtml(a.detail || '')}</div></div>
-      </div>
-      ${a.card ? `<button class="announce-card-preview public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
-      <button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>
-    </div>
+  return `<section class="table-announcement public-event-soft ${escapeHtml(a.kind || '')}">
+    <div class="soft-event-icon">${icon}</div>
+    <div class="soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+    ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
   </section>`;
 }
 
@@ -870,24 +928,12 @@ function mobileAnnouncementHtml() {
   const a = state?.announcement;
   if (!a || acknowledgedAnnouncements.has(a.id)) return '';
   const tier = announcementTier(a);
-  if (tier === 'log') return '';
+  if (tier !== 'soft') return '';
   const icon = announcementIcon(a.kind);
-  if (tier === 'soft') {
-    return `<div class="mobile-public-event public-event-soft mobile-soft-event ${escapeHtml(a.kind || '')}">
-      <div class="soft-event-icon">${icon}</div>
-      <div class="mobile-public-event-copy soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
-      ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
-    </div>`;
-  }
-  return `<div class="mobile-public-event public-resolution-modal hard-event ${escapeHtml(a.kind || '')}">
-    <div class="public-modal-card mobile-public-modal-card">
-      <div class="mobile-public-event-copy public-modal-header">
-        <div class="announce-icon">${icon}</div>
-        <div class="public-modal-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
-      </div>
-      ${a.card ? `<button class="mobile-public-event-card public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
-      <button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>
-    </div>
+  return `<div class="mobile-public-event public-event-soft mobile-soft-event ${escapeHtml(a.kind || '')}">
+    <div class="soft-event-icon">${icon}</div>
+    <div class="mobile-public-event-copy soft-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+    ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
   </div>`;
 }
 

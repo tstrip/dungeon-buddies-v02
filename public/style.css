@@ -7869,3 +7869,186 @@ button[data-action="SELL_GEAR"],
     flex-basis: 116px !important;
   }
 }
+
+
+/* Loot Goblins v0.6.11 — True Global Modal Overlay Refactor */
+.global-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  display: contents;
+}
+
+.global-modal-root.active {
+  pointer-events: auto;
+}
+
+.global-public-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483001 !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: calc(18px + var(--safe-top)) 14px calc(18px + var(--safe-bottom)) !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+}
+
+.global-public-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(82,34,104,.56), rgba(5,5,7,.78) 62%, rgba(0,0,0,.90));
+  backdrop-filter: blur(2px);
+}
+
+.global-public-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 92vw) !important;
+  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 34px);
+  overflow: auto;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
+  gap: 13px;
+  padding: 16px;
+  border-radius: 24px;
+  border: 2px solid rgba(255,217,132,.58);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255,218,119,.18), transparent 40%),
+    radial-gradient(circle at 96% 0%, rgba(177,91,229,.18), transparent 44%),
+    linear-gradient(180deg, rgba(63,35,25,.99), rgba(15,10,14,.99));
+  box-shadow: 0 24px 80px rgba(0,0,0,.72), inset 0 0 0 1px rgba(255,255,255,.05);
+}
+
+.public-event-pill {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #211307;
+  background: linear-gradient(135deg, #ffe179, #f2853b);
+  border: 1px solid rgba(255,255,255,.46);
+  font-size: .62rem;
+  font-weight: 1000;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.global-public-modal .public-modal-header {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  gap: 11px;
+  align-items: center;
+  width: 100%;
+}
+
+.global-public-modal .public-modal-copy {
+  min-width: 0;
+}
+
+.global-public-modal .announce-title,
+.global-public-modal .public-modal-header strong {
+  display: block;
+  width: 100%;
+  color: var(--ink);
+  font-size: clamp(1.08rem, 4.4vw, 1.36rem);
+  line-height: 1.05;
+  font-weight: 1000;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+
+.global-public-modal .announce-detail,
+.global-public-modal .public-modal-header span {
+  display: block;
+  color: rgba(255,246,214,.82);
+  font-size: .84rem;
+  line-height: 1.24;
+  margin-top: 4px;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.global-public-modal .public-modal-preview {
+  justify-self: center;
+  width: min(100%, 280px);
+  max-width: 280px;
+  display: grid !important;
+  justify-items: center;
+  gap: 8px;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  color: rgba(255,246,214,.78);
+}
+
+.global-public-modal .public-modal-preview .hand-card,
+.global-public-modal .public-modal-preview .card {
+  width: 132px !important;
+  height: 178px !important;
+  flex: 0 0 132px !important;
+  max-width: 132px !important;
+  min-height: 178px !important;
+}
+
+.global-public-modal .public-modal-preview > span {
+  display: block;
+  width: min(100%, 280px);
+  text-align: center;
+  color: rgba(255,246,214,.78);
+  font-size: .75rem;
+  line-height: 1.16;
+}
+
+.global-public-modal .ack-button {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 16px;
+  font-size: .9rem;
+  justify-content: center;
+}
+
+.global-public-modal.outcome .public-modal-preview .hand-card,
+.global-public-modal.outcome .public-modal-preview .card {
+  width: 120px !important;
+  height: 162px !important;
+  flex-basis: 120px !important;
+  min-height: 162px !important;
+}
+
+@media (max-width: 760px) {
+  .global-public-modal {
+    padding: calc(14px + var(--safe-top)) 12px calc(14px + var(--safe-bottom)) !important;
+  }
+
+  .global-public-modal-card {
+    width: min(92vw, 520px) !important;
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .global-public-modal .public-modal-preview .hand-card,
+  .global-public-modal .public-modal-preview .card {
+    width: 118px !important;
+    height: 160px !important;
+    flex-basis: 118px !important;
+    min-height: 160px !important;
+  }
+
+  .global-public-modal .announce-title,
+  .global-public-modal .public-modal-header strong {
+    font-size: clamp(1rem, 5vw, 1.28rem);
+  }
+}

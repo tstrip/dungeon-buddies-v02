@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-event-priority-modal-cleanup-v0610",
-  "version": "0.10.10",
+  "name": "loot-goblins-true-modal-overlay-refactor-v0611",
+  "version": "0.10.11",
   "private": true,
-  "description": "Loot Goblins v0.6.10: event priority tiers, fewer acknowledgements, and cleaned-up public resolution modals.",
+  "description": "Loot Goblins v0.6.11: true global modal overlay for hard public resolution events, with cleaner centered modal layout.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
