@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-table-clarity-resolution-v067",
-  "version": "0.10.7",
+  "name": "loot-goblins-trade-backup-tribute-flow-v069",
+  "version": "0.10.9",
   "private": true,
-  "description": "Loot Goblins v0.6.7: table clarity, public played-card events, sell-gear cancel, combat ledger, Bad News/Flee clarity, discard viewer, and standard d6.",
+  "description": "Loot Goblins v0.6.9: trade system, backup rescind, optional pass/cancel safety, pre-Tribute use/sell flow, and potion timing fixes.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

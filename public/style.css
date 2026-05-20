@@ -7519,3 +7519,140 @@ button[data-action="SELL_GEAR"],
 .die-face.standard-d6 .p4 { grid-area:2/1; } .die-face.standard-d6 .p5 { grid-area:2/2; } .die-face.standard-d6 .p6 { grid-area:2/3; }
 .die-face.standard-d6 .p7 { grid-area:3/1; } .die-face.standard-d6 .p8 { grid-area:3/2; } .die-face.standard-d6 .p9 { grid-area:3/3; }
 @media (max-width:760px){ .combat-ledger { grid-template-columns:1fr; } .mobile-public-event-card .hand-card { width:64px; height:84px; } }
+
+
+/* Loot Goblins v0.6.8 — Public Resolution Modal + Combat Clarity */
+.public-resolution-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: calc(18px + var(--safe-top)) 14px calc(18px + var(--safe-bottom)) !important;
+  background: radial-gradient(circle at 50% 38%, rgba(82, 34, 104, .48), rgba(5, 5, 7, .72) 62%, rgba(0,0,0,.84)) !important;
+  border: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+.public-resolution-modal.acknowledged { display: none !important; }
+.public-modal-card {
+  width: min(420px, 94vw);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 24px;
+  border: 2px solid rgba(255, 217, 132, .52);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 218, 119, .18), transparent 40%),
+    radial-gradient(circle at 96% 0%, rgba(177, 91, 229, .18), transparent 44%),
+    linear-gradient(180deg, rgba(63, 35, 25, .98), rgba(15, 10, 14, .98));
+  box-shadow: 0 24px 80px rgba(0,0,0,.62), inset 0 0 0 1px rgba(255,255,255,.05);
+}
+.public-modal-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+.public-modal-header .announce-icon { width: 42px; height: 42px; display:grid; place-items:center; }
+.public-modal-header .announce-title,
+.mobile-public-event-copy strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+  line-height: 1.05;
+  font-weight: 1000;
+}
+.public-modal-header .announce-detail,
+.mobile-public-event-copy span {
+  color: rgba(255,246,214,.82);
+  font-size: .80rem;
+  line-height: 1.2;
+  margin-top: 3px;
+}
+.public-modal-preview {
+  justify-self: center;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: rgba(255,246,214,.78);
+  font-weight: 850;
+}
+.public-modal-preview .hand-card { width: 108px !important; height: 138px !important; }
+.public-modal-preview > span { font-size: .70rem; text-align: center; }
+.public-modal-card .ack-button { width: 100%; min-height: 44px; border-radius: 15px; }
+.mobile-public-event { pointer-events: auto; }
+.mini-ledger-view { grid-column: 1 / -1; min-height: 28px; border-radius: 10px; font-size: .62rem; margin-top: 4px; }
+.combat-ledger-foe { display: grid !important; grid-template-columns: 1fr auto; align-items: center; }
+.combat-ledger-foe small { grid-column: 1 / -1; }
+.v077-bad-news-line {
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 103, 103, .11);
+  border: 1px solid rgba(255, 128, 128, .22);
+  color: rgba(255,246,214,.82);
+  font-size: .70rem;
+  line-height: 1.16;
+}
+.flee-foe-preview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 7px;
+  border-radius: 14px;
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,246,214,.82);
+  text-align: left;
+}
+.flee-foe-preview .hand-card { width: 58px; height: 74px; }
+.desktop-bad-news-preview { margin-top: 8px; }
+.full-discard-grid { grid-template-columns: 1fr !important; }
+.full-discard-card {
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  justify-items: stretch !important;
+  text-align: left;
+  align-items: center;
+}
+.full-discard-card .hand-card { width: 72px; height: 92px; }
+.discard-card-copy { display: grid; gap: 2px; }
+.discard-card-copy strong { color: var(--ink); }
+.discard-card-copy span { color: rgba(255,226,150,.84); font-size: .72rem; }
+.discard-card-copy p { margin: 2px 0 0; color: rgba(255,246,214,.72); font-size: .70rem; line-height: 1.18; }
+@media (max-width:760px) {
+  .public-modal-card { width: min(360px, 94vw); padding: 14px; }
+  .public-modal-preview .hand-card { width: 94px !important; height: 122px !important; }
+  .public-modal-header .announce-title,
+  .mobile-public-event-copy strong { font-size: .98rem; }
+  .public-modal-header .announce-detail,
+  .mobile-public-event-copy span { font-size: .74rem; }
+}
+
+
+/* Loot Goblins v0.6.9 — Trade + Backup + Tribute Flow */
+.mobile-trade-alert {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  border-radius: 14px;
+  background: rgba(143, 227, 207, .12);
+  border: 1px solid rgba(143, 227, 207, .32);
+  color: rgba(255,246,214,.9);
+  font-size: .68rem;
+  font-weight: 900;
+}
+.mobile-trade-alert .event-sigil { width: 24px; height: 24px; }
+.mobile-trade-alert button { min-height: 30px; border-radius: 10px; padding-inline: 10px; font-size: .62rem; }
+.player-trade-actions { margin-top: 12px; }
+.trade-review-list .selectable-card { text-align: left; }
+.mobile-prompt-card-choice.selected, .selectable-card.selected {
+  outline: 2px solid rgba(143, 227, 207, .72);
+  box-shadow: 0 0 0 4px rgba(143,227,207,.14);
+}

@@ -7,6 +7,7 @@ let handExpanded = false;
 let rollFx = null;
 let lastSeenRollKey = '';
 let handDrag = null;
+const acknowledgedAnnouncements = new Set();
 
 const $ = (id) => document.getElementById(id);
 const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
@@ -226,23 +227,34 @@ function renderGame() {
   renderPrompt();
   renderHand();
   renderEventHistory();
-  document.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => btn.closest('.mobile-public-event,.table-announcement')?.classList.add('acknowledged')));
+  document.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => { if (btn.dataset.ackAnnouncement) acknowledgedAnnouncements.add(btn.dataset.ackAnnouncement); render(); }));
 }
 
 
+function announcementNeedsAck(a) {
+  if (!a) return false;
+  return a.importance === 'major' || ['card','gear','combat','hex','bad','death','game','roll','reveal','draw'].includes(a.kind || '') || /BAD NEWS|GOBLIN DOWN|VICTORY|PLAYED|ROLL/i.test(a.title || '');
+}
+
+function announcementCardLabel(card) {
+  if (!card) return '';
+  if (card.type === 'THREAT') return `Foe · STR ${Number(card.finalStrength || card.strength || 0)} · Bad News: ${card.badNewsText || 'See card'}`;
+  if (card.type === 'GEAR') return `Gear · +${Number(card.combatBonus || 0)} Power${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''}`;
+  if (card.type === 'TRICK') return 'Trick · One-use';
+  return typeLabel(card);
+}
+
 function announcementHtml() {
   const a = state?.announcement;
-  if (!a) return '';
+  if (!a || acknowledgedAnnouncements.has(a.id)) return '';
   const icon = announcementIcon(a.kind);
-  const needsAck = ['bad','death','game'].includes(a.kind || '') || /BAD NEWS|GOBLIN DOWN|VICTORY/i.test(a.title || '');
-  return `<section class="table-announcement ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
-    <div class="announce-icon">${icon}</div>
-    <div class="announce-copy">
-      <div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div>
-      <div class="announce-detail">${escapeHtml(a.detail || '')}</div>
-      ${needsAck ? '<button class="ack-button" data-ack-announcement>Got it</button>' : ''}
+  const needsAck = announcementNeedsAck(a);
+  return `<section class="table-announcement public-resolution-modal ${a.importance === 'major' ? 'major' : ''} ${escapeHtml(a.kind || '')}">
+    <div class="public-modal-card">
+      <div class="public-modal-header"><div class="announce-icon">${icon}</div><div><div class="announce-title">${escapeHtml(a.title || 'Table Event')}</div><div class="announce-detail">${escapeHtml(a.detail || '')}</div></div></div>
+      ${a.card ? `<button class="announce-card-preview public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
+      ${needsAck ? `<button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>` : ''}
     </div>
-    ${a.card ? `<button class="announce-card-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}</button>` : ''}
   </section>`;
 }
 
@@ -663,6 +675,7 @@ function combatButtons() {
   if (req) {
     if (req.fromPlayerId === you.id) {
       buttons.push(`<span class="micro action-note">Offer Loot to ${escapeHtml(playerName(req.toPlayerId))}. Glory is not negotiable by default.</span>`);
+      buttons.push(`<button data-combat-action="RESCIND_BACKUP">Rescind Backup Request</button>`);
       const counts = Array.from(new Set([0, 1, 2, totalLoot].filter((n) => n >= 0 && n <= totalLoot)));
       for (const n of counts) buttons.push(`<button ${n === Number(req.deal?.lootCount || -1) ? 'class="primary"' : ''} data-combat-action="SET_BACKUP_DEAL" data-loot-count="${n}">${n === 0 ? 'Offer Free Help' : `Offer ${n} Loot`}</button>`);
       if (totalLoot > 0) buttons.push(`<button data-combat-action="SET_BACKUP_DEAL" data-all-loot="1">Offer All Loot</button>`);
@@ -751,6 +764,7 @@ function renderMobilePlayShell(root) {
   root.innerHTML = `<div class="mobile-app-shell ${phaseClass}">
     ${mobilePlayerHudHtml()}
     ${mobileZeroGloryNoticeHtml()}
+    ${mobileTradeNoticeHtml()}
     ${mobileDeckStripHtml(move)}
     ${mobileAnnouncementHtml()}
     ${stage}
@@ -786,6 +800,16 @@ function renderMobilePlayShell(root) {
     btn.addEventListener('click', () => confirmTribute());
   });
   root.querySelectorAll('[data-mobile-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.mobilePromptCard })));
+  const mobileTradeSelected = new Set();
+  root.querySelectorAll('[data-mobile-trade-card]').forEach((btn) => btn.addEventListener('click', () => {
+    if (mobileTradeSelected.has(btn.dataset.mobileTradeCard)) { mobileTradeSelected.delete(btn.dataset.mobileTradeCard); btn.classList.remove('selected'); }
+    else { mobileTradeSelected.add(btn.dataset.mobileTradeCard); btn.classList.add('selected'); }
+    const confirm = root.querySelector('[data-mobile-trade-confirm]');
+    if (confirm) confirm.disabled = mobileTradeSelected.size === 0;
+  }));
+  root.querySelectorAll('[data-mobile-trade-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardIds: [...mobileTradeSelected] })));
+  root.querySelectorAll('[data-mobile-trade-accept]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { accept: true })));
+  root.querySelectorAll('[data-mobile-trade-decline]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { decline: true })));
   const mobileSellSelected = new Set();
   root.querySelectorAll('[data-mobile-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
     if (mobileSellSelected.has(btn.dataset.mobileSellCard)) { mobileSellSelected.delete(btn.dataset.mobileSellCard); btn.classList.remove('selected'); }
@@ -796,19 +820,33 @@ function renderMobilePlayShell(root) {
   root.querySelectorAll('[data-mobile-sell-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardIds: [...mobileSellSelected] })));
   root.querySelectorAll('[data-mobile-prompt-cancel]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cancel: true })));
 
-  root.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => btn.closest('.mobile-public-event,.table-announcement')?.classList.add('acknowledged')));
+  root.querySelectorAll('[data-ack-announcement]').forEach((btn) => btn.addEventListener('click', () => { if (btn.dataset.ackAnnouncement) acknowledgedAnnouncements.add(btn.dataset.ackAnnouncement); render(); }));
   root.querySelectorAll('[data-discard-pile]').forEach((btn) => btn.addEventListener('click', () => showDiscardViewer(btn.dataset.discardPile)));
 }
 
 
 function mobileAnnouncementHtml() {
   const a = state?.announcement;
-  if (!a || !['card','gear','combat','hex','bad','death','game','reveal','draw'].includes(a.kind || '')) return '';
-  const needsAck = ['bad','death','game'].includes(a.kind || '') || /BAD NEWS|GOBLIN DOWN|VICTORY/i.test(a.title || '');
-  return `<div class="mobile-public-event ${escapeHtml(a.kind || '')}">
-    <div class="mobile-public-event-copy"><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span>${needsAck ? '<button class="ack-button" data-ack-announcement>Got it</button>' : ''}</div>
-    ${a.card ? `<button class="mobile-public-event-card" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}</button>` : ''}
+  if (!a || acknowledgedAnnouncements.has(a.id) || !['card','gear','combat','hex','bad','death','game','reveal','draw','roll','flee','backup','turn'].includes(a.kind || '')) return '';
+  const needsAck = announcementNeedsAck(a);
+  return `<div class="mobile-public-event public-resolution-modal ${escapeHtml(a.kind || '')}">
+    <div class="public-modal-card mobile-public-modal-card">
+      <div class="mobile-public-event-copy public-modal-header">
+        <div class="announce-icon">${announcementIcon(a.kind)}</div>
+        <div><strong>${escapeHtml(a.title || 'Table Event')}</strong><span>${escapeHtml(a.detail || '')}</span></div>
+      </div>
+      ${a.card ? `<button class="mobile-public-event-card public-modal-preview" data-mobile-inspect-card="${a.card.instanceId}">${cardHtml(a.card, { compact: true })}<span>${escapeHtml(announcementCardLabel(a.card))}</span></button>` : ''}
+      ${needsAck ? `<button class="ack-button primary" data-ack-announcement="${a.id}">Acknowledge</button>` : ''}
+    </div>
   </div>`;
+}
+
+function mobileTradeNoticeHtml() {
+  const t = state.tradeOffer;
+  if (!t) return '';
+  if (t.canRescind) return `<div class="mobile-trade-alert">${assetIconHtml('trade', 'event-sigil')}<span>Trade offer sent to ${escapeHtml(t.toPlayerName)}.</span><button data-action="CANCEL_TRADE">Rescind</button></div>`;
+  if (t.requiresYou) return `<div class="mobile-trade-alert">${assetIconHtml('trade', 'event-sigil')}<span>${escapeHtml(t.fromPlayerName)} offered a trade. Resolve the prompt.</span></div>`;
+  return `<div class="mobile-trade-alert">${assetIconHtml('trade', 'event-sigil')}<span>${escapeHtml(t.fromPlayerName)} offered ${escapeHtml(t.toPlayerName)} a trade.</span></div>`;
 }
 
 function mobileZeroGloryNoticeHtml() {
@@ -1052,7 +1090,7 @@ function mobileCombatStageHtml(combat) {
   const playerCards = (combat.playedTricks || []).filter((c) => c.effect?.side !== 'THREAT');
   const foeCards = (combat.playedTricks || []).filter((c) => c.effect?.side === 'THREAT');
   const playerLedger = `${activeP ? `<div><span>${escapeHtml(activeP.name)}</span><b>PWR ${playerPower(activeP)}</b></div>` : ''}${helperP ? `<div><span>${escapeHtml(helperP.name)} Backup</span><b>PWR ${playerPower(helperP)}</b></div>` : ''}${playerCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('')}${Number(combat.playerDelta||0) ? `<div><span>Other cards/abilities</span><b>${signed(combat.playerDelta)}</b></div>` : ''}`;
-  const foeLedger = (combat.threats || []).map((foe) => `<div class="combat-ledger-foe"><span>${escapeHtml(foe.publicName)}</span><b>STR ${Number(foe.finalStrength || foe.strength || 0)}</b>${(foe.modifiers||[]).map((m)=>`<small>${escapeHtml(m.publicName)} ${signed(m.strengthDelta||0)}</small>`).join('')}</div>`).join('') + foeCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('') + (Number(combat.threatDelta||0) ? `<div><span>Other Foe bonuses</span><b>${signed(combat.threatDelta)}</b></div>` : '');
+  const foeLedger = (combat.threats || []).map((foe) => `<div class="combat-ledger-foe"><span>${escapeHtml(foe.publicName)}</span><b>STR ${Number(foe.finalStrength || foe.strength || 0)}</b><small>Bad News: ${escapeHtml(foe.badNewsText || 'See card')}</small>${(foe.modifiers||[]).map((m)=>`<small>${escapeHtml(m.publicName)} ${signed(m.strengthDelta||0)}</small>`).join('')}<button class="mini-ledger-view" data-mobile-inspect-card="${foe.instanceId}">View Foe</button></div>`).join('') + foeCards.map((c)=>`<div><span>${escapeHtml(c.publicName)}</span><b>${signed(c.effect?.amount || 0)}</b></div>`).join('') + (Number(combat.threatDelta||0) ? `<div><span>Other Foe bonuses</span><b>${signed(combat.threatDelta)}</b></div>` : '');
   const foeText = primaryFoe ? `${primaryFoe.publicName}${(combat.threats || []).length > 1 ? ` + ${(combat.threats || []).length - 1}` : ''}` : 'Foe';
   return mobileStageShell('combat', 'Combat', `${playerName(combat.activePlayerId)} vs ${foeText}`, `
     <div class="mobile-combat-result ${escapeHtml(outcome.resultClass)}"><strong>${escapeHtml(outcome.shortLabel)}</strong><span>${need > 0 ? `Need +${need} to win.` : 'No extra power needed if everyone passes.'}</span></div>
@@ -1102,7 +1140,8 @@ function mobileFleeStageHtml(esc) {
     <div class="mobile-flee-copy">
       <strong>Target 5+</strong>
       <span>Flee bonus ${signed(esc.fleeBonus || 0)}</span>
-      <div class="bad-news-preview"><b>Bad News</b><span>${escapeHtml(esc.badNewsText || esc.threat?.publicText || 'Bad News resolves if you fail.')}</span></div>
+      ${esc.threat ? `<button class="flee-foe-preview" data-mobile-inspect-card="${esc.threat.instanceId}">${cardHtml(esc.threat, { compact: true })}<span>View Foe</span></button>` : ''}
+      <div class="bad-news-preview"><b>Bad News if you fail</b><span>${escapeHtml(esc.badNewsText || esc.threat?.badNewsText || esc.threat?.publicText || 'Bad News resolves if you fail.')}</span></div>
       ${last ? `<b>${last.total >= 5 ? 'Bad News avoided.' : 'Bad News resolves. Tap Continue to apply it.'}</b>` : '<b>Roll before the Bad News hits.</b>'}
     </div>
   </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
@@ -1143,6 +1182,12 @@ function mobileBodyLootStageHtml() {
 function mobilePromptStageHtml(prompt) {
   if (prompt.requiresYou && prompt.type === 'ADD_FOE_FROM_HAND') {
     return mobileStageShell('prompt', 'Add Foe', 'Choose a Foe from hand', `<div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-prompt-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>Add to combat</span></button>`).join('')}</div><button data-mobile-prompt-cancel>Cancel</button>`, { size:'large', icon:'strength' });
+  }
+  if (prompt.requiresYou && prompt.type === 'TRADE_OFFER_SELECT') {
+    return mobileStageShell('prompt', 'Trade Offer', 'Choose cards to offer', `<p class="mobile-state-hint">Gifts are allowed, but the other player must accept.</p><div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-trade-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>Offer</span></button>`).join('')}</div><div class="mobile-center-actions"><button class="primary" data-mobile-trade-confirm disabled>Send Offer</button><button data-mobile-prompt-cancel>Cancel Trade</button></div>`, { size:'large', icon:'trade' });
+  }
+  if (prompt.requiresYou && prompt.type === 'TRADE_ACCEPT') {
+    return mobileStageShell('prompt', 'Trade Offered', 'Accept or decline', `<div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-inspect-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>View</span></button>`).join('')}</div><div class="mobile-center-actions"><button class="primary" data-mobile-trade-accept>Accept Trade</button><button data-mobile-trade-decline>Decline</button></div>`, { size:'large', icon:'trade' });
   }
   if (prompt.requiresYou && prompt.type === 'SELL_GEAR') {
     return mobileStageShell('prompt', 'Sell Gear', 'Optional sale', `<p class="mobile-state-hint">Choose Gear to sell, or cancel and keep playing.</p><div class="mobile-prompt-card-grid">${(prompt.options||[]).map((c)=>`<button class="mobile-prompt-card-choice" data-mobile-sell-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>${Number(c.junkValue||c.scrapValue||0)} Junk</span></button>`).join('')}</div><div class="mobile-center-actions"><button class="primary" data-mobile-sell-confirm disabled>Sell Selected</button><button data-mobile-prompt-cancel>Cancel / Done</button></div>`, { size:'large', icon:'gear' });
@@ -1372,6 +1417,7 @@ function renderCombat(root) {
   const foeCards = (combat.threats || []).map((t, idx) => `<div class="v077-foe-hero ${idx === 0 ? 'primary-foe' : 'extra-foe'}">
       ${cardHtml(t, { feature: true })}
       <div class="v077-foe-ribbon"><span>STR ${Number(t.finalStrength || t.strength || 0)}</span><span>${Number(t.finalLoot || t.lootReward || 0)} Loot</span></div>
+      <div class="v077-bad-news-line"><strong>Bad News:</strong> ${escapeHtml(t.badNewsText || 'See card')}</div>
       ${(t.modifiers || []).length ? `<div class="modifier-list v077-foe-mods">${(t.modifiers || []).map((m) => `<span class="chip">${escapeHtml(m.publicName)} ${signed(m.strengthDelta)}</span>`).join('')}</div>` : ''}
     </div>`).join('');
   const playerTricks = (combat.playedTricks || []).filter((c) => c.effect?.side === 'PLAYER').map((c) => `<span class="chip">${escapeHtml(c.publicName)}</span>`).join('');
@@ -1479,6 +1525,31 @@ function renderPrompt() {
       renderPrompt();
     }));
     $('confirmGearValue').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selectedSell] }); selectedSell.clear(); });
+    return;
+  }
+
+
+  if (p.type === 'TRADE_OFFER_SELECT') {
+    const selected = selectedSell;
+    root.innerHTML = `<h3>Trade Offer</h3><p>${escapeHtml(p.message)}</p><p class="micro">Choose one or more cards to offer. This can be a gift, but the other player must accept.</p><div class="selectable-list">${(p.options || []).map((c) => `<button class="selectable-card ${selected.has(c.instanceId) ? 'selected' : ''}" data-trade-offer-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))} · ${escapeHtml(cardBottom(c))}</span></button>`).join('')}</div><button class="primary" id="confirmTradeOffer" ${selected.size ? '' : 'disabled'}>Send Offer</button><button id="cancelTradeOffer">Cancel Trade</button>`;
+    root.querySelectorAll('[data-trade-offer-card]').forEach((btn) => btn.addEventListener('click', () => {
+      if (selected.has(btn.dataset.tradeOfferCard)) selected.delete(btn.dataset.tradeOfferCard);
+      else selected.add(btn.dataset.tradeOfferCard);
+      renderPrompt();
+    }));
+    $('confirmTradeOffer').addEventListener('click', () => { emitAction('RESOLVE_PROMPT', { cardIds: [...selected] }); selected.clear(); });
+    $('cancelTradeOffer').addEventListener('click', () => { selected.clear(); emitAction('RESOLVE_PROMPT', { cancel: true }); });
+    return;
+  }
+
+  if (p.type === 'TRADE_ACCEPT') {
+    root.innerHTML = `<h3>Trade Offer</h3><p>${escapeHtml(p.message)}</p><div class="selectable-list trade-review-list">${(p.options || []).map((c) => `<button class="selectable-card" data-trade-review-card="${c.instanceId}">${escapeHtml(c.publicName)} <span class="micro">${escapeHtml(typeLabel(c))} · ${escapeHtml(cardBottom(c))}</span></button>`).join('')}</div><button class="primary" id="acceptTradeOffer">Accept Trade</button><button id="declineTradeOffer">Decline</button>`;
+    root.querySelectorAll('[data-trade-review-card]').forEach((btn) => btn.addEventListener('click', () => {
+      const card = (p.options || []).find((c) => c.instanceId === btn.dataset.tradeReviewCard);
+      if (card) inspectCard(card);
+    }));
+    $('acceptTradeOffer').addEventListener('click', () => emitAction('RESOLVE_PROMPT', { accept: true }));
+    $('declineTradeOffer').addEventListener('click', () => emitAction('RESOLVE_PROMPT', { decline: true }));
     return;
   }
 
@@ -1936,11 +2007,18 @@ function shortTypeLabel(card) {
   return map[card?.type] || String(card?.type || 'CARD').slice(0, 5);
 }
 
+function discardViewerCardHtml(c) {
+  return `<button class="discard-viewer-card full-discard-card" data-discard-card-id="${c.instanceId}">
+    ${cardHtml(c,{compact:true})}
+    <div class="discard-card-copy"><strong>${escapeHtml(c.publicName)}</strong><span>${escapeHtml(typeLabel(c))} · ${escapeHtml(cardBottom(c))}</span><p>${escapeHtml(c.publicText || 'No rules text.')}</p></div>
+  </button>`;
+}
+
 function showDiscardViewer(kind = 'chamber') {
   const cards = state.discardPiles?.[kind] || [];
   const label = kind === 'loot' ? 'Loot Discard' : 'Chamber Discard';
   const root = $('inspectContent');
-  root.innerHTML = `<h2>${escapeHtml(label)}</h2><p class="micro">Any player can inspect discarded cards at any time.</p><div class="discard-viewer-grid">${cards.length ? cards.slice().reverse().map((c) => `<button class="discard-viewer-card" data-discard-card-id="${c.instanceId}">${cardHtml(c,{compact:true})}</button>`).join('') : '<p>No discarded cards yet.</p>'}</div>`;
+  root.innerHTML = `<h2>${escapeHtml(label)}</h2><p class="micro">Any player can inspect discarded cards at any time. Tap a card for the full inspector.</p><div class="discard-viewer-grid full-discard-grid">${cards.length ? cards.slice().reverse().map(discardViewerCardHtml).join('') : '<p>No discarded cards yet.</p>'}</div>`;
   root.querySelectorAll('[data-discard-card-id]').forEach((btn) => btn.addEventListener('click', () => {
     const card = cards.find((c) => c.instanceId === btn.dataset.discardCardId);
     if (card) inspectCard(card);
@@ -1977,7 +2055,6 @@ function inspectCard(card) {
     if (a === 'EQUIP') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' });
     if (a === 'CARRY') emitAction('PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' });
     if (a === 'SELL_ONE') emitAction('SELL_GEAR', { cardIds: [card.instanceId] });
-    if (a === 'GIVE_GEAR') emitAction('GIVE_GEAR', { cardId: card.instanceId, targetPlayerId: btn.dataset.targetPlayerId });
     if (a === 'ASSIGN_HIRELING_GEAR') emitAction('ASSIGN_HIRELING_GEAR', { cardId: card.instanceId });
     if (a === 'START_TROUBLE') emitAction('START_TROUBLE', { cardId: card.instanceId });
     if (a === 'USE_WISH_RING') emitAction('USE_WISH_RING');
@@ -2011,7 +2088,6 @@ function cardActions(card) {
     actions.push(`<button data-inspect-action="CARRY">Carry</button>`);
     actions.push(`<button data-inspect-action="SELL_ONE">Sell / cash in</button>`);
     if (card.id !== 'GEAR_HIRELING' && ownsVisibleCard(card) && hasLittleHelperCapacity(me())) actions.push(`<button data-inspect-action="ASSIGN_HIRELING_GEAR">Give to Little Helper</button>`);
-    for (const p of state.players.filter((p) => !p.isYou)) actions.push(`<button data-inspect-action="GIVE_GEAR" data-target-player-id="${p.id}">Give to ${escapeHtml(p.name)}</button>`);
   }
   if (card.type === 'THREAT' && isMyTurn() && state.phase === 'NO_THREAT_CHOICE') actions.push(`<button class="primary" data-inspect-action="START_TROUBLE">Start Trouble</button>`);
   if (card.type === 'THREAT' && state.phase === 'COMBAT' && (card.tags || []).includes('RESTLESS') && (state.combat?.threats || []).some((t) => (t.tags || []).includes('RESTLESS'))) actions.push(`<button class="primary" data-inspect-action="PLAY">Join Restless Combat</button>`);
@@ -2072,7 +2148,10 @@ function inspectPlayer(p) {
     <p>Calling/Kin: ${escapeHtml(identityLine(p))}</p>
     ${p.callingPermit || p.kinPermit ? `<h3>Permits</h3><div class="status-list">${p.callingPermit ? `<div class="status-detail"><strong>${escapeHtml(p.callingPermit.publicName)}</strong><span>Attached to ${escapeHtml(p.callingPermit.attachedToName || 'a Calling')}. ${((p.extraRoles || []).length) ? 'Two Callings: all normal advantages and disadvantages apply.' : 'One Calling: disadvantages are ignored.'}</span></div>` : ''}${p.kinPermit ? `<div class="status-detail"><strong>${escapeHtml(p.kinPermit.publicName)}</strong><span>Attached to ${escapeHtml(p.kinPermit.attachedToName || 'a Kin')}. ${((p.extraOrigins || []).length) ? 'Two Kin: all normal advantages and disadvantages apply.' : 'One Kin: disadvantages are ignored.'}</span></div>` : ''}</div>` : ''}
     ${effects.length ? `<h3>Ongoing Effects</h3><div class="status-list">${effects.map((e) => `<div class="status-detail"><strong>${escapeHtml(e.publicName || 'Effect')}</strong><span>${escapeHtml(e.description || '')}</span></div>`).join('')}</div>` : ''}
-    <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>`;
+    <h3>Equipped / Carried Gear</h3><div class="card-row">${gearCards.length ? gearCards.map((g) => cardHtml(g, { compact: true })).join('') : '<span class="micro">No public Gear.</span>'}</div>
+    ${(!p.isYou && isMyTurn() && ['START_TURN','NO_THREAT_CHOICE','POST_COMBAT','END_TURN'].includes(state.phase)) ? `<div class="action-list player-trade-actions"><button class="primary" id="tradeWithPlayer">Trade with ${escapeHtml(p.name)}</button></div>` : ''}`;
+  const tradeBtn = $('tradeWithPlayer');
+  if (tradeBtn) tradeBtn.addEventListener('click', () => { closeInspect(); emitAction('START_TRADE', { targetPlayerId: p.id }); });
   root.querySelectorAll('[data-card-id]').forEach((cardEl) => {
     cardEl.addEventListener('click', () => {
       const gear = gearCards.find((g) => g.instanceId === cardEl.dataset.cardId);

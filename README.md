@@ -841,3 +841,83 @@ This build pushes the full playtest clarity pass in one update.
 
 ## Notes
 This is a broad table-hosting clarity pass, not a new asset pass. It focuses on making the game show what happened, what card caused it, and what players need to resolve.
+
+
+---
+
+# Loot Goblins v0.6.8 — Public Resolution + Combat Clarity
+
+This build is the first half of the larger playtest response plan. It focuses on visibility: players should clearly see what happened, what card caused it, what the Bad News is, and what the combat state currently contains.
+
+## Public resolution modal
+- Replaces the awkward announcement/banner treatment with a centered public resolution modal.
+- Major events require local acknowledgement before disappearing.
+- Shows event title, detail, relevant icon, and card preview when applicable.
+- Applies to played cards, Gear events, combat events, Hexes, Bad News, Flee/roll events, death, victory, and reveal/draw events.
+
+## Combat clarity
+- Combat ledger now shows all Foes in combat more clearly.
+- Foe entries include STR and Bad News text.
+- Each Foe in the mobile ledger has a View Foe button.
+- Desktop combat Foe cards also show Bad News directly under the Foe stat ribbon.
+- Add Foe announcements now name the Foe, show Bad News, and summarize the combined Foe side.
+
+## Flee / Bad News clarity
+- Flee screen now includes a Foe preview with View Foe.
+- Bad News is labeled as Bad News if you fail.
+- Desktop Flee screen no longer duplicates the same detail line and now surfaces Bad News.
+
+## Opening roll clarity
+- Opening roll winner announcement now includes each player roll and states who goes first.
+
+## Discard viewer
+- Discard viewer now shows full card details instead of only compact names.
+- Each discard entry includes card type, bottom/stat line, and rules text.
+- Cards can still be tapped for full inspection.
+
+## Not in this build
+- Trade system.
+- Backup rescind/cancel flow.
+- Full pre-Tribute interaction rewrite.
+- Belt/potion card-specific rules fix.
+
+Those belong in the next planned build: v0.6.9 — Interaction Correctness + Trade/Backup/Tribute.
+
+
+---
+
+# Loot Goblins v0.6.9 — Trade + Backup + Tribute Flow
+
+This build focuses on interaction correctness after the public-resolution clarity pass.
+
+## Included
+
+### Trade system
+- Removed direct Give buttons from individual card inspectors.
+- Player inspector now surfaces `Trade with [player]` on your turn.
+- Trades are offer/accept based:
+  - proposer chooses one or more cards to offer
+  - recipient accepts or declines
+  - proposer can rescind while the offer is pending
+  - gifts are possible, but the recipient must still accept
+
+### Backup rescind/cancel
+- Fighter can rescind an open Backup request.
+- Backup negotiation no longer has to hang if the fighter changes their mind.
+
+### Optional prompt safety
+- Optional prompts can be passed/canceled without trapping the game.
+- Sell Gear prompts can be canceled/done without selling.
+- No-Gear Sell checks return to the same phase and do not advance the turn.
+
+### Use/Sell before Tribute
+- The game now routes through a Use Loot / Sell window before checking Tribute.
+- Tribute is checked only after the active player finishes that window.
+
+### Potion timing fix
+- Potion-Belt of Giant Strength is now a one-use combat Trick instead of equipable Gear.
+- It can be used during combat for +3 to a combat side and then discards.
+
+## Notes
+- The trade system is intentionally simple: offer cards, accept/decline, rescind. Counteroffers can come later.
+- This build does not add new art assets.

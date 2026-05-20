@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.7-table-clarity-resolution-v067' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.10.9-trade-backup-tribute-flow-v069' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -196,6 +196,7 @@ function publicCard(card) {
     publicName: card.publicName,
     publicText: card.publicText,
     flavorText: card.flavorText,
+    badNewsText: card.type === 'THREAT' ? (card.badNewsText || describeBadNews(card)) : undefined,
     strength: card.strength,
     renownReward: card.renownReward,
     lootReward: card.lootReward,
@@ -328,7 +329,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.10.7-table-clarity-resolution-v067',
+    version: '0.10.9-trade-backup-tribute-flow-v069',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -358,12 +359,34 @@ function serializeRoom(room, viewerId) {
     firstRoll: serializeFirstRoll(room, viewerId),
     pendingPrompt: serializePrompt(room.pendingPrompt, viewerId),
     bodyLoot: serializeBodyLoot(room, viewerId),
+    tradeOffer: serializeTradeOffer(room, viewerId),
     log: room.log.slice(-80),
     chat: room.chat.slice(-60),
     legalActions: viewer ? legalActions(room, viewer) : []
   };
 }
 
+
+
+function serializeTradeOffer(room, viewerId) {
+  const offer = room.tradeOffer;
+  if (!offer) return null;
+  const from = getPlayer(room, offer.fromPlayerId);
+  const to = getPlayer(room, offer.toPlayerId);
+  const offered = (offer.cardIds || []).map((id) => findCardInPlayerZones(from, id)).filter(Boolean).map(publicCard);
+  return {
+    id: offer.id,
+    fromPlayerId: offer.fromPlayerId,
+    fromPlayerName: from?.name || 'Player',
+    toPlayerId: offer.toPlayerId,
+    toPlayerName: to?.name || 'Player',
+    cardIds: offer.cardIds || [],
+    cards: offered,
+    stage: offer.stage || 'OFFERED',
+    requiresYou: viewerId === offer.toPlayerId,
+    canRescind: viewerId === offer.fromPlayerId
+  };
+}
 
 function serializeReaction(room, viewerId) {
   const r = room.reaction;
@@ -762,7 +785,7 @@ function startCombat(room, threat) {
   resetCombatPasses(room);
   room.phase = 'COMBAT';
   room.revealCard = threat;
-  announce(room, 'combat', 'Combat Begins', `${getActive(room).name} faces ${threat.publicName}.`, threat, { importance: 'major' });
+  announce(room, 'combat', 'Combat Begins', `${getActive(room).name} faces ${threat.publicName}. Bad News if they fail: ${describeBadNews(threat)}`, threat, { importance: 'major' });
   log(room, `${getActive(room).name} faces ${threat.publicName}.`);
 }
 
@@ -798,7 +821,7 @@ function addFoeToCombat(room, foe, sourcePlayer) {
   room.combat.threats.push(foe);
   resetCombatPasses(room);
   movement(room, 'PLAYER_HAND', 'COMBAT_ZONE', 'Hand → Combat Zone', `${sourcePlayer?.name || 'A player'} added ${foe.publicName} to the combat.`, foe);
-  announce(room, 'combat', 'Another Foe Joined', `${sourcePlayer?.name || 'A player'} added ${foe.publicName}. Defeat the combined Foe side or Flee from each Foe.`, foe, { importance: 'major' });
+  announce(room, 'combat', 'Foe Added to Combat', `${sourcePlayer?.name || 'A player'} added ${foe.publicName}. Bad News: ${describeBadNews(foe)} Foe side now: ${describeFoeSide(room)}.`, foe, { importance: 'major' });
   log(room, `${sourcePlayer?.name || 'A player'} added ${foe.publicName} to the combat.`);
   return true;
 }
@@ -1632,7 +1655,9 @@ function continueAfterPrompt(room, after) {
   else if (after === 'CONTINUE_ESCAPE') continueFlee(room);
   else if (after === 'TO_TRIBUTE_OR_END') moveToTributeOrEnd(room);
   else if (after === 'TO_POST_COMBAT') moveToPostCombat(room);
+  else if (after === 'STAY' || after === 'CONTINUE') return;
 }
+
 
 function legalActions(room, player) {
   const actions = [];
@@ -1643,12 +1668,12 @@ function legalActions(room, player) {
   if (room.pendingPrompt?.playerId === player.id) actions.push('RESOLVE_PROMPT');
   if (room.phase === 'ROLL_FOR_FIRST' && room.firstRoll?.eligible?.includes(player.id) && !room.firstRoll.rolls?.[player.id]) actions.push('ROLL_FIRST');
   if (room.phase === 'START_TURN' && activeId(room) === player.id) actions.push('OPEN_CHAMBER');
-  if (canActOutsideCombat(room) && activeId(room) === player.id) actions.push('PLAY_TABLE_CARDS', 'SELL_GEAR');
+  if (canActOutsideCombat(room) && activeId(room) === player.id) actions.push('PLAY_TABLE_CARDS', 'SELL_GEAR', 'START_TRADE');
   if (room.phase === 'NO_THREAT_CHOICE' && activeId(room) === player.id) actions.push('SEARCH_ROOM', 'START_TROUBLE');
   if (room.phase === 'POST_COMBAT' && activeId(room) === player.id) actions.push('DONE_POST_COMBAT');
   if (room.phase === 'END_TURN' && activeId(room) === player.id) actions.push('END_TURN');
   if (room.phase === 'TRIBUTE' && activeId(room) === player.id) actions.push('GIVE_TRIBUTE');
-  if (room.phase === 'COMBAT') actions.push('COMBAT_ACTIONS', 'PASS_COMBAT');
+  if (room.phase === 'COMBAT') { actions.push('COMBAT_ACTIONS', 'PASS_COMBAT'); if (room.combat?.backupRequest?.fromPlayerId === player.id) actions.push('RESCIND_BACKUP'); }
   if (room.phase === 'ESCAPE' && room.escape?.currentPlayerId === player.id) {
     if (room.escape.awaitingContinue) actions.push('CONTINUE_FLEE');
     else { actions.push('ROLL_ESCAPE'); if ([...player.carriedGear, ...player.equippedGear].some((g) => g.id === 'GEAR_HIRELING')) actions.push('SACRIFICE_HIRELING_FLEE'); }
@@ -1692,13 +1717,19 @@ function resolveFirstRollIfReady(room) {
   room.activePlayerIndex = Math.max(0, room.players.findIndex((p) => p.id === winnerId));
   room.turnNumber = 1;
   room.phase = 'START_TURN';
-  announce(room, 'roll', 'Opening Roll Winner', `${getPlayer(room, winnerId)?.name || 'Someone'} goes first.`, null, { importance: 'major' });
+  const rollSummary = first.previous[first.previous.length - 1]?.rolls || first.rolls || {};
+  const rollText = Object.entries(rollSummary).map(([id, val]) => `${getPlayer(room, id)?.name || 'Player'} rolled ${val}`).join(' · ');
+  announce(room, 'roll', 'Opening Roll Complete', `${rollText}. ${getPlayer(room, winnerId)?.name || 'Someone'} goes first.`, null, { importance: 'major' });
   log(room, `${getPlayer(room, winnerId)?.name || 'Someone'} goes first.`);
 }
 
 function moveToTributeOrEnd(room) {
   const active = getActive(room);
   if (!active) return;
+  if (!room.usedLootWindowThisTurn) {
+    moveToPostCombat(room);
+    return;
+  }
   if (active.hand.length > handLimit(active)) room.phase = 'TRIBUTE';
   else room.phase = 'END_TURN';
 }
@@ -1706,12 +1737,14 @@ function moveToTributeOrEnd(room) {
 function moveToPostCombat(room) {
   const active = getActive(room);
   if (!active) return;
+  room.usedLootWindowThisTurn = true;
   room.phase = 'POST_COMBAT';
-  announce(room, 'turn', 'Use Loot Before Tribute', `${active.name} may play, equip, carry, or sell legal cards before Tribute.`, null, { importance: 'major' });
+  announce(room, 'turn', 'Use Loot / Sell Before Tribute', `${active.name} may play, equip, carry, sell Gear, or trade before Tribute is checked.`, null, { importance: 'major' });
 }
 
 function finishPostCombat(room) {
-  announce(room, 'turn', 'Post-Combat Complete', `${getActive(room)?.name || 'The fighter'} is done using Loot.`, null, { importance: 'normal' });
+  room.usedLootWindowThisTurn = true;
+  announce(room, 'turn', 'Use/Sell Window Complete', `${getActive(room)?.name || 'The fighter'} is done using cards before Tribute.`, null, { importance: 'normal' });
   moveToTributeOrEnd(room);
 }
 
@@ -1723,6 +1756,8 @@ function endTurn(room) {
   room.pendingPrompt = null;
   room.bodyLoot = null;
   room.tableNotice = null;
+  room.tradeOffer = null;
+  room.usedLootWindowThisTurn = false;
   room.activePlayerIndex = (room.activePlayerIndex + 1) % room.players.length;
   room.turnNumber += 1;
   room.phase = 'START_TURN';
@@ -1752,6 +1787,8 @@ function setupGame(room) {
   room.bodyLoot = null;
   room.tableNotice = null;
   room.announcement = null;
+  room.tradeOffer = null;
+  room.usedLootWindowThisTurn = false;
   room.winnerId = null;
   room.firstRoll = { round: 1, eligible: room.players.map((p) => p.id), rolls: {}, previous: [], latest: null, winnerId: null };
   for (const p of room.players) {
@@ -1974,6 +2011,8 @@ function makeRoom(hostName, socket) {
     bodyLoot: null,
     winnerId: null,
     announcement: null,
+    tradeOffer: null,
+    usedLootWindowThisTurn: false,
     log: [],
     chat: []
   };
@@ -1996,7 +2035,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.10.7-table-clarity-resolution-v067' });
+  socket.emit('ready', { version: '0.10.9-trade-backup-tribute-flow-v069' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2069,7 +2108,7 @@ function handleAction(socket, room, player, payload) {
     if (card) { card.fresh = false; card.freshAt = null; }
     return;
   }
-  if (room.pendingPrompt && type !== 'RESOLVE_PROMPT') return emitError(socket, 'A prompt must be resolved before anything else can happen.');
+  if (room.pendingPrompt && !['RESOLVE_PROMPT','CANCEL_TRADE'].includes(type)) return emitError(socket, 'A prompt must be resolved before anything else can happen.');
 
   if (room.reaction && !['PASS_REACTION','USE_WISH_RING','USE_LOADED_DIE','USE_INVISIBILITY_ESCAPE','USE_FLASK_GLUE','MARK_CARD_SEEN'].includes(type)) {
     return emitError(socket, 'A reaction window is open. Respond to it before continuing.');
@@ -2231,16 +2270,28 @@ function handleAction(socket, room, player, payload) {
     return;
   }
 
-  if (type === 'GIVE_GEAR') {
-    if (!canActOutsideCombat(room) || !isOwnTurn(room, socket)) return emitError(socket, 'Gear can only be given on your own turn outside combat.');
+  if (type === 'START_TRADE') {
+    if (!canActOutsideCombat(room) || !isOwnTurn(room, socket)) return emitError(socket, 'Trades can only be proposed on your own turn outside combat.');
     const target = getPlayer(room, payload.targetPlayerId);
-    if (!target || target.id === player.id) return emitError(socket, 'Choose another player to receive the Gear.');
-    const result = transferGearToPlayer(room, player, target, payload.cardId);
-    if (!result) return emitError(socket, 'Choose carried or equipped Gear already in play. Gear from hand cannot be traded or gifted.');
-    if (result.error) return emitError(socket, result.error);
-    announce(room, 'gear', 'Gear Given', `${player.name} gave ${result.gear.publicName} to ${target.name}.`, result.gear, { importance: 'major' });
-    log(room, `${player.name} gave ${result.gear.publicName} to ${target.name}.`);
+    if (!target || target.id === player.id || target.dead) return emitError(socket, 'Choose another living player to trade with.');
+    const options = tradeOfferOptions(player);
+    if (!options.length) return emitError(socket, 'You have no cards available to offer.');
+    createPrompt(room, { type: 'TRADE_OFFER_SELECT', playerId: player.id, message: `Choose cards to offer ${target.name}. Gifts are allowed; the other player must still accept.`, options, meta: { targetPlayerId: target.id, optional: true, after: 'STAY' } });
+    announce(room, 'trade', 'Trade Started', `${player.name} is preparing an offer for ${target.name}.`, null, { importance: 'normal' });
     return;
+  }
+
+  if (type === 'CANCEL_TRADE') {
+    if (!room.tradeOffer || room.tradeOffer.fromPlayerId !== player.id) return emitError(socket, 'You have no trade offer to rescind.');
+    const target = getPlayer(room, room.tradeOffer.toPlayerId);
+    announce(room, 'trade', 'Trade Rescinded', `${player.name} rescinded the trade offer${target ? ` to ${target.name}` : ''}.`, null, { importance: 'normal' });
+    room.tradeOffer = null;
+    if (room.pendingPrompt?.type === 'TRADE_ACCEPT') room.pendingPrompt = null;
+    return;
+  }
+
+  if (type === 'GIVE_GEAR') {
+    return emitError(socket, 'Direct giving has been replaced by Trade with Player. Tap a player and start a trade.');
   }
 
   if (type === 'SACRIFICE_HIRELING_FLEE') {
@@ -2309,6 +2360,16 @@ function handleAction(socket, room, player, payload) {
     room.combat.backupRequest = { fromPlayerId: player.id, toPlayerId: target.id, stage: 'NEGOTIATING', deal: null };
     announce(room, 'backup', 'Backup Negotiation', `${player.name} asks ${target.name} for Backup. ${player.name} must propose a Loot deal.`, null, { importance: 'major' });
     log(room, `${player.name} opened Backup negotiation with ${target.name}.`);
+    return;
+  }
+
+
+  if (type === 'RESCIND_BACKUP' || type === 'CONTINUE_WITHOUT_BACKUP') {
+    if (room.phase !== 'COMBAT' || !room.combat?.backupRequest) return emitError(socket, 'No Backup request is open.');
+    if (room.combat.backupRequest.fromPlayerId !== player.id) return emitError(socket, 'Only the fighter can rescind the Backup request.');
+    const helper = getPlayer(room, room.combat.backupRequest.toPlayerId);
+    room.combat.backupRequest = null;
+    announce(room, 'backup', type === 'RESCIND_BACKUP' ? 'Backup Request Rescinded' : 'Continuing Without Backup', `${player.name} canceled the Backup request${helper ? ` to ${helper.name}` : ''}.`, null, { importance: 'normal' });
     return;
   }
 
@@ -2664,6 +2725,21 @@ function removeOwnedGearOrHandCard(player, cardId) {
   if (idx >= 0) return player.equippedGear.splice(idx, 1)[0];
   return null;
 }
+
+function removeOwnedGearOrHandCardAny(player, cardId) {
+  let idx = player.hand.findIndex((c) => c.instanceId === cardId);
+  if (idx >= 0) return player.hand.splice(idx, 1)[0];
+  idx = player.carriedGear.findIndex((c) => c.instanceId === cardId);
+  if (idx >= 0) return player.carriedGear.splice(idx, 1)[0];
+  idx = player.equippedGear.findIndex((c) => c.instanceId === cardId);
+  if (idx >= 0) return player.equippedGear.splice(idx, 1)[0];
+  return null;
+}
+
+function tradeOfferOptions(player) {
+  return [...player.hand, ...player.carriedGear, ...player.equippedGear].filter((c) => c && !c.isClone);
+}
+
 function gearJunkValue(card) {
   return Number(card?.junkValue ?? card?.scrapValue ?? 0) || 0;
 }
@@ -2803,6 +2879,12 @@ function resolvePrompt(socket, room, player, payload) {
   if (!prompt) return emitError(socket, 'No prompt to resolve.');
   if (prompt.playerId !== player.id) return emitError(socket, 'This prompt is not for you.');
   const after = prompt.meta?.after || 'CONTINUE';
+  if ((payload.cancel || payload.pass) && prompt.meta?.optional) {
+    room.pendingPrompt = null;
+    announce(room, 'prompt', 'Optional Choice Passed', `${player.name} passed on ${prompt.type.replaceAll('_', ' ').toLowerCase()}.`, null, { importance: 'normal' });
+    continueAfterPrompt(room, after);
+    return;
+  }
   if (prompt.type === 'LOOT_BODY') {
     const loot = room.bodyLoot;
     if (!loot || prompt.meta?.bodyLootId !== loot.id) return emitError(socket, 'Body looting is no longer active.');
@@ -3011,14 +3093,54 @@ function resolvePrompt(socket, room, player, payload) {
     return;
   }
 
+
+  if (prompt.type === 'TRADE_OFFER_SELECT') {
+    const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
+    if (payload.cancel) { room.pendingPrompt = null; announce(room, 'trade', 'Trade Canceled', `${player.name} canceled the trade offer.`, null, { importance: 'normal' }); return; }
+    const valid = new Set((prompt.options || []).map((c) => c.instanceId));
+    if (!ids.length) return emitError(socket, 'Choose at least one card to offer, or cancel.');
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid cards you own.');
+    const target = getPlayer(room, prompt.meta?.targetPlayerId);
+    if (!target) return emitError(socket, 'Trade target is no longer available.');
+    room.tradeOffer = { id: instanceId(), fromPlayerId: player.id, toPlayerId: target.id, cardIds: ids, stage: 'OFFERED' };
+    room.pendingPrompt = { id: instanceId(), type: 'TRADE_ACCEPT', playerId: target.id, message: `${player.name} offers ${ids.length} card${ids.length === 1 ? '' : 's'} to ${target.name}. Accept?`, options: ids.map((id) => findCardInPlayerZones(player, id)).filter(Boolean), meta: { tradeOfferId: room.tradeOffer.id, optional: true, after: 'STAY' } };
+    announce(room, 'trade', 'Trade Offered', `${player.name} offered ${ids.length} card${ids.length === 1 ? '' : 's'} to ${target.name}.`, room.pendingPrompt.options[0] || null, { importance: 'major' });
+    return;
+  }
+
+  if (prompt.type === 'TRADE_ACCEPT') {
+    const offer = room.tradeOffer;
+    if (!offer || prompt.meta?.tradeOfferId !== offer.id || offer.toPlayerId !== player.id) return emitError(socket, 'This trade offer is no longer active.');
+    const from = getPlayer(room, offer.fromPlayerId);
+    if (!from) { room.tradeOffer = null; room.pendingPrompt = null; return emitError(socket, 'The offering player left.'); }
+    if (payload.cancel || payload.decline) {
+      announce(room, 'trade', 'Trade Declined', `${player.name} declined ${from.name}'s trade offer.`, null, { importance: 'normal' });
+      room.tradeOffer = null; room.pendingPrompt = null; return;
+    }
+    if (!payload.accept) return emitError(socket, 'Accept or decline the trade.');
+    const moved = [];
+    for (const id of offer.cardIds || []) {
+      const card = removeOwnedGearOrHandCardAny(from, id);
+      if (card) {
+        if (card.type === 'GEAR' && card.slot === 'HEAD') clearHeadLinkedEffects(room, from, `${card.publicName} was traded away`);
+        card.fresh = true; card.freshAt = Date.now(); card.freshFrom = 'TRADE'; moved.push(card);
+      }
+    }
+    player.hand.push(...moved);
+    announce(room, 'trade', 'Trade Accepted', `${player.name} accepted ${from.name}'s offer and received ${moved.length} card${moved.length === 1 ? '' : 's'}.`, moved[0] || null, { importance: 'major' });
+    room.tradeOffer = null; room.pendingPrompt = null;
+    return;
+  }
+
   if (prompt.type === 'SELL_GEAR') {
     if (payload.cancel || payload.done) {
       room.pendingPrompt = null;
       announce(room, 'gear', 'Sell Gear Canceled', `${player.name} chose not to sell Gear.`, null, { importance: 'normal' });
+      if (after !== 'STAY') continueAfterPrompt(room, after);
       return;
     }
     const ids = Array.isArray(payload.cardIds) ? payload.cardIds : [];
-    if (!ids.length) { room.pendingPrompt = null; announce(room, 'gear', 'Sell Gear Skipped', `${player.name} sold no Gear.`, null, { importance: 'normal' }); return; }
+    if (!ids.length) { room.pendingPrompt = null; announce(room, 'gear', 'Sell Gear Skipped', `${player.name} sold no Gear.`, null, { importance: 'normal' }); if (after !== 'STAY') continueAfterPrompt(room, after); return; }
     const result = sellSpecificGear(room, player, ids, prompt.meta?.effect || {});
     if (result.error) return emitError(socket, result.error);
     announce(room, 'gear', 'Gear Sold', `${player.name} sold ${result.sold.length} Gear for ${result.total} Junk Value${result.doubled ? ' with a double-value bonus' : ''}.${result.glory ? ` +${result.glory} Glory.` : ' Not enough for Glory.'}`, null, { importance: 'major' });
@@ -3030,5 +3152,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.7.9 Original Asset Kit Pass listening on ${PORT}`);
+  console.log(`Loot Goblins v0.6.9 Trade + Backup + Tribute Flow listening on ${PORT}`);
 });
