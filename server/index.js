@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.7-action-first-board-flow-v077' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.8-streamlined-table-language-v078' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -162,7 +162,7 @@ function movement(room, from, to, label, detail, card = null) {
 
 function describeBadNews(threat) {
   const e = threat?.consequence || {};
-  if (!e || !e.type) return threat?.publicText || 'Bad News resolves.';
+  if (!e || !e.type) return threat?.publicText || 'Bad News happens.';
   if (e.type === 'LOSE_RENOWN') return `Lose ${e.amount || 1} Glory.`;
   if (e.type === 'DISCARD_HAND_CARDS') return `Discard ${e.count || e.amount || 1} card${(e.count || e.amount || 1) === 1 ? '' : 's'} from hand.`;
   if (e.type === 'DISCARD_GEAR') {
@@ -174,7 +174,7 @@ function describeBadNews(threat) {
   if (e.type === 'HIGHEST_TAKE_GEAR') return 'The highest-Glory players each take one Gear from you.';
   if (e.type === 'KNOCKOUT') return 'You are knocked out. Other goblins may loot the body.';
   if (e.type === 'ROLL_LOSE_GLORY') return 'Roll a die, then lose Glory based on the result.';
-  if (e.type === 'LAWYERS_BAD_NEWS') return 'Legal trouble hits. Resolve the card’s Bad News exactly as written.';
+  if (e.type === 'LAWYERS_BAD_NEWS') return 'Legal trouble hits. Follow the card’s Bad News exactly.';
   if (e.type === 'DISCARD_OWNED_CARDS') return `Discard ${e.count || 1} owned card${(e.count || 1) === 1 ? '' : 's'}.`;
   if (e.type === 'DEATH') return 'Death. Loot the body.';
   if (e.type === 'BAD_NEWS_CHOICE' || e.type === 'CHOOSE_BAD_NEWS_OPTION') return 'Choose how the Bad News hits you.';
@@ -194,11 +194,12 @@ function playedAnnouncement(room, player, card, label = 'Card Played', detail = 
   });
 }
 
-function markFresh(card, deckName) {
+function markFresh(card, deckName, reason = 'PRIVATE_DRAW') {
   if (!card) return card;
   card.fresh = true;
   card.freshAt = Date.now();
   card.freshFrom = deckName;
+  card.freshReason = reason;
   return card;
 }
 
@@ -295,7 +296,8 @@ function publicCard(card) {
     isClone: Boolean(card.isClone),
     fresh: Boolean(card.fresh),
     freshAt: card.freshAt || null,
-    freshFrom: card.freshFrom || null
+    freshFrom: card.freshFrom || null,
+    freshReason: card.freshReason || null
   };
 }
 
@@ -334,7 +336,7 @@ function statusEffectDescription(effect) {
   if (effect.type === 'DIE_ROLL_PENALTY') return `${effect.amount || -1} to die rolls until your Head Gear is lost or discarded.`;
   if (effect.type === 'MODIFY_ESCAPE_ROLL') return `${effect.amount || 0} to your next Flee roll.`;
   if (effect.type === 'AUTO_ESCAPE') return 'Your next Flee succeeds automatically.';
-  return 'This effect is waiting to resolve.';
+  return 'This effect is waiting to happen.';
 }
 
 function addStatusEffect(room, player, sourceCard, data) {
@@ -393,7 +395,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.7-action-first-board-flow-v077',
+    version: '0.11.8-streamlined-table-language-v078',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -487,7 +489,7 @@ function legalReactionActionsForCard(room, player, card) {
   } else if (r.type === 'DIE_ROLL_REACTION' && card.id === 'SPECIAL_LOADED_DIE') {
     for (let value = 1; value <= 6; value++) actions.push(legalCardAction(`Set die to ${value}`, 'USE_LOADED_DIE', { value }, value === 6 ? 'primary' : '', 'Choose the final die face.'));
   } else if (r.type === 'FLEE_FAILURE_REACTION' && card.id === 'TRICK_INVISIBILITY') {
-    actions.push(legalCardAction('Escape Automatically', 'USE_INVISIBILITY_ESCAPE', {}, 'primary', 'Use before Bad News resolves.'));
+    actions.push(legalCardAction('Escape Automatically', 'USE_INVISIBILITY_ESCAPE', {}, 'primary', 'Use before Bad News happens.'));
   } else if (r.type === 'FLEE_SUCCESS_REACTION' && card.id === 'TRICK_FLASK_GLUE') {
     actions.push(legalCardAction('Force Flee Reroll', 'USE_FLASK_GLUE', {}, 'primary', 'Interfere with this successful Flee roll.'));
   }
@@ -1922,10 +1924,10 @@ function completeHexResolution(room, card, targetPlayer, after = 'TO_NO_THREAT_C
   }
   discardCard(room, card);
   if (complete) {
-    if (!room.tableNotice || room.tableNotice.kind === 'hex') announce(room, 'hex', 'Hex Resolved', `${card.publicName} finished resolving for ${targetPlayer.name}.`, card, { importance: 'normal' });
+    if (!room.tableNotice || room.tableNotice.kind === 'hex') announce(room, 'hex', 'Hex Finished', `${card.publicName} finished for ${targetPlayer.name}.`, card, { importance: 'normal' });
     finishHexReturnPhase(room, after);
   } else {
-    announce(room, 'prompt', 'Hex Needs a Choice', `${targetPlayer.name} must choose how ${card.publicName} resolves.`, card, { importance: 'major' });
+    announce(room, 'prompt', 'Hex Needs a Choice', `${targetPlayer.name} must choose how ${card.publicName} hits.`, card, { importance: 'major' });
   }
 }
 function startHexCancelReactionIfAvailable(room, card, targetPlayer, after, source) {
@@ -2120,15 +2122,15 @@ function resolveHex(room, card, targetPlayer, after = 'TO_NO_THREAT_CHOICE', sou
   room.pendingHex = { card, targetPlayerId: targetPlayer.id, after, source, previousPhase };
   room.revealCard = card;
   room.phase = 'HEX_REVEAL';
-  announce(room, 'hex', 'Hex Revealed', `${card.publicName} affects ${targetPlayer.name}. Read the card, then resolve the Hex.`, card, { importance: 'major' });
+  announce(room, 'hex', 'Hex Revealed', `${card.publicName} affects ${targetPlayer.name}. Read the card, then take the hit.`, card, { importance: 'major' });
 }
 
 function finishPendingHexResolution(room, player) {
   const pending = room.pendingHex;
-  if (!pending) return `${player.name} has no Hex to resolve.`;
+  if (!pending) return `${player.name} has no Hex waiting.`;
   const targetPlayer = getPlayer(room, pending.targetPlayerId);
   if (!targetPlayer) return 'Hex target not found.';
-  if (player.id !== targetPlayer.id) return `${targetPlayer.name} must resolve this Hex.`;
+  if (player.id !== targetPlayer.id) return `${targetPlayer.name} must take this Hex hit.`;
   const card = pending.card;
   const after = pending.after || 'TO_NO_THREAT_CHOICE';
   const source = pending.source || 'REVEAL';
@@ -2256,7 +2258,7 @@ function continueFlee(room) {
   if (!room.escape) return;
   room.escape.index += 1;
   if (room.escape.index >= (room.escape.queue || []).length) {
-    announce(room, 'flee', 'Flee Complete', 'All Flee rolls are resolved. Combat is over.', null, { importance: 'normal' });
+    announce(room, 'flee', 'Flee Complete', 'All Flee rolls are done. Combat is over.', null, { importance: 'normal' });
     cleanupCombatToDiscard(room);
     moveToPostCombat(room);
   } else {
@@ -2282,7 +2284,7 @@ function resolveFleeOutcome(room, player) {
     announce(room, 'bad', 'BAD NEWS', `${player.name} failed to escape ${threat?.publicName || 'the Foe'}. ${describeBadNews(threat)}`, threat, { importance: 'major' });
     log(room, `${player.name} failed to escape ${threat?.publicName || 'the Foe'}.`);
     const ok = applyEffect(room, player, threat?.consequence, threat, { after: 'CONTINUE_ESCAPE' });
-    if (ok) { announce(room, 'bad', 'Bad News Resolved', `${player.name}: ${describeBadNews(threat)}`, threat, { importance: 'major' }); continueFlee(room); }
+    if (ok) { announce(room, 'bad', 'Bad News Hit', `${player.name}: ${describeBadNews(threat)}`, threat, { importance: 'major' }); continueFlee(room); }
   }
 }
 
@@ -2355,7 +2357,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.7-action-first-board-flow-v077' });
+  socket.emit('ready', { version: '0.11.8-streamlined-table-language-v078' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2428,8 +2430,8 @@ function handleAction(socket, room, player, payload) {
     if (card) { card.fresh = false; card.freshAt = null; }
     return;
   }
-  if (room.pendingPrompt && !['RESOLVE_PROMPT','CANCEL_TRADE'].includes(type)) return emitError(socket, 'A prompt must be resolved before anything else can happen.');
-  if (room.pendingHex && !['RESOLVE_HEX','MARK_CARD_SEEN'].includes(type)) return emitError(socket, 'Resolve the revealed Hex before continuing.');
+  if (room.pendingPrompt && !['RESOLVE_PROMPT','CANCEL_TRADE'].includes(type)) return emitError(socket, 'A choice must be finished before anything else can happen.');
+  if (room.pendingHex && !['RESOLVE_HEX','MARK_CARD_SEEN'].includes(type)) return emitError(socket, 'Take the revealed Hex hit before continuing.');
 
   if (room.reaction && !['PASS_REACTION','USE_WISH_RING','USE_LOADED_DIE','USE_INVISIBILITY_ESCAPE','USE_FLASK_GLUE','MARK_CARD_SEEN'].includes(type)) {
     return emitError(socket, 'A reaction window is open. Respond to it before continuing.');
@@ -2553,7 +2555,7 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'RESOLVE_HEX') {
-    if (room.phase !== 'HEX_REVEAL' || !room.pendingHex) return emitError(socket, 'No revealed Hex is waiting to resolve.');
+    if (room.phase !== 'HEX_REVEAL' || !room.pendingHex) return emitError(socket, 'No revealed Hex is waiting.');
     const err = finishPendingHexResolution(room, player);
     if (err) return emitError(socket, err);
     return;
@@ -2570,7 +2572,7 @@ function handleAction(socket, room, player, payload) {
     if (card.type === 'THREAT') startCombat(room, card);
     else if (card.type === 'HEX') resolveHex(room, card, player, 'TO_NO_THREAT_CHOICE');
     else {
-      markFresh(card, 'CHAMBER');
+      markFresh(card, 'CHAMBER', 'FACE_UP_REVEAL');
       player.hand.push(card);
       movement(room, 'REVEAL_ZONE', 'PLAYER_HAND', 'Face-Up Chamber → Hand', `${player.name} revealed ${card.publicName}; it went to their hand.`, card);
       announce(room, 'reveal', 'Face-Up Chamber Revealed', `${player.name} revealed ${card.publicName}. It went to their hand; they may play it now or choose their next move.`, card, { importance: 'major' });
@@ -2659,7 +2661,7 @@ function handleAction(socket, room, player, payload) {
     if (room.phase !== 'NO_THREAT_CHOICE' || !isOwnTurn(room, socket)) return emitError(socket, 'Only the active player can Loot the Room in this phase.');
     const card = draw(room, 'CHAMBER');
     if (card) {
-      markFresh(card, 'CHAMBER');
+      markFresh(card, 'CHAMBER', 'LOOT_ROOM');
       player.hand.push(card);
       movement(room, 'CHAMBER_DECK', 'PLAYER_HAND', 'Chamber Deck → Hand', `${player.name} drew a hidden Chamber card.`, card);
     }
@@ -2743,7 +2745,7 @@ function handleAction(socket, room, player, payload) {
   }
 
   if (type === 'CONTINUE_FLEE') {
-    if (room.reaction) return emitError(socket, 'A reaction window is open. Resolve it before continuing.');
+    if (room.reaction) return emitError(socket, 'A reaction window is open. Finish it before continuing.');
     if (room.phase !== 'ESCAPE' || room.escape?.currentPlayerId !== player.id || !room.escape.awaitingContinue) return emitError(socket, 'There is no Flee result waiting to continue.');
     resolveFleeOutcome(room, player);
     return;
@@ -2751,7 +2753,7 @@ function handleAction(socket, room, player, payload) {
 
   if (type === 'ROLL_ESCAPE') {
     if (room.phase !== 'ESCAPE' || room.escape?.currentPlayerId !== player.id) return emitError(socket, 'It is not your Flee roll.');
-    if (room.escape?.awaitingContinue) return emitError(socket, 'Resolve the current Flee result first.');
+    if (room.escape?.awaitingContinue) return emitError(socket, 'Finish the current Flee result first.');
     rollFlee(room, player);
     return;
   }
@@ -3204,7 +3206,7 @@ function removeAndDiscardOwnedCard(room, player, cardId) {
 
 function resolvePrompt(socket, room, player, payload) {
   const prompt = room.pendingPrompt;
-  if (!prompt) return emitError(socket, 'No prompt to resolve.');
+  if (!prompt) return emitError(socket, 'No choice is waiting.');
   if (prompt.playerId !== player.id) return emitError(socket, 'This prompt is not for you.');
   const after = prompt.meta?.after || 'CONTINUE';
   if ((payload.cancel || payload.pass) && prompt.meta?.optional) {

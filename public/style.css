@@ -9208,3 +9208,222 @@ body .global-soft-card {
     text-align: left;
   }
 }
+
+
+/* Loot Goblins v0.7.8 — Streamlined Table Language + Loot Reveal + Sell Drawer Fix */
+
+/* The game should stop narrating itself. Keep prompt stages compact. */
+.mobile-state-prompt {
+  gap: 8px;
+}
+
+.mobile-state-prompt .mobile-state-hint {
+  margin: 0;
+  text-align: center;
+}
+
+/* Sell/decision drawer must be a real scrollable decision surface. */
+.hand-panel.drawer-mode-sell,
+.hand-panel.drawer-mode-trade,
+.hand-panel.drawer-mode-discard-hand,
+.hand-panel.drawer-mode-discard-gear,
+.hand-panel.drawer-mode-add-foe,
+.hand-panel.drawer-mode-body-loot {
+  max-height: min(78vh, 620px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.hand-panel.drawer-mode-sell .drawer-decision-panel,
+.hand-panel.drawer-mode-trade .drawer-decision-panel,
+.hand-panel.drawer-mode-discard-hand .drawer-decision-panel,
+.hand-panel.drawer-mode-discard-gear .drawer-decision-panel,
+.hand-panel.drawer-mode-add-foe .drawer-decision-panel,
+.hand-panel.drawer-mode-body-loot .drawer-decision-panel {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.hand-panel.drawer-mode-sell .decision-tray,
+.hand-panel.drawer-mode-trade .decision-tray,
+.hand-panel.drawer-mode-discard-hand .decision-tray,
+.hand-panel.drawer-mode-discard-gear .decision-tray,
+.hand-panel.drawer-mode-add-foe .decision-tray,
+.hand-panel.drawer-mode-body-loot .decision-tray {
+  max-height: none !important;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+.hand-panel.drawer-mode-sell .decision-hand-row,
+.hand-panel.drawer-mode-trade .decision-hand-row,
+.hand-panel.drawer-mode-discard-hand .decision-hand-row,
+.hand-panel.drawer-mode-discard-gear .decision-hand-row,
+.hand-panel.drawer-mode-add-foe .decision-hand-row,
+.hand-panel.drawer-mode-body-loot .decision-hand-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+  align-items: start;
+  overflow: visible;
+}
+
+.hand-panel.drawer-mode-sell .drawer-card-choice,
+.hand-panel.drawer-mode-trade .drawer-card-choice,
+.hand-panel.drawer-mode-discard-hand .drawer-card-choice,
+.hand-panel.drawer-mode-discard-gear .drawer-card-choice,
+.hand-panel.drawer-mode-add-foe .drawer-card-choice,
+.hand-panel.drawer-mode-body-loot .drawer-card-choice {
+  width: 100%;
+  min-width: 0;
+}
+
+.hand-panel.drawer-mode-sell .drawer-decision-actions,
+.hand-panel.drawer-mode-trade .drawer-decision-actions,
+.hand-panel.drawer-mode-discard-hand .drawer-decision-actions,
+.hand-panel.drawer-mode-discard-gear .drawer-decision-actions,
+.hand-panel.drawer-mode-add-foe .drawer-decision-actions,
+.hand-panel.drawer-mode-body-loot .drawer-decision-actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 6px;
+}
+
+/* Hide old standalone prompt panel if any layout still renders it. */
+#promptPanel.mobile-suppressed-prompt,
+#promptPanel.hidden {
+  display: none !important;
+}
+
+/* Private card gain splash */
+.private-gain-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483001;
+  display: grid;
+  place-items: center;
+  padding: calc(18px + var(--safe-top, 0px)) 14px calc(18px + var(--safe-bottom, 0px));
+  background: rgba(5, 3, 8, .62);
+  backdrop-filter: blur(8px);
+}
+
+.private-gain-card {
+  width: min(560px, 96vw);
+  max-height: min(78vh, 680px);
+  overflow: auto;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 222, 133, .44);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 218, 119, .20), transparent 42%),
+    radial-gradient(circle at 80% 20%, rgba(177, 91, 229, .18), transparent 44%),
+    linear-gradient(180deg, rgba(48, 27, 24, .98), rgba(13, 8, 13, .98));
+  box-shadow: 0 28px 80px rgba(0,0,0,.58), inset 0 0 0 1px rgba(255,255,255,.055);
+  color: var(--ink);
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+  text-align: center;
+}
+
+.private-gain-kicker {
+  justify-self: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 218, 119, .22), rgba(177, 91, 229, .30));
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: .64rem;
+  font-weight: 1000;
+}
+
+.private-gain-card h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 5vw, 2rem);
+}
+
+.private-gain-card p {
+  margin: 0;
+  color: rgba(255,246,214,.74);
+  font-size: .82rem;
+}
+
+.private-gain-card-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  justify-content: flex-start;
+  padding: 6px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.private-gain-preview {
+  min-width: 116px;
+  width: 116px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 222, 133, .22);
+  background: rgba(0,0,0,.20);
+  padding: 7px;
+  color: var(--ink);
+}
+
+.private-gain-preview .hand-card {
+  pointer-events: none;
+}
+
+.private-gain-preview > span {
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 218, 119, .12);
+  padding: 3px 5px;
+  font-size: .58rem;
+  font-weight: 900;
+  color: rgba(255,246,214,.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.private-gain-ack {
+  min-height: 50px;
+}
+
+/* Hex language cleanup: less admin, more action. */
+.mobile-state-clean-hex .mobile-state-sub,
+.mobile-state-clean-hex .mobile-opened-door-status {
+  display: none !important;
+}
+
+/* Remove repeated instruction weight in small task screens. */
+.mobile-state-size-small .mobile-state-sub {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .hand-panel.drawer-mode-sell,
+  .hand-panel.drawer-mode-trade,
+  .hand-panel.drawer-mode-discard-hand,
+  .hand-panel.drawer-mode-discard-gear,
+  .hand-panel.drawer-mode-add-foe,
+  .hand-panel.drawer-mode-body-loot {
+    max-height: min(74vh, 560px);
+  }
+
+  .hand-panel.drawer-mode-sell .decision-hand-row,
+  .hand-panel.drawer-mode-trade .decision-hand-row,
+  .hand-panel.drawer-mode-discard-hand .decision-hand-row,
+  .hand-panel.drawer-mode-discard-gear .decision-hand-row,
+  .hand-panel.drawer-mode-add-foe .decision-hand-row,
+  .hand-panel.drawer-mode-body-loot .decision-hand-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-action-first-board-flow-v077",
-  "version": "0.11.7",
+  "name": "loot-goblins-streamlined-table-language-v078",
+  "version": "0.11.8",
   "private": true,
-  "description": "Loot Goblins v0.7.7: action-first board flow, redesigned Chamber door tile, No Foe choice parity, and combat copy cleanup.",
+  "description": "Loot Goblins v0.7.8: streamlined player-facing language, private loot/card gain splash, and fixed scrollable Sell Gear decision drawer.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
