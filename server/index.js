@@ -16,7 +16,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9-trade-table-my-goblin-v079' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.3-death-body-loot-ux-v0793' }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -396,7 +396,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.9-trade-table-my-goblin-v079',
+    version: '0.11.9.3-death-body-loot-ux-v0793',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -682,6 +682,8 @@ function serializeTradeOffer(room, viewerId) {
     out.yourConfirmed = Boolean(t.confirmed?.[yourId]);
     out.theirConfirmed = Boolean(t.confirmed?.[theirId]);
     out.yourOfferIds = t.offers?.[yourId] || [];
+    out.changedByPlayerId = t.changedByPlayerId || null;
+    out.changedByName = t.changedByPlayerId ? (getPlayer(room, t.changedByPlayerId)?.name || 'A player') : null;
   } else {
     out.summary = `${from?.name || 'Player'} and ${to?.name || 'Player'} are trading.`;
   }
@@ -803,12 +805,24 @@ function serializeBodyLoot(room, viewerId) {
   if (!loot) return null;
   const victim = getPlayer(room, loot.victimId);
   const currentId = loot.looterIds?.[loot.index || 0] || null;
+  const order = (loot.looterIds || []).map((id) => {
+    const p = getPlayer(room, id);
+    return { id, name: p?.name || 'Player', dead: Boolean(p?.dead), isYou: id === viewerId };
+  });
   return {
     id: loot.id,
     victimId: loot.victimId,
     victimName: victim?.name || 'Player',
+    victimIsYou: loot.victimId === viewerId,
+    sourceCard: loot.sourceCard || null,
+    originalCount: loot.originalCount || 0,
+    lootedCount: loot.lootedCount || 0,
     cardCount: loot.cards?.length || 0,
     looterIds: loot.looterIds || [],
+    looterNames: loot.looterNames || order.map((p) => p.name),
+    order,
+    history: (loot.history || []).slice(-8),
+    tieRolls: loot.tieRolls || [],
     currentLooterId: currentId,
     currentLooterName: currentId ? (getPlayer(room, currentId)?.name || 'Player') : null,
     index: loot.index || 0,
@@ -1758,15 +1772,20 @@ function startDeathLooting(room, victim, sourceCard, context = {}) {
     id: instanceId(),
     victimId: victim.id,
     cards: shuffle(lootable),
+    originalCount: lootable.length,
+    lootedCount: 0,
+    history: [],
+    tieRolls,
     looterIds: ordered.map((p) => p.id),
+    looterNames: ordered.map((p) => p.name),
     index: 0,
     after: context.after || 'CONTINUE_ESCAPE',
     sourceCard: sourceCard ? publicCard(sourceCard) : null
   };
   const detail = lootable.length
-    ? `${victim.name} died. ${lootable.length} card${lootable.length === 1 ? '' : 's'} are laid out for body looting. ${ordered.map((p) => p.name).join(' → ') || 'No one'} chooses in Glory order.${tieRolls.length ? ' ' + tieRolls.join(' ') : ''}`
-    : `${victim.name} died, but had no cards to loot.`;
-  announce(room, 'death', 'GOBLIN DOWN — LOOT THE BODY', `${detail} Take one card in Glory order. Try not to make eye contact.`, sourceCard, { importance: 'major' });
+    ? `${victim.name} is knocked out. ${lootable.length} card${lootable.length === 1 ? '' : 's'} hit the body pile. Looting order: ${ordered.map((p) => p.name).join(' → ') || 'no one'}.`
+    : `${victim.name} is knocked out, but had no cards to loot.`;
+  announce(room, 'death', 'Goblin Knocked Out', detail, sourceCard, { importance: 'major' });
   log(room, `${victim.name} died. ${lootable.length} card${lootable.length === 1 ? '' : 's'} laid out for body looting.`);
   if (!lootable.length || !ordered.length) {
     finishBodyLooting(room);
@@ -1823,7 +1842,7 @@ function finishBodyLooting(room) {
   const after = loot.after || 'CONTINUE_ESCAPE';
   room.bodyLoot = null;
   room.pendingPrompt = null;
-  announce(room, 'death', 'Body Looting Complete', count ? `${count} unclaimed card${count === 1 ? '' : 's'} were discarded.` : 'The body was fully looted.', null, { importance: 'major' });
+  announce(room, 'death', 'Body Loot Complete', count ? `${count} unclaimed card${count === 1 ? '' : 's'} were discarded.` : 'The body pile is empty.', null, { importance: count ? 'major' : 'minor', requiresAck: Boolean(count) });
 
   const active = getActive(room);
   if (active?.dead && after !== 'CONTINUE_ESCAPE') {
@@ -2436,7 +2455,7 @@ function attachSocketToPlayer(room, player, socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.9-trade-table-my-goblin-v079' });
+  socket.emit('ready', { version: '0.11.9.3-death-body-loot-ux-v0793' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(name, socket);
@@ -2488,10 +2507,12 @@ function availableTradeCardMap(player) {
   return new Map(tradeOfferOptions(player).map((c) => [c.instanceId, c]));
 }
 
-function resetTradeCommitment(trade) {
+function resetTradeCommitment(trade, changedByPlayerId = null) {
   trade.ready = {};
   trade.confirmed = {};
   trade.stage = 'NEGOTIATING';
+  trade.changedByPlayerId = changedByPlayerId;
+  trade.updatedAt = Date.now();
 }
 
 function completeTrade(room, trade) {
@@ -2528,7 +2549,7 @@ function completeTrade(room, trade) {
   from.hand.push(...toCards);
 
   movement(room, 'PLAYER_HAND', 'PLAYER_HAND', 'Trade Complete', `${from.name} and ${to.name} exchanged cards.`, fromCards[0] || toCards[0] || null);
-  announce(room, 'trade', 'Trade Complete', `${from.name} and ${to.name} made a deal.`, null, { importance: 'normal' });
+  announce(room, 'trade', 'Trade Complete', `${from.name} and ${to.name} made a deal.`, null, { importance: 'minor', requiresAck: false });
   log(room, `${from.name} and ${to.name} traded. ${from.name} gave ${fromCards.length}; ${to.name} gave ${toCards.length}.`);
   room.tradeOffer = null;
   return { fromCards, toCards };
@@ -2563,7 +2584,7 @@ socket.on('action', (payload = {}) => {
 
 function handleAction(socket, room, player, payload) {
   const type = payload.type;
-  if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION', 'RESOLVE_HEX'].includes(type)) return emitError(socket, 'Dead players wait for their next turn to return.');
+  if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION', 'RESOLVE_HEX', 'MARK_CARD_SEEN'].includes(type)) return emitError(socket, 'You are down. You return on your next turn.');
   if (type === 'MARK_CARD_SEEN') {
     const card = player.hand.find((c) => c.instanceId === payload.cardId);
     if (card) { card.fresh = false; card.freshAt = null; }
@@ -2757,9 +2778,11 @@ function handleAction(socket, room, player, payload) {
       ready: {},
       confirmed: {},
       stage: 'NEGOTIATING',
-      createdAt: Date.now()
+      changedByPlayerId: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
-    announce(room, 'trade', 'Trade Started', `${player.name} started a trade with ${target.name}.`, null, { importance: 'normal' });
+    announce(room, 'trade', 'Trade Started', `${player.name} and ${target.name} are bargaining.`, null, { importance: 'minor', requiresAck: false });
     log(room, `${player.name} started a trade with ${target.name}.`);
     return;
   }
@@ -2769,7 +2792,7 @@ function handleAction(socket, room, player, payload) {
     if (!trade || !isTradeParticipant(trade, player.id)) return emitError(socket, 'You are not in a trade.');
     const otherId = trade.fromPlayerId === player.id ? trade.toPlayerId : trade.fromPlayerId;
     const other = getPlayer(room, otherId);
-    announce(room, 'trade', 'Trade Canceled', `${player.name} walked away from the trade${other ? ` with ${other.name}` : ''}.`, null, { importance: 'normal' });
+    announce(room, 'trade', 'Trade Canceled', `${player.name} walked away from the trade${other ? ` with ${other.name}` : ''}.`, null, { importance: 'minor', requiresAck: false });
     room.tradeOffer = null;
     room.pendingPrompt = null;
     return;
@@ -2783,7 +2806,16 @@ function handleAction(socket, room, player, payload) {
     if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose cards you still own.');
     trade.offers = trade.offers || {};
     trade.offers[player.id] = ids;
-    resetTradeCommitment(trade);
+    resetTradeCommitment(trade, player.id);
+    return;
+  }
+
+  if (type === 'TRADE_CLEAR_OFFER') {
+    const trade = room.tradeOffer;
+    if (!trade || !isTradeParticipant(trade, player.id)) return emitError(socket, 'You are not in a trade.');
+    trade.offers = trade.offers || {};
+    trade.offers[player.id] = [];
+    resetTradeCommitment(trade, player.id);
     return;
   }
 
@@ -2795,6 +2827,7 @@ function handleAction(socket, room, player, payload) {
     trade.confirmed = {};
     if (trade.ready[trade.fromPlayerId] && trade.ready[trade.toPlayerId]) trade.stage = 'CONFIRM';
     else trade.stage = 'NEGOTIATING';
+    trade.updatedAt = Date.now();
     return;
   }
 
@@ -3430,10 +3463,13 @@ function resolvePrompt(socket, room, player, payload) {
     const idx = (loot.cards || []).findIndex((c) => c.instanceId === payload.cardId);
     if (idx < 0) return emitError(socket, 'Choose a valid card from the body loot pile.');
     const [card] = loot.cards.splice(idx, 1);
-    markFresh(card, 'BODY_LOOT');
+    markFresh(card, 'BODY_LOOT', 'BODY_LOOT');
     player.hand.push(card);
-    movement(room, 'BODY_LOOT', 'PLAYER_HAND', 'Body Loot → Hand', `${player.name} looted ${card.publicName} from ${victim?.name || 'the fallen goblin'}.`, card);
-    announce(room, 'effect', 'Body Looted', `${player.name} took ${card.publicName} from ${victim?.name || 'the fallen goblin'}.`, card, { importance: 'major' });
+    loot.lootedCount = Number(loot.lootedCount || 0) + 1;
+    loot.history = loot.history || [];
+    loot.history.push({ playerId: player.id, playerName: player.name, cardName: card.publicName, at: Date.now() });
+    movement(room, 'BODY_LOOT', 'PLAYER_HAND', 'Body Loot → Hand', `${player.name} looted a card from ${victim?.name || 'the fallen goblin'}.`, card);
+    announce(room, 'death', 'Body Loot', `${player.name} took 1 card from ${victim?.name || 'the fallen goblin'}. ${Math.max(0, (loot.cards || []).length)} left in the pile.`, null, { importance: 'minor', requiresAck: false });
     log(room, `${player.name} looted ${card.publicName} from ${victim?.name || 'a fallen goblin'}.`);
     loot.index = ((loot.index || 0) + 1) % Math.max(1, (loot.looterIds || []).length);
     room.pendingPrompt = null;

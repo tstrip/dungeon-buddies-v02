@@ -9988,3 +9988,460 @@ body .global-soft-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* Loot Goblins v0.7.9.1 — Compact My Goblin Badge */
+
+/* The collapsed hand tray must prioritize visible cards. The goblin summary now lives as a compact badge in the header. */
+.mobile-hand-header.compact-goblin-header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.hand-header-left {
+  display: grid;
+  grid-template-columns: minmax(86px, 112px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hand-title-stack {
+  min-width: 0;
+}
+
+.hand-title-stack h3,
+.hand-title-stack .hand-eyebrow {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-goblin-badge {
+  width: 100%;
+  min-height: 74px;
+  border: 1px solid rgba(255, 222, 133, .32);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(122, 235, 171, .18), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(177, 91, 229, .14), transparent 46%),
+    rgba(0,0,0,.22);
+  color: var(--ink);
+  padding: 7px 8px;
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.045);
+}
+
+.my-goblin-badge-name {
+  color: var(--gold);
+  font-size: .56rem;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-goblin-badge-call,
+.my-goblin-badge-kin {
+  color: var(--ink);
+  font-size: .68rem;
+  font-weight: 1000;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-goblin-badge-kin {
+  color: rgba(255,246,214,.82);
+}
+
+.my-goblin-badge-stats {
+  color: rgba(255,246,214,.72);
+  font-size: .58rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-goblin-badge.dead {
+  border-color: rgba(255, 126, 134, .45);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 126, 134, .18), transparent 42%),
+    rgba(70,20,30,.24);
+}
+
+/* Old full-width strip is disabled if any stale markup survives. */
+.my-goblin-strip {
+  display: none !important;
+}
+
+/* Keep help text small so it does not steal the card rail. */
+.hand-help.drawer-mode-help {
+  margin: 2px 0 4px !important;
+  font-size: .62rem !important;
+  line-height: 1.1 !important;
+}
+
+.hand-panel:not(.hand-expanded):not([class*="drawer-mode-tribute"]):not([class*="drawer-mode-sell"]):not([class*="drawer-mode-trade-session"]):not([class*="drawer-mode-discard"]):not([class*="drawer-mode-player-choice"]) .hand-scroll-shell {
+  margin-top: 2px !important;
+}
+
+@media (max-width: 430px) {
+  .hand-header-left {
+    grid-template-columns: minmax(76px, 96px) minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .my-goblin-badge {
+    min-height: 66px;
+    padding: 6px 7px;
+  }
+
+  .my-goblin-badge-call,
+  .my-goblin-badge-kin {
+    font-size: .62rem;
+  }
+
+  .my-goblin-badge-stats {
+    font-size: .54rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .hand-header-left {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  .my-goblin-badge-name {
+    display: none;
+  }
+
+  .my-goblin-badge {
+    min-height: 58px;
+  }
+}
+
+
+/* Loot Goblins v0.7.9.2 — Trade Table Polish */
+
+/* Trade modal/table: clearer ready states, less tutorial text. */
+.trade-table-board {
+  border-color: rgba(255, 222, 133, .28);
+}
+
+.trade-table-status {
+  font-size: .78rem;
+  color: rgba(255,246,214,.88);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(177,91,229,.15), transparent 55%),
+    rgba(0,0,0,.20);
+}
+
+.trade-state-pill {
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: .52rem;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .10em;
+  white-space: nowrap;
+}
+
+.trade-state-pill.editing {
+  color: rgba(255,246,214,.70);
+  background: rgba(255,255,255,.06);
+}
+
+.trade-state-pill.ready {
+  color: #271a08;
+  background: linear-gradient(135deg, #ffe58f, #7becb2);
+}
+
+.trade-state-pill.confirmed {
+  color: #081a12;
+  background: linear-gradient(135deg, #7becb2, #b7ffd7);
+}
+
+.trade-offer-box.confirmed {
+  border-color: rgba(123, 236, 178, .76);
+  box-shadow: 0 0 0 2px rgba(123,236,178,.14), inset 0 0 0 1px rgba(123,236,178,.16);
+}
+
+.trade-offer-preview em {
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 218, 119, .10);
+  padding: 2px 4px;
+  color: rgba(255,246,214,.58);
+  font-size: .46rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Trade drawer: action row supports Clear + Ready + Cancel without getting mushy. */
+.drawer-trade-session .trade-drawer-copy small {
+  color: var(--gold);
+  font-size: .62rem;
+  font-weight: 900;
+  display: block;
+  margin-top: 4px;
+}
+
+.trade-session-actions {
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+}
+
+.trade-session-actions .micro {
+  white-space: nowrap;
+}
+
+.trade-session-choice {
+  transition: transform .12s ease, box-shadow .12s ease, outline-color .12s ease;
+}
+
+.trade-session-choice:active {
+  transform: translateY(1px) scale(.99);
+}
+
+/* Trade received splash: more celebratory without needing a new asset. */
+.private-gain-modal.trade-gain .private-gain-card {
+  border-color: rgba(123, 236, 178, .50);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(123,236,178,.20), transparent 42%),
+    radial-gradient(circle at 80% 20%, rgba(177, 91, 229, .20), transparent 44%),
+    linear-gradient(180deg, rgba(38, 34, 25, .98), rgba(13, 8, 13, .98));
+}
+
+.private-gain-modal.trade-gain .private-gain-kicker {
+  background: linear-gradient(135deg, rgba(123,236,178,.28), rgba(177,91,229,.30));
+  color: #b7ffd7;
+}
+
+@media (max-width: 430px) {
+  .trade-session-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trade-session-actions .micro {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+}
+
+
+/* Loot Goblins v0.7.9.3 — Death + Body Loot UX */
+
+.mobile-state-body-loot-board {
+  gap: 12px;
+}
+
+.body-loot-hero {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 126, 134, .34);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 126, 134, .18), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(177, 91, 229, .12), transparent 48%),
+    rgba(0,0,0,.24);
+  padding: 14px;
+}
+
+.body-loot-hero .event-sigil {
+  width: 54px;
+  height: 54px;
+}
+
+.body-loot-hero strong {
+  display: block;
+  color: #ffd0d0;
+  font-size: .96rem;
+  line-height: 1.08;
+}
+
+.body-loot-hero span {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255,246,214,.78);
+  font-size: .74rem;
+  line-height: 1.22;
+}
+
+.body-loot-hero.you-down {
+  border-color: rgba(255, 222, 133, .40);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 222, 133, .14), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(177, 91, 229, .16), transparent 48%),
+    rgba(0,0,0,.24);
+}
+
+.body-loot-status-card {
+  display: grid;
+  gap: 10px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 222, 133, .22);
+  background: rgba(0,0,0,.20);
+  padding: 12px;
+}
+
+.body-loot-meter {
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+}
+
+.body-loot-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff7f8b, #ffe087);
+}
+
+.body-loot-counts {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.body-loot-counts b {
+  color: var(--gold);
+  font-size: .74rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+.body-loot-counts span {
+  color: rgba(255,246,214,.80);
+  font-size: .74rem;
+  font-weight: 850;
+  text-align: right;
+}
+
+.body-loot-order {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.body-loot-order span {
+  min-width: max-content;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,246,214,.70);
+  padding: 5px 8px;
+  font-size: .62rem;
+  font-weight: 900;
+}
+
+.body-loot-order span.current {
+  background: linear-gradient(135deg, rgba(255, 222, 133, .28), rgba(177,91,229,.22));
+  border-color: rgba(255,222,133,.42);
+  color: var(--ink);
+}
+
+.body-loot-order span.you {
+  box-shadow: inset 0 0 0 1px rgba(123,236,178,.18);
+}
+
+.body-loot-history {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 8px;
+}
+
+.body-loot-history b {
+  color: rgba(255,246,214,.56);
+  font-size: .58rem;
+  text-transform: uppercase;
+  letter-spacing: .13em;
+}
+
+.body-loot-history span {
+  color: rgba(255,246,214,.72);
+  font-size: .64rem;
+}
+
+.body-loot-next-step {
+  display: grid;
+  gap: 3px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.18);
+  padding: 11px 12px;
+  text-align: center;
+}
+
+.body-loot-next-step.active {
+  border-color: rgba(123,236,178,.42);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(123,236,178,.14), transparent 55%),
+    rgba(0,0,0,.20);
+}
+
+.body-loot-next-step strong {
+  color: var(--ink);
+  font-size: .82rem;
+}
+
+.body-loot-next-step span {
+  color: rgba(255,246,214,.72);
+  font-size: .70rem;
+}
+
+/* Body loot drawer should feel like picking from a pile, not ordinary hand management. */
+.drawer-mode-body-loot .drawer-card-choice {
+  border-color: rgba(255, 126, 134, .25);
+}
+
+.drawer-mode-body-loot .drawer-card-choice > span {
+  background: rgba(255, 126, 134, .16);
+  color: #ffd8dc;
+}
+
+.private-gain-modal .private-gain-kicker {
+  letter-spacing: .14em;
+}
+
+@media (max-width: 420px) {
+  .body-loot-hero {
+    grid-template-columns: 46px minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .body-loot-hero .event-sigil {
+    width: 44px;
+    height: 44px;
+  }
+
+  .body-loot-counts {
+    display: grid;
+    gap: 3px;
+  }
+
+  .body-loot-counts span {
+    text-align: left;
+  }
+}

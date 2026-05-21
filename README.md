@@ -1811,3 +1811,113 @@ Tap it to open your full character/player detail panel.
 
 ## Notes
 This is still a functional UX build. Visual/art polish for the trade table and character tray can come in v0.8.
+
+
+---
+
+# Loot Goblins v0.7.9.1 — Compact My Goblin Badge
+
+## Fix
+
+The v0.7.9 full-width "Your Goblin" strip pushed the actual hand cards out of the collapsed tray.
+
+This hotfix replaces it with a compact badge inside the hand header.
+
+## Badge shows
+
+- Calling
+- Kin
+- Glory
+- Gear count
+
+Examples:
+- Bruiser / Halfstep / GL 3/10 · Gear 2
+- No Calling / No Kin / GL 1/10 · Gear 0
+- Bruiser +1 / Halfstep / GL 6/10 · Gear 4
+
+## Behavior
+
+- Cards remain visible in the collapsed hand tray.
+- Tapping the badge still opens the full player detail panel.
+- The old full-width strip is disabled.
+
+
+---
+
+# Loot Goblins v0.7.9.2 — Trade Table Polish
+
+## Focus
+
+This pass tightens the new Trade Table added in v0.7.9.
+
+## Changes
+
+### Trade table clarity
+- Better Ready / Editing / Confirmed pills.
+- Clearer participant status text.
+- Observer view says two goblins are bargaining without revealing the deal.
+- Cancel button language is shorter.
+
+### Trade drawer improvements
+- Drawer now explains the offer state more clearly.
+- Shows how many cards the other player is offering.
+- Adds a Clear button when your offer has cards.
+- Ready button now says Ready Offer.
+
+### Trade flow safety
+- Offer changes now track who changed the deal and reset Ready/Confirm states.
+- Trade actions update trade timestamps.
+- New `TRADE_CLEAR_OFFER` action clears your offer without canceling the trade.
+
+### Trade gain splash
+- Cards received from trade now show as `Trade Complete`.
+- Splash says `You received...` instead of generic `You gained...`.
+- Trade gain splash gets a slightly different celebratory treatment.
+
+## Still intentionally private
+
+Observers do not see card names in the trade. They only see that a deal is happening/completed.
+
+
+---
+
+# Loot Goblins v0.7.9.3 — Death + Body Loot UX
+
+## Focus
+
+This pass makes knockout/body-looting feel like a clear game event instead of a weird state machine.
+
+## Changes
+
+### Knockout presentation
+- Body Loot stage now says who is knocked out.
+- If you are the knocked-out player, the screen explicitly says:
+  - you are down
+  - other goblins are looting you
+  - you return on your next turn with a fresh hand
+
+### Body Loot board
+- Shows how many cards are left in the body pile.
+- Shows body pile progress: looted / original count.
+- Shows the current looter.
+- Shows the full looting order.
+- Shows a small history of who already took a card.
+
+### Body Loot drawer
+- Current looter gets a clearer “Pick One Card” drawer.
+- Body Loot choices now say “Loot” instead of generic “Take card.”
+- Looted card still goes to the looter privately and triggers a private Body Loot splash.
+
+### Server metadata
+- `bodyLoot` now serializes:
+  - originalCount
+  - lootedCount
+  - victimIsYou
+  - order
+  - history
+  - tieRolls
+- Body Loot per-card announcements are now soft/minor instead of hard table-stopping events.
+
+## Still intentional
+
+Observers do not see exact body-pile card identities. The current looter sees the choices.

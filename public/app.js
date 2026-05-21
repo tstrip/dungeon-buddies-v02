@@ -395,17 +395,21 @@ function privateGainCards() {
 function privateCardGainHtml() {
   const cards = privateGainCards();
   if (!cards.length) return '';
+  const trade = cards.filter((c) => c.freshReason === 'TRADE_GAIN' || String(c.freshFrom || '').toUpperCase().includes('TRADE')).length;
   const chamber = cards.filter((c) => String(c.freshFrom || '').toUpperCase().includes('CHAMBER')).length;
   const loot = cards.filter((c) => String(c.freshFrom || '').toUpperCase().includes('LOOT')).length;
-  const title = cards.length === 1 ? `You gained ${cards[0].publicName}` : `You gained ${cards.length} cards`;
-  const source = cards.some((c) => c.freshReason === 'LOOT_ROOM') ? 'Loot the Room' : (loot && chamber ? 'New Cards' : loot ? 'Loot Gained' : 'Hidden Chamber Gained');
-  const summary = [chamber ? `${chamber} Chamber` : '', loot ? `${loot} Loot` : ''].filter(Boolean).join(' · ');
-  return `<section class="global-public-modal private-gain-modal" role="dialog" aria-modal="true">
+  const title = trade
+    ? (cards.length === 1 ? `You received ${cards[0].publicName}` : `You received ${cards.length} cards`)
+    : (cards.length === 1 ? `You gained ${cards[0].publicName}` : `You gained ${cards.length} cards`);
+  const bodyLoot = cards.filter((c) => c.freshReason === 'BODY_LOOT' || String(c.freshFrom || '').toUpperCase().includes('BODY_LOOT')).length;
+  const source = trade ? 'Trade Complete' : (bodyLoot ? 'Body Loot' : (cards.some((c) => c.freshReason === 'LOOT_ROOM') ? 'Loot the Room' : (loot && chamber ? 'New Cards' : loot ? 'Loot Gained' : 'Hidden Chamber Gained')));
+  const summary = trade ? 'Cards added to your hand.' : (bodyLoot ? 'You picked this from the body pile.' : [chamber ? `${chamber} Chamber` : '', loot ? `${loot} Loot` : ''].filter(Boolean).join(' · '));
+  return `<section class="global-public-modal private-gain-modal ${trade ? 'trade-gain' : ''}" role="dialog" aria-modal="true">
     <div class="private-gain-card">
       <div class="private-gain-kicker">${escapeHtml(source)}</div>
       <h2>${escapeHtml(title)}</h2>
       <p>${escapeHtml(summary || 'Added to your hand.')}</p>
-      <div class="private-gain-card-row">${cards.map((c) => `<button class="private-gain-preview" data-mobile-inspect-card="${c.instanceId}">${cardHtml(c, { compact: true })}<span>${escapeHtml(typeLabel(c))}</span></button>`).join('')}</div>
+      <div class="private-gain-card-row">${cards.map((c) => `<button class="private-gain-preview" data-mobile-inspect-card="${c.instanceId}">${cardHtml(c, { compact: true })}<span>${escapeHtml(c.publicName || typeLabel(c))}</span></button>`).join('')}</div>
       <button class="primary private-gain-ack" data-ack-private-gain="${cards.map((c) => c.instanceId).join(',')}">Got it</button>
     </div>
   </section>`;
@@ -1194,6 +1198,11 @@ function renderMobilePlayShell(root) {
       showToast('Pick a glowing Foe in your hand to Start Trouble.', 'ok');
     });
   });
+  root.querySelectorAll('[data-trade-clear]').forEach((btn) => btn.addEventListener('click', () => {
+    selectedTrade.clear();
+    emitAction('TRADE_CLEAR_OFFER');
+    renderHand();
+  }));
   root.querySelectorAll('[data-trade-ready]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_READY')));
   root.querySelectorAll('[data-trade-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_CONFIRM')));
   root.querySelectorAll('[data-action]').forEach((btn) => {
@@ -1275,8 +1284,8 @@ function mobilePlayerHudHtml() {
 function mobileStageHtml() {
   if (state.tradeOffer) return mobileTradeStageHtml(state.tradeOffer);
   if (state.reaction) return mobileReactionStageHtml(state.reaction);
-  if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
   if (state.bodyLoot) return mobileBodyLootStageHtml();
+  if (state.pendingPrompt) return mobilePromptStageHtml(state.pendingPrompt);
   if (state.phase === 'COMBAT' && state.combat) return mobileCombatStageHtml(state.combat);
   if (state.phase === 'ESCAPE' && state.escape) return mobileFleeStageHtml(state.escape);
   if (state.phase === 'ROLL_FOR_FIRST') return mobileOpeningRollStageHtml();
@@ -1294,7 +1303,13 @@ function mobileStageHtml() {
 function tradeOfferCardsHtml(cards, emptyText = 'No cards offered') {
   const list = cards || [];
   if (!list.length) return `<div class="trade-empty-offer">${escapeHtml(emptyText)}</div>`;
-  return `<div class="trade-offer-card-row">${list.map((c) => `<button class="trade-offer-preview" data-mobile-inspect-card="${c.instanceId}">${cardHtml(c, { compact: true })}<span>${escapeHtml(c.publicName)}</span></button>`).join('')}</div>`;
+  return `<div class="trade-offer-card-row">${list.map((c) => `<button class="trade-offer-preview" data-mobile-inspect-card="${c.instanceId}">${cardHtml(c, { compact: true })}<span>${escapeHtml(c.publicName)}</span><em>${escapeHtml(typeLabel(c))}</em></button>`).join('')}</div>`;
+}
+
+function tradeReadyPill(ready, confirmed) {
+  if (confirmed) return '<span class="trade-state-pill confirmed">Confirmed</span>';
+  if (ready) return '<span class="trade-state-pill ready">Ready</span>';
+  return '<span class="trade-state-pill editing">Editing</span>';
 }
 
 function mobileTradeStageHtml(t) {
@@ -1303,33 +1318,34 @@ function mobileTradeStageHtml(t) {
     return mobileStageShell('trade-table observer', 'Trade', `${t.fromPlayerName} ↔ ${t.toPlayerName}`, `
       <div class="trade-table-observer-card">
         ${assetIconHtml('trade', 'asset-sigil event-sigil')}
-        <strong>Goblins are making a deal.</strong>
-        <span>Offer details stay private unless the cards hit the table.</span>
+        <strong>Goblins are bargaining.</strong>
+        <span>${escapeHtml(t.fromPlayerName)} and ${escapeHtml(t.toPlayerName)} are making a private deal.</span>
       </div>
     `, { size: 'medium', icon: 'trade' });
   }
 
   const bothReady = Boolean(t.yourReady && t.theirReady);
   const confirmMode = t.stage === 'CONFIRM' || bothReady;
+  const changedByYou = t.changedByPlayerId === t.yourPlayerId;
   const status = confirmMode
-    ? (t.yourConfirmed ? `Waiting on ${t.theirName} to confirm.` : 'Both players are ready. Confirm to finish the trade.')
-    : (t.yourReady ? `Waiting on ${t.theirName}. Changing any offer resets Ready.` : 'Build your offer in the drawer, then tap Ready.');
+    ? (t.yourConfirmed ? `Waiting on ${t.theirName} to confirm.` : 'Both offers are locked. Confirm to swap cards.')
+    : (t.yourReady ? `Waiting on ${t.theirName}.` : (t.changedByName && !changedByYou ? `${t.changedByName} changed the deal. Review and Ready again.` : 'Choose cards below, then Ready your offer.'));
   return mobileStageShell('trade-table participant', 'Trade Table', `${t.yourName} ↔ ${t.theirName}`, `
     <div class="trade-table-board ${confirmMode ? 'confirm-mode' : ''}">
       <div class="trade-table-status">${escapeHtml(status)}</div>
       <div class="trade-offer-columns">
-        <section class="trade-offer-box yours ${t.yourReady ? 'ready' : ''}">
-          <header><b>Your Offer</b><span>${t.yourReady ? 'Ready' : `${(t.yourOffer || []).length} card${(t.yourOffer || []).length === 1 ? '' : 's'}`}</span></header>
+        <section class="trade-offer-box yours ${t.yourReady ? 'ready' : ''} ${t.yourConfirmed ? 'confirmed' : ''}">
+          <header><b>Your Offer</b>${tradeReadyPill(t.yourReady, t.yourConfirmed)}</header>
           ${tradeOfferCardsHtml(t.yourOffer, 'Gift / receive only')}
         </section>
-        <section class="trade-offer-box theirs ${t.theirReady ? 'ready' : ''}">
-          <header><b>${escapeHtml(t.theirName)}'s Offer</b><span>${t.theirReady ? 'Ready' : `${(t.theirOffer || []).length} card${(t.theirOffer || []).length === 1 ? '' : 's'}`}</span></header>
+        <section class="trade-offer-box theirs ${t.theirReady ? 'ready' : ''} ${t.theirConfirmed ? 'confirmed' : ''}">
+          <header><b>${escapeHtml(t.theirName)}'s Offer</b>${tradeReadyPill(t.theirReady, t.theirConfirmed)}</header>
           ${tradeOfferCardsHtml(t.theirOffer, 'Nothing yet')}
         </section>
       </div>
       <div class="trade-table-actions">
-        ${confirmMode ? `<button class="primary" data-trade-confirm ${t.yourConfirmed ? 'disabled' : ''}>${t.yourConfirmed ? 'Confirmed' : 'Confirm Trade'}</button>` : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready'}</button>`}
-        <button data-action="CANCEL_TRADE">Cancel Trade</button>
+        ${confirmMode ? `<button class="primary" data-trade-confirm ${t.yourConfirmed ? 'disabled' : ''}>${t.yourConfirmed ? 'Confirmed' : 'Confirm Trade'}</button>` : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready Offer'}</button>`}
+        <button data-action="CANCEL_TRADE">Cancel</button>
       </div>
     </div>
   `, { size: 'large', icon: 'trade' });
@@ -1710,26 +1726,48 @@ function mobileOpeningRollStageHtml() {
   return mobileStageShell('opening-roll', 'Opening Roll', first.requiresYou ? 'Roll to see who goes first' : 'Opening rolls', `${mobileRollMoment('opening', latest?.raw ?? '—', label, 'Highest roll opens first. Ties reroll.')}<div class="mobile-pass-row">${rows}</div>${actions}`, { size: 'medium', icon: 'die', sub: '' });
 }
 
+function bodyLootOrderHtml(loot) {
+  const order = loot?.order || [];
+  if (!order.length) return '';
+  return `<div class="body-loot-order">${order.map((p, i) => `<span class="${p.id === loot.currentLooterId ? 'current' : ''} ${p.isYou ? 'you' : ''}">${i + 1}. ${escapeHtml(p.name)}${p.isYou ? ' · you' : ''}</span>`).join('')}</div>`;
+}
+
+function bodyLootHistoryHtml(loot) {
+  const history = loot?.history || [];
+  if (!history.length) return '';
+  return `<div class="body-loot-history"><b>Already looted</b>${history.map((h) => `<span>${escapeHtml(h.playerName)} took 1 card</span>`).join('')}</div>`;
+}
+
 function mobileBodyLootStageHtml() {
   const loot = state.bodyLoot;
   const victimName = loot?.victimName || 'A goblin';
-  const current = loot?.requiresYou ? 'You are looting now.' : `${loot?.currentLooterName || 'A player'} is looting now.`;
   const cards = Number(loot?.cardCount || 0);
-  return mobileStageShell('death', 'GOBLIN DOWN', `Loot ${victimName}'s body`, `
-    <div class="mobile-death-card">
+  const original = Number(loot?.originalCount || cards);
+  const taken = Number(loot?.lootedCount || 0);
+  const current = loot?.requiresYou ? 'Your pick.' : `${loot?.currentLooterName || 'A player'} is picking.`;
+  const downCopy = loot?.victimIsYou
+    ? 'You are down. The other goblins are looting your body. You return on your next turn with a fresh hand.'
+    : `${victimName} is down. Take turns stealing from the body pile until it is empty.`;
+  const chooserCopy = loot?.requiresYou ? 'Choose one card from the drawer below.' : `Waiting on ${loot?.currentLooterName || 'the current looter'}.`;
+  return mobileStageShell('death body-loot-board', 'Goblin Down', `${victimName} is knocked out`, `
+    <section class="body-loot-hero ${loot?.victimIsYou ? 'you-down' : ''}">
       ${assetIconHtml('death', 'asset-sigil event-sigil')}
       <div>
-        <strong>Loot the Body</strong>
-        <span>${cards} card${cards === 1 ? '' : 's'} left to loot.</span>
-        <small>Take one card in Glory order. Try not to make eye contact.</small>
+        <strong>${cards} card${cards === 1 ? '' : 's'} left in the body pile</strong>
+        <span>${escapeHtml(downCopy)}</span>
       </div>
+    </section>
+    <section class="body-loot-status-card">
+      <div class="body-loot-meter"><span style="width:${Math.min(100, original ? (taken / original) * 100 : 0)}%"></span></div>
+      <div class="body-loot-counts"><b>${taken}/${original} looted</b><span>${escapeHtml(current)}</span></div>
+      ${bodyLootOrderHtml(loot)}
+      ${bodyLootHistoryHtml(loot)}
+    </section>
+    <div class="body-loot-next-step ${loot?.requiresYou ? 'active' : ''}">
+      <strong>${escapeHtml(loot?.requiresYou ? 'Pick from the body pile' : 'Body looting in progress')}</strong>
+      <span>${escapeHtml(chooserCopy)}</span>
     </div>
-    <div class="mobile-death-turn">
-      <strong>${escapeHtml(current)}</strong>
-      <span>Death is separate from losing Glory.</span>
-    </div>
-    ${loot?.requiresYou ? '<p class="mobile-state-hint">Choose one card from the prompt below.</p>' : ''}
-  `, { size: 'medium', icon: 'death', sub: 'A tragic opportunity.' });
+  `, { size: 'large', icon: 'death', sub: '' });
 }
 
 function mobilePromptStageHtml(prompt) {
@@ -2061,18 +2099,26 @@ function myTradeableCards() {
   });
 }
 
+function compactIdentityName(cards, emptyLabel) {
+  const names = (cards || []).filter(Boolean).map((c) => c.publicName).filter(Boolean);
+  if (!names.length) return emptyLabel;
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}
+
 function myGoblinStripHtml() {
   const p = myPublicPlayer();
   if (!p) return '';
-  const calls = [p.role, ...(p.extraRoles || [])].filter(Boolean).map((c) => c.publicName);
-  const kin = [p.origin, ...(p.extraOrigins || [])].filter(Boolean).map((c) => c.publicName);
+  const calls = [p.role, ...(p.extraRoles || [])].filter(Boolean);
+  const kin = [p.origin, ...(p.extraOrigins || [])].filter(Boolean);
   const gearCount = Number((p.equippedGear || []).length + (p.carriedGear || []).length);
-  const statusCount = Number((p.statusEffects || []).filter((e) => e.visible !== false).length);
-  const identity = `${calls.join(' + ') || 'No Calling'} / ${kin.join(' + ') || 'No Kin'}`;
-  return `<button class="my-goblin-strip ${p.dead ? 'dead' : ''}" type="button" data-my-goblin>
-    <span class="my-goblin-eyebrow">Your Goblin</span>
-    <strong>${escapeHtml(p.name)} · ${escapeHtml(identity)}</strong>
-    <span>GL ${Number(p.renown || 0)}/10 · PWR ${playerPower(p)} · Gear ${gearCount}${statusCount ? ` · Effects ${statusCount}` : ''}</span>
+  const callingLine = compactIdentityName(calls, 'No Calling');
+  const kinLine = compactIdentityName(kin, 'No Kin');
+  return `<button class="my-goblin-badge ${p.dead ? 'dead' : ''}" type="button" data-my-goblin aria-label="Open your goblin details">
+    <span class="my-goblin-badge-name">${escapeHtml(p.name || 'You')}</span>
+    <span class="my-goblin-badge-call">${escapeHtml(callingLine)}</span>
+    <span class="my-goblin-badge-kin">${escapeHtml(kinLine)}</span>
+    <span class="my-goblin-badge-stats">GL ${Number(p.renown || 0)}/10 · Gear ${gearCount}</span>
   </button>`;
 }
 
@@ -2094,15 +2140,17 @@ function renderHand() {
     ? (mode.key === 'tribute' ? `${you.handCount}/${you.handLimit} Tribute Required` : `${you.handCount}/${you.handLimit} Tribute Later`)
     : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
 
-  let html = `<div class="hand-header v075-hand-header mobile-hand-header">
-    <div><span class="hand-eyebrow">${escapeHtml(mode.eyebrow)}</span><h3>${escapeHtml(mode.title)}</h3></div>
+  let html = `<div class="hand-header v075-hand-header mobile-hand-header compact-goblin-header">
+    <div class="hand-header-left">
+      ${myGoblinStripHtml()}
+      <div class="hand-title-stack"><span class="hand-eyebrow">${escapeHtml(mode.eyebrow)}</span><h3>${escapeHtml(mode.title)}</h3></div>
+    </div>
     <div class="hand-header-actions">
       <span class="hand-limit ${handStateClass}">${handStateText}</span>
       <button id="handToggleBtn" class="hand-toggle-btn ${forceOpen ? 'decision-mode' : ''}" type="button" aria-expanded="${expanded}" ${forceOpen ? 'disabled' : ''}>${escapeHtml(toggleLabel)}</button>
     </div>
   </div>`;
 
-  html += myGoblinStripHtml();
   html += `<p class="micro hand-help drawer-mode-help">${escapeHtml(mode.hint)}</p>`;
 
   if (mode.key === 'tribute') {
@@ -2155,7 +2203,7 @@ function handDrawerMode() {
     if (p.type === 'DISCARD_HAND_CARDS') return { key: 'discard-hand', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Cards to Discard', hint: `Pick ${p.meta?.count || 1} card${(p.meta?.count || 1) === 1 ? '' : 's'} to discard. Inspect first if needed.`, prompt: p };
     if (p.type === 'DISCARD_GEAR' || p.type === 'DISCARD_GEAR_VALUE') return { key: 'discard-gear', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Gear to Lose', hint: p.message || 'Choose the Gear required by the prompt.', prompt: p };
     if (p.type === 'CHOOSE_HIRELING_TARGET' || p.type === 'CHOOSE_PLAYER') return { key: 'player-choice', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Choose a player.', prompt: p };
-    if (p.type === 'LOOT_BODY') return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: 'Choose one card from the fallen goblin. It goes to your hand.', prompt: p };
+    if (p.type === 'LOOT_BODY') return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Body Loot', title: 'Pick One Card', hint: 'Choose one card from the body pile. It goes to your hand privately.', prompt: p };
     return { key: 'prompt', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Resolve the current choice.', prompt: p };
   }
   if (state?.bodyLoot?.requiresYou) return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: `Choose one card from ${state.bodyLoot.victimName || 'the fallen goblin'}.`, bodyLoot: state.bodyLoot };
@@ -2177,13 +2225,17 @@ function drawerDecisionContent(mode) {
   if (mode.key === 'trade-session') {
     syncTradeSessionSelection(mode);
     const available = myTradeableCards();
+    const t = mode.trade || {};
     const cardHtmlList = available.map((c) => {
       const selected = selectedTrade.has(c.instanceId);
       const source = myHand().some((h) => h.instanceId === c.instanceId) ? 'Hand' : 'Gear';
       return `<button class="drawer-card-choice trade-session-choice ${selected ? 'selected' : ''}" data-trade-session-card="${c.instanceId}">${cardHtml(c,{compact:true})}<span>${selected ? '✓ Offered' : source}</span></button>`;
     }).join('');
+    const offerHint = t.yourReady
+      ? `Your offer is ready. Tap a card to change it and reset Ready.`
+      : (available.length ? 'Tap cards to add or remove them. Gifts are allowed.' : 'You have no tradable cards, but you can still receive a gift.');
     return `<div class="drawer-decision-panel drawer-trade-session">
-      <div class="drawer-decision-copy"><strong>Your Offer</strong><span>${available.length ? 'Tap cards to add or remove them. Gifts are allowed.' : 'You have no tradable cards, but you can still receive a gift.'}</span></div>
+      <div class="drawer-decision-copy trade-drawer-copy"><strong>Your Offer</strong><span>${escapeHtml(offerHint)}</span><small>${escapeHtml(t.theirName || 'They')} offers ${(t.theirOffer || []).length} card${(t.theirOffer || []).length === 1 ? '' : 's'}.</small></div>
       <div class="hand-tray v075-hand-tray expanded-tray decision-tray"><div class="card-row hand-row expanded-hand-row decision-hand-row">${cardHtmlList || '<div class="drawer-empty-state"><span>No tradable cards.</span></div>'}</div></div>
       ${drawerControls(mode)}
     </div>`;
@@ -2221,7 +2273,7 @@ function drawerDecisionCardHtml(card, mode) {
   if (mode.key === 'trade-session') {
     const t = mode.trade || {};
     const bothReady = Boolean(t.yourReady && t.theirReady);
-    return `<div class="drawer-decision-actions"><span class="micro">${selectedTrade.size} offered</span>${bothReady ? '<button class="primary" data-trade-confirm>Confirm Trade</button>' : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready'}</button>`}<button data-action="CANCEL_TRADE">Cancel</button></div>`;
+    return `<div class="drawer-decision-actions trade-session-actions"><span class="micro">${selectedTrade.size} offered</span>${selectedTrade.size ? '<button data-trade-clear>Clear</button>' : ''}${bothReady ? '<button class="primary" data-trade-confirm>Confirm Trade</button>' : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready Offer'}</button>`}<button data-action="CANCEL_TRADE">Cancel</button></div>`;
   }
   if (mode.key === 'sell') {
     const value = Number(card.junkValue || card.scrapValue || 0);
@@ -2236,7 +2288,7 @@ function drawerDecisionCardHtml(card, mode) {
   if (mode.key === 'trade-review') {
     return `<button class="drawer-card-choice inspect-only" data-drawer-inspect-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>Inspect</span></button>`;
   }
-  return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Take card' : 'Choose'}</span></button>`;
+  return `<button class="drawer-card-choice" data-drawer-prompt-card="${card.instanceId}">${cardHtml(card,{compact:true})}<span>${mode.key === 'add-foe' ? 'Add to combat' : mode.key === 'body-loot' ? 'Loot' : 'Choose'}</span></button>`;
 }
 
 function syncServerPreselectedSell(mode) {
@@ -2280,7 +2332,7 @@ function drawerControls(mode) {
   if (mode.key === 'trade-session') {
     const t = mode.trade || {};
     const bothReady = Boolean(t.yourReady && t.theirReady);
-    return `<div class="drawer-decision-actions"><span class="micro">${selectedTrade.size} offered</span>${bothReady ? '<button class="primary" data-trade-confirm>Confirm Trade</button>' : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready'}</button>`}<button data-action="CANCEL_TRADE">Cancel</button></div>`;
+    return `<div class="drawer-decision-actions trade-session-actions"><span class="micro">${selectedTrade.size} offered</span>${selectedTrade.size ? '<button data-trade-clear>Clear</button>' : ''}${bothReady ? '<button class="primary" data-trade-confirm>Confirm Trade</button>' : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready Offer'}</button>`}<button data-action="CANCEL_TRADE">Cancel</button></div>`;
   }
   if (mode.key === 'sell') {
     syncServerPreselectedSell(mode);
@@ -2344,6 +2396,11 @@ function attachDrawerHandlers(root, mode) {
     if (selectedTrade.has(id)) selectedTrade.delete(id);
     else selectedTrade.add(id);
     emitAction('TRADE_SET_OFFER', { cardIds: [...selectedTrade] });
+    renderHand();
+  }));
+  root.querySelectorAll('[data-trade-clear]').forEach((btn) => btn.addEventListener('click', () => {
+    selectedTrade.clear();
+    emitAction('TRADE_CLEAR_OFFER');
     renderHand();
   }));
   root.querySelectorAll('[data-trade-ready]').forEach((btn) => btn.addEventListener('click', () => emitAction('TRADE_READY')));

@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-trade-table-my-goblin-v079",
-  "version": "0.11.9",
+  "name": "loot-goblins-death-body-loot-ux-v0793",
+  "version": "0.11.9-3",
   "private": true,
-  "description": "Loot Goblins v0.7.9: two-player Trade Table with mutual offers/readiness/confirmation and persistent My Goblin tray.",
+  "description": "Loot Goblins v0.7.9.3: clearer knockout and body-loot UX with looting order, pile progress, and dead-player return messaging.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
