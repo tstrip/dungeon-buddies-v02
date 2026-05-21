@@ -832,8 +832,8 @@ function phaseGrammar() {
   }
 
   if (state?.phase === 'START_TURN') {
-    out.title = isMyTurn() ? 'Your Turn — Open Chamber' : `${activeName}'s Turn`;
-    out.copy = isMyTurn() ? 'Play legal setup cards first, or open a Chamber when ready.' : `${activeName} can play setup cards or open a Chamber.`;
+    out.title = isMyTurn() ? 'Your Turn' : `${activeName}'s Turn`;
+    out.copy = isMyTurn() ? 'Play setup cards, then open the Chamber.' : `${activeName} can play setup cards or open the Chamber.`;
     out.who = isMyTurn() ? 'You' : activeName;
     out.next = 'Opening a Chamber reveals the next public card.';
     if (isMyTurn()) {
@@ -845,12 +845,12 @@ function phaseGrammar() {
 
   if (state?.phase === 'NO_THREAT_CHOICE') {
     const playableFoes = (state?.you?.hand || []).filter((c) => c.type === 'THREAT' && serverCardActions(c).length);
-    out.title = isMyTurn() ? 'No Foe — Choose Your Move' : `${activeName} chooses a move`;
+    out.title = isMyTurn() ? 'Choose Your Move' : `${activeName} chooses a move`;
     out.copy = isMyTurn()
-      ? (playableFoes.length ? 'Start Trouble with a glowing Foe, Loot the Room, sell Gear, or play setup.' : 'No Foe appeared. Loot the Room, sell Gear, or play any legal setup card.')
-      : `Waiting for ${activeName} to Start Trouble or Loot the Room.`;
+      ? (playableFoes.length ? 'Start Trouble or Loot the Room.' : 'No Foe appeared. Loot the Room or sell Gear.')
+      : `Waiting for ${activeName} to choose.`;
     out.who = isMyTurn() ? 'You' : activeName;
-    out.next = isMyTurn() ? 'After your move, the game checks Loot/Tribute/end turn.' : 'The turn continues after the active goblin chooses.';
+    out.next = isMyTurn() ? 'Pick one next move.' : 'The turn continues after the choice.';
     if (isMyTurn()) {
       if (hasLegal('SEARCH_ROOM')) out.buttons.push(buttonHtml('Loot the Room', 'SEARCH_ROOM', 'primary'));
       if (hasLegal('SELL_GEAR')) out.buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
@@ -891,13 +891,13 @@ function phaseGrammar() {
   }
 
   if (state?.phase === 'POST_COMBAT') {
-    out.title = isMyTurn() ? 'Use Loot Before Tribute' : `${activeName} is using Loot`;
-    out.copy = isMyTurn() ? 'Play, equip, carry, sell, or trade before the hand-limit check.' : `${activeName} is counting shiny things before Tribute is checked.`;
+    out.title = isMyTurn() ? 'Last Chance Before Tribute' : `${activeName} is using Loot`;
+    out.copy = isMyTurn() ? 'Play Loot, equip Gear, trade, or sell Gear.' : `${activeName} is using Loot before the hand check.`;
     out.who = isMyTurn() ? 'You' : activeName;
-    out.next = 'After this, the game checks whether Tribute is required.';
+    out.next = 'Then check your hand limit.';
     if (isMyTurn()) {
       if (hasLegal('SELL_GEAR')) out.buttons.push(buttonHtml('Sell Gear', 'SELL_GEAR'));
-      if (hasLegal('DONE_POST_COMBAT')) out.buttons.push(buttonHtml('Done → Check Tribute', 'DONE_POST_COMBAT', 'primary'));
+      if (hasLegal('DONE_POST_COMBAT')) out.buttons.push(buttonHtml('Check Hand Limit', 'DONE_POST_COMBAT', 'primary'));
     }
     return out;
   }
@@ -1000,11 +1000,27 @@ function compactPhaseStatus(grammar) {
   return grammar?.copy || grammar?.next || '';
 }
 
+function phaseStripTitle(grammar) {
+  if (state.tradeOffer) return state.tradeOffer.isParticipant ? `Trade · ${state.tradeOffer.theirName}` : 'Trade';
+  if (state.bodyLoot) return state.bodyLoot.requiresYou ? 'Body Loot · Your Pick' : 'Body Loot';
+  if (state.reaction) return state.reaction.requiresYou ? 'Reaction · You' : 'Reaction';
+  if (state.pendingPrompt) return state.pendingPrompt.requiresYou ? 'Choice · You' : `Choice · ${playerName(state.pendingPrompt.playerId)}`;
+  const act = active();
+  if (state.phase === 'START_TURN') return isMyTurn() ? 'Your Turn' : `${act?.name || 'Goblin'}'s Turn`;
+  if (state.phase === 'NO_THREAT_CHOICE') return isMyTurn() ? 'Choose Move' : `${act?.name || 'Goblin'} Chooses`;
+  if (state.phase === 'POST_COMBAT') return isMyTurn() ? 'Last Chance' : `${act?.name || 'Goblin'} Uses Loot`;
+  if (state.phase === 'COMBAT') return 'Combat';
+  if (state.phase === 'ESCAPE') return 'Flee';
+  if (state.phase === 'TRIBUTE') return isMyTurn() ? 'Tribute Now' : 'Tribute';
+  if (state.phase === 'GAME_OVER') return 'Victory';
+  return grammar.title || prettyPhase(state.phase);
+}
+
 function renderPhaseBanner() {
   const root = $('phaseBanner');
   if (!root) return;
   const grammar = phaseGrammar();
-  const compactTitle = state.tradeOffer ? (state.tradeOffer.isParticipant ? `Trade with ${state.tradeOffer.theirName}` : 'Trade in Progress') : (grammar.title || prettyPhase(state.phase));
+  const compactTitle = phaseStripTitle(grammar);
   root.className = `phase-banner panel phase-status-strip phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')} urgency-${String(grammar.urgency || 'normal')}`;
   root.innerHTML = `<div class="phase-strip-main"><h2>${escapeHtml(compactTitle)}</h2></div>`;
 }
@@ -1016,7 +1032,7 @@ function ensureCriticalActionButtons(buttons) {
     buttons.unshift(buttonHtml('End Turn', 'END_TURN', 'primary'));
   }
   if (legal.includes('DONE_POST_COMBAT') && !hasAction('DONE_POST_COMBAT')) {
-    buttons.unshift(buttonHtml('Done with Loot → Tribute', 'DONE_POST_COMBAT', 'primary'));
+    buttons.unshift(buttonHtml('Check Hand Limit', 'DONE_POST_COMBAT', 'primary'));
   }
   if (legal.includes('OPEN_CHAMBER') && !hasAction('OPEN_CHAMBER')) {
     buttons.unshift(buttonHtml('Open Chamber', 'OPEN_CHAMBER', 'primary'));
@@ -1493,16 +1509,16 @@ function mobileNoFoeStageHtml() {
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'no-foe-actions tertiary-actions') : '';
-  return mobileStageShell('no-foe no-foe-action-first', mine ? 'No Foe Revealed' : `${actor} chooses`, openedDoor ? 'No Foe Revealed' : (mine ? 'Choose Next Move' : `Waiting on ${actor}`), `
+  return mobileStageShell('no-foe no-foe-action-first', mine ? 'Choose Move' : `${actor} chooses`, openedDoor ? 'Choose your move' : (mine ? 'Choose Next Move' : `Waiting on ${actor}`), `
     ${openedDoor}
     <div class="move-choice-pair">
       <button class="move-choice-tile start-trouble ${startTroubleState}" ${startTroubleAttrs}>
         ${assetIconHtml('strength', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${escapeHtml(startTroubleSub)}</span></div>
+        <div><strong>${mine ? 'Start Trouble' : `${actor} may Start Trouble`}</strong><span>${escapeHtml(startTroubleSub.replace(/\.$/, ''))}</span></div>
       </button>
       <button class="move-choice-tile loot-room ${mine ? '' : 'disabled is-observer'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
         ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw hidden Chamber' : 'They may draw hidden Chamber'}</span></div>
+        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw hidden Chamber' : 'May draw hidden Chamber'}</span></div>
       </button>
     </div>
     ${actions}
@@ -1512,16 +1528,16 @@ function mobileNoFoeStageHtml() {
 function mobilePostCombatStageHtml() {
   const mine = isMyTurn();
   const actions = mine ? mobileActionButtonsHtml([
-    mobileLegalActionButton('Done → Check Tribute', 'DONE_POST_COMBAT', 'primary'),
+    mobileLegalActionButton('Check Hand Limit', 'DONE_POST_COMBAT', 'primary'),
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'post-combat-actions') : '';
-  return mobileStageShell('post-combat', mine ? 'Use Loot' : 'Loot Phase', mine ? 'Use Loot Before Tribute' : `${active()?.name || 'A goblin'} is counting shiny things`, `
+  return mobileStageShell('post-combat last-chance-flow', mine ? 'Last Chance' : 'Loot Phase', mine ? 'Last Chance Before Tribute' : `${active()?.name || 'A goblin'} is using Loot`, `
     <div class="mobile-choice-card">
       ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-      <div><strong>${mine ? 'Play, equip, carry, or sell' : 'Loot is being managed'}</strong><span>${mine ? 'Use anything legal before the hand-limit check.' : 'Waiting for the active goblin to finish loot chores.'}</span></div>
+      <div><strong>${mine ? 'Use Loot or Gear' : 'Loot is being managed'}</strong><span>${mine ? 'Play Loot, equip Gear, trade, or sell Gear.' : 'Waiting for the active goblin to finish.'}</span></div>
     </div>
     ${actions}
-  `, { size: 'small', icon: 'loot', sub: mine ? 'Finish legal card use, then Tribute is checked.' : 'No action needed.' });
+  `, { size: 'small', icon: 'loot', sub: mine ? 'Then check your hand limit.' : 'No action needed.' });
 }
 
 function mobileEndTurnStageHtml() {
@@ -1630,11 +1646,17 @@ function fullBadNewsText(card) {
   return text;
 }
 
+function sentenceCaseEffect(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function combatBoardBadNews(combat) {
   const threats = combat.threats || [];
   if (!threats.length) return '';
-  if (threats.length === 1) return `<div class="combat-bad-news-chip"><b>Bad News if Flee fails</b><span>${escapeHtml(fullBadNewsText(threats[0]))}</span></div>`;
-  return `<div class="combat-bad-news-chip"><b>Bad News if Flee fails</b><span>${escapeHtml(threats.map((t) => `${t.publicName}: ${fullBadNewsText(t)}`).join(' · '))}</span></div>`;
+  if (threats.length === 1) return `<div class="combat-bad-news-chip"><b>Bad News if you lose</b><span>${escapeHtml(sentenceCaseEffect(fullBadNewsText(threats[0])))}</span></div>`;
+  return `<div class="combat-bad-news-chip"><b>Bad News if you lose</b><span>${escapeHtml(threats.map((t) => `${t.publicName}: ${sentenceCaseEffect(fullBadNewsText(t))}`).join(' · '))}</span></div>`;
 }
 
 function combatBoardModifierBadges(combat) {
@@ -1701,7 +1723,7 @@ function mobileFleeStageHtml(esc) {
   }
   const math = last ? `${last.raw} ${signed(last.bonus || 0)} = ${last.total}` : `Target 5+ · Flee ${signed(esc.fleeBonus || 0)}`;
   const outcome = last ? (last.total >= 5 ? 'Escaped!' : 'Failed to Flee') : (isRollFx('flee') ? 'Rolling...' : 'Ready to roll');
-  const badNews = esc.badNewsText || esc.threat?.badNewsText || esc.threat?.publicText || 'Bad News happens if you fail.';
+  const badNews = sentenceCaseEffect(esc.badNewsText || esc.threat?.badNewsText || esc.threat?.publicText || 'Bad News happens if you fail.');
   const resultClass = last ? (last.total >= 5 ? 'success' : 'failed') : 'ready';
   const body = `<div class="flee-board ${resultClass}">
     <div class="flee-board-roll">${mobileRollMoment('flee', last?.raw ?? '—', outcome, math)}</div>
@@ -1710,7 +1732,7 @@ function mobileFleeStageHtml(esc) {
       <div class="flee-target-chip"><b>Target 5+</b><span>Flee ${signed(esc.fleeBonus || 0)}</span></div>
     </div>
     <div class="bad-news-card ${last && last.total < 5 ? 'active' : ''}">
-      <b>${last && last.total < 5 ? 'Bad News hits next' : 'Bad News if you fail'}</b>
+      <b>${last && last.total < 5 ? 'Bad News hits next' : 'Bad News if Flee fails'}</b>
       <span>${escapeHtml(badNews)}</span>
     </div>
   </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
@@ -2112,13 +2134,13 @@ function myGoblinStripHtml() {
   const calls = [p.role, ...(p.extraRoles || [])].filter(Boolean);
   const kin = [p.origin, ...(p.extraOrigins || [])].filter(Boolean);
   const gearCount = Number((p.equippedGear || []).length + (p.carriedGear || []).length);
-  const callingLine = compactIdentityName(calls, 'No Calling');
-  const kinLine = compactIdentityName(kin, 'No Kin');
+  const callingLine = compactIdentityName(calls, 'Call —');
+  const kinLine = compactIdentityName(kin, 'Kin —');
   return `<button class="my-goblin-badge ${p.dead ? 'dead' : ''}" type="button" data-my-goblin aria-label="Open your goblin details">
     <span class="my-goblin-badge-name">${escapeHtml(p.name || 'You')}</span>
     <span class="my-goblin-badge-call">${escapeHtml(callingLine)}</span>
     <span class="my-goblin-badge-kin">${escapeHtml(kinLine)}</span>
-    <span class="my-goblin-badge-stats">GL ${Number(p.renown || 0)}/10 · Gear ${gearCount}</span>
+    <span class="my-goblin-badge-stats">GL${Number(p.renown || 0)}/10 · Gear${gearCount}</span>
   </button>`;
 }
 
@@ -2137,8 +2159,8 @@ function renderHand() {
   const toggleLabel = forceOpen ? mode.toggleLabel || 'Required' : (expanded ? 'Collapse' : 'Expand');
   const handStateClass = over ? (mode.key === 'tribute' ? 'bad' : 'warn') : (you.handCount === you.handLimit ? 'full' : '');
   const handStateText = over
-    ? (mode.key === 'tribute' ? `${you.handCount}/${you.handLimit} Tribute Required` : `${you.handCount}/${you.handLimit} Tribute Later`)
-    : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} Full` : `${you.handCount}/${you.handLimit}`);
+    ? (mode.key === 'tribute' ? `${you.handCount}/${you.handLimit} <small>Tribute Now</small>` : `${you.handCount}/${you.handLimit} <small>Over Limit</small>`)
+    : (you.handCount === you.handLimit ? `${you.handCount}/${you.handLimit} <small>Full</small>` : `${you.handCount}/${you.handLimit}`);
 
   let html = `<div class="hand-header v075-hand-header mobile-hand-header compact-goblin-header">
     <div class="hand-header-left">
@@ -2213,9 +2235,9 @@ function handDrawerMode() {
     const playable = playableHandCount();
     let hint = playable ? `${playable} combat-relevant card${playable === 1 ? '' : 's'} can be played now. Glowing cards are legal.` : 'No legal combat cards right now. Pass when you are done.';
     if (!addFoeEnablerCard() && hasFoeInHand()) hint = 'Foes in hand need Unexpected Company before they can join combat.';
-    return { key: 'combat', eyebrow: 'Combat Hand', title: 'Combat Cards', hint };
+    return { key: 'combat', eyebrow: 'Combat', title: playable ? 'Playable Cards' : 'Combat Hand', hint };
   }
-  if (state?.phase === 'POST_COMBAT' && isMyTurn()) return { key: 'loot', eyebrow: 'Use Loot', title: 'Use Loot / Gear', hint: 'Play legal cards, equip, carry, trade, or sell before Tribute is checked.' };
+  if (state?.phase === 'POST_COMBAT' && isMyTurn()) return { key: 'loot', eyebrow: 'Last Chance', title: 'Loot / Gear', hint: 'Play Loot, equip Gear, trade, or sell Gear.' };
   const playable = playableHandCount();
   return { key: 'normal', eyebrow: state?.phase === 'COMBAT' ? 'Combat Toolkit' : 'Cards', title: 'Your Hand', hint: playable ? `${playable} card${playable === 1 ? '' : 's'} can be played now — glowing first.` : 'Tap cards to inspect. Expand when you need more room.' };
 }
