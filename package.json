@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-hand-tray-combat-polish-v0794",
-  "version": "0.11.9-4",
+  "name": "loot-goblins-render-port-bind-hotfix-v07941",
+  "version": "0.11.9-4.1",
   "private": true,
-  "description": "Loot Goblins v0.7.9.4: hand tray, compact goblin badge, top strip, No Foe buttons, combat wording/layout, and Last Chance polish.",
+  "description": "Loot Goblins v0.7.9.4.1: Render deploy hotfix binding the Node web service explicitly to 0.0.0.0 and process.env.PORT.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

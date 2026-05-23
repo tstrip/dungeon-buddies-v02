@@ -9,14 +9,17 @@ const { buildRulesLockReport } = require('./rulesLock');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
 
 const rooms = new Map();
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.4-hand-tray-combat-polish-v0794' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.4.1-render-port-bind-v07941' }));
+app.get('/healthz', (_, res) => res.status(200).send('ok'));
+app.get('/ready', (_, res) => res.status(200).json({ ok: true }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
 app.get('/rules-lock', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
 app.get('/qa', (_, res) => res.json(buildRulesLockReport(chamberCards, lootCards, rooms)));
@@ -3745,6 +3748,6 @@ function resolvePrompt(socket, room, player, payload) {
   emitError(socket, 'Unknown prompt type.');
 }
 
-server.listen(PORT, () => {
-  console.log(`Loot Goblins v0.6.9 Trade + Backup + Tribute Flow listening on ${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Loot Goblins v0.7.9.4.1 listening on http://${HOST}:${PORT}`);
 });
