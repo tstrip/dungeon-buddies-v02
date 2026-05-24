@@ -18,16 +18,27 @@ const acknowledgedPrivateGainCards = new Set();
 const $ = (id) => document.getElementById(id);
 const screens = ['resumeScreen', 'entryScreen', 'lobbyScreen', 'gameScreen'];
 
-socket.on('ready', () => setConnection('connected'));
+socket.on('ready', ({ version } = {}) => { setConnection('connected'); window.lootGoblinsServerVersion = version || ''; });
 socket.on('connect', () => {
   setConnection('connected');
-  maybeShowResume();
+  const saved = savedSession();
+  if (saved?.roomCode && saved?.playerId) {
+    socket.emit('resumeRoom', { roomCode: saved.roomCode, playerId: saved.playerId, playerName: saved.playerName });
+  } else {
+    maybeShowResume();
+  }
 });
 socket.on('disconnect', () => setConnection('disconnected'));
 socket.on('session', (session) => {
   localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, lastSeenAt: Date.now() }));
 });
-socket.on('toast', ({ type, message }) => showToast(message, type));
+socket.on('toast', ({ type, message }) => {
+  showToast(message, type);
+  if (type === 'error' && /saved player|room expired|not found/i.test(String(message || ''))) {
+    localStorage.removeItem(SESSION_KEY);
+    if (!state) showScreen('entryScreen');
+  }
+});
 socket.on('state', (next) => {
   const decisionKey = next?.tradeOffer?.id || next?.pendingPrompt?.id || next?.bodyLoot?.id || `${next?.phase || 'none'}:${next?.activePlayerId || ''}`;
   if (decisionKey !== lastDecisionKey) {
@@ -134,7 +145,7 @@ function emitAction(type, extra = {}) {
 $('resumeBtn').addEventListener('click', () => {
   const saved = savedSession();
   if (!saved) return showScreen('entryScreen');
-  socket.emit('resumeRoom', { roomCode: saved.roomCode, playerId: saved.playerId });
+  socket.emit('resumeRoom', { roomCode: saved.roomCode, playerId: saved.playerId, playerName: saved.playerName });
 });
 $('clearSessionBtn').addEventListener('click', () => {
   localStorage.removeItem(SESSION_KEY);
@@ -930,19 +941,97 @@ function phaseGrammar() {
   return out;
 }
 
-function promptTitle(prompt) {
-  if (!prompt) return 'Choice Required';
-  const map = {
-    ADD_FOE_FROM_HAND: 'Choose Foe to Add',
-    TRADE_OFFER_SELECT: 'Build Trade Offer',
-    TRADE_ACCEPT: 'Trade Offered',
-    SELL_GEAR: 'Sell Gear',
-    CHEAT_GEAR: 'Choose Gear',
-    LOSE_CALLING_CHOICE: 'Choose Calling to Lose',
-    LOSE_KIN_CHOICE: 'Choose Kin to Lose'
-  };
-  return map[prompt.type] || 'Choice Required';
+
+function promptAfterText(prompt) {
+  const after = prompt?.meta?.after || '';
+  if (after === 'TO_NO_THREAT_CHOICE') return 'Then choose whether to Start Trouble or Loot the Room.';
+  if (after === 'TO_TRIBUTE_OR_END') return 'Then the table checks hand limit and end turn.';
+  if (after === 'TO_POST_COMBAT') return 'Then you return to the post-combat loot window.';
+  if (after === 'CONTINUE_ESCAPE') return 'Then Flee/Bad News continues.';
+  if (after === 'CONTINUE' || after === 'STAY') return 'Then the table continues.';
+  return 'Then the table continues.';
 }
+
+function promptChoiceText(prompt) {
+  const type = String(prompt?.type || '');
+  const count = Number(prompt?.meta?.count || 1);
+  if (type === 'DISCARD_HAND_CARDS') return `Pick ${count} card${count === 1 ? '' : 's'} from your hand to discard.`;
+  if (type === 'DISCARD_OWNED_CARDS') return `Pick ${count} card${count === 1 ? '' : 's'} from your hand/Gear to discard.`;
+  if (type === 'DISCARD_GEAR') return 'Pick the Gear that gets discarded.';
+  if (type === 'DISCARD_GEAR_VALUE') return `Pick Gear totaling at least ${Number(prompt?.meta?.targetValue || 0)} Junk.`;
+  if (type === 'LOSE_CALLING_CHOICE') return 'Pick which Calling you lose.';
+  if (type === 'LOSE_KIN_CHOICE') return 'Pick which Kin you lose.';
+  if (type === 'ADD_FOE_FROM_HAND') return 'Pick the Foe that joins this combat.';
+  if (type === 'ILLUSION_SWAP') return 'Pick the Foe from hand that replaces the current Foe.';
+  if (type === 'CHOOSE_DISCARD_CARD') return 'Pick one card from the discard pile to take.';
+  if (type === 'CHOOSE_PLAYER') return 'Pick a player.';
+  if (type === 'CHOOSE_HIRELING_TARGET') return 'Pick a player with Little Helper.';
+  if (type === 'CHOOSE_BAD_NEWS_OPTION') return 'Choose how the Bad News hits you.';
+  if (type === 'SELL_GEAR') return 'Pick Gear to sell, or tap Done.';
+  if (type === 'LOOT_BODY') return 'Pick one card from the body pile.';
+  if (type === 'CHEAT_GEAR') return 'Pick Gear to legalize.';
+  if (type === 'TRADE_ACCEPT') return 'Review the offer and accept or decline.';
+  if (type === 'TRADE_OFFER_SELECT') return 'Pick cards to offer. Gifts are allowed.';
+  if (type === 'MANUAL') return 'Follow the card text with the table.';
+  return prompt?.message || 'Choose from the drawer.';
+}
+
+function promptTitle(prompt) {
+  const type = String(prompt?.type || '');
+  if (type === 'DISCARD_HAND_CARDS') return 'Discard Cards';
+  if (type === 'DISCARD_OWNED_CARDS') return 'Discard Cards';
+  if (type === 'DISCARD_GEAR') return 'Lose Gear';
+  if (type === 'DISCARD_GEAR_VALUE') return 'Pay Gear';
+  if (type === 'LOSE_CALLING_CHOICE') return 'Lose a Calling';
+  if (type === 'LOSE_KIN_CHOICE') return 'Lose a Kin';
+  if (type === 'ADD_FOE_FROM_HAND') return 'Add a Foe';
+  if (type === 'ILLUSION_SWAP') return 'Swap the Foe';
+  if (type === 'CHOOSE_DISCARD_CARD') return 'Choose from Discard';
+  if (type === 'CHOOSE_PLAYER') return 'Choose a Player';
+  if (type === 'CHOOSE_HIRELING_TARGET') return 'Dismiss a Helper';
+  if (type === 'CHOOSE_BAD_NEWS_OPTION') return 'Choose Bad News';
+  if (type === 'SELL_GEAR') return 'Sell Gear';
+  if (type === 'LOOT_BODY') return 'Loot the Body';
+  if (type === 'CHEAT_GEAR') return 'Legalize Gear';
+  if (type === 'TRADE_ACCEPT') return 'Trade Offered';
+  if (type === 'TRADE_OFFER_SELECT') return 'Make an Offer';
+  if (type === 'MANUAL') return 'Table Choice';
+  return 'Choice Required';
+}
+
+function promptCauseText(prompt) {
+  if (prompt?.sourceCard?.publicName) return prompt.sourceCard.publicName;
+  const msg = String(prompt?.message || '');
+  const beforeColon = msg.includes(':') ? msg.split(':')[0] : '';
+  if (beforeColon && beforeColon.length < 42) return beforeColon;
+  if (state?.announcement?.card?.publicName && /choice|required|discard|gear|bad news/i.test(`${state.announcement.title || ''} ${state.announcement.detail || ''}`)) return state.announcement.card.publicName;
+  return 'The table';
+}
+
+function promptSourceCardHtml(prompt) {
+  const card = prompt?.sourceCard;
+  if (!card) return '';
+  return `<button class="prompt-source-card card-type-${cardClass(card)}" data-mobile-inspect-card="${card.instanceId}">
+    <div class="prompt-source-mini">${cardHtml(card, { compact: true })}</div>
+    <div class="prompt-source-copy">
+      <span>Cause</span>
+      <strong>${escapeHtml(card.publicName)}</strong>
+      <small>${escapeHtml(card.publicText || typeLabel(card))}</small>
+    </div>
+  </button>`;
+}
+
+function promptFlowHtml(prompt, { includeSource = true } = {}) {
+  return `<div class="prompt-flow-panel">
+    ${includeSource ? promptSourceCardHtml(prompt) : ''}
+    <div class="prompt-flow-steps">
+      <div><b>Cause</b><span>${escapeHtml(promptCauseText(prompt))}</span></div>
+      <div><b>Choice</b><span>${escapeHtml(promptChoiceText(prompt))}</span></div>
+      <div><b>After</b><span>${escapeHtml(promptAfterText(prompt))}</span></div>
+    </div>
+  </div>`;
+}
+
 
 function promptNextText(prompt) {
   if (!prompt) return 'Choose an option to continue.';
@@ -1044,8 +1133,8 @@ function reactionButtons(r) {
   if (!r?.requiresYou) return [`<span class="micro">Waiting on ${escapeHtml((r.eligiblePlayerIds || []).map(playerName).join(', ') || 'the table')}.</span>`];
   const buttons = [];
   if (r.type === 'HEX_CANCEL_REACTION') {
-    if (hasHandCardId('SPECIAL_WISHING_RING_A')) buttons.push(`<button class="primary" data-reaction-action="USE_WISH_RING">Use Wish Ring</button>`);
-    buttons.push(`<button data-reaction-action="PASS_REACTION">Let Hex Hit</button>`);
+    if (hasHandCardId('SPECIAL_WISHING_RING_A')) buttons.push(`<button class="primary" data-reaction-action="USE_WISH_RING">Cancel with Wish Ring</button>`);
+    buttons.push(`<button data-reaction-action="PASS_REACTION">Let It Hit</button>`);
   } else if (r.type === 'DIE_ROLL_REACTION') {
     if (hasHandCardId('SPECIAL_LOADED_DIE')) {
       buttons.push(`<span class="micro">Loaded Die: choose the new die face.</span>`);
@@ -1343,9 +1432,11 @@ function mobileTradeStageHtml(t) {
   const bothReady = Boolean(t.yourReady && t.theirReady);
   const confirmMode = t.stage === 'CONFIRM' || bothReady;
   const changedByYou = t.changedByPlayerId === t.yourPlayerId;
-  const status = confirmMode
-    ? (t.yourConfirmed ? `Waiting on ${t.theirName} to confirm.` : 'Both offers are locked. Confirm to swap cards.')
-    : (t.yourReady ? `Waiting on ${t.theirName}.` : (t.changedByName && !changedByYou ? `${t.changedByName} changed the deal. Review and Ready again.` : 'Choose cards below, then Ready your offer.'));
+  const status = !t.theirConnected
+    ? `${t.theirName} is reconnecting. You can wait or cancel.`
+    : (confirmMode
+      ? (t.yourConfirmed ? `Waiting on ${t.theirName} to confirm.` : 'Both offers are locked. Confirm to swap cards.')
+      : (t.yourReady ? `Waiting on ${t.theirName}.` : (t.changedByName && !changedByYou ? `${t.changedByName} changed the deal. Review and Ready again.` : 'Choose cards below, then Ready your offer.')));
   return mobileStageShell('trade-table participant', 'Trade Table', `${t.yourName} ↔ ${t.theirName}`, `
     <div class="trade-table-board ${confirmMode ? 'confirm-mode' : ''}">
       <div class="trade-table-status">${escapeHtml(status)}</div>
@@ -1362,6 +1453,7 @@ function mobileTradeStageHtml(t) {
       <div class="trade-table-actions">
         ${confirmMode ? `<button class="primary" data-trade-confirm ${t.yourConfirmed ? 'disabled' : ''}>${t.yourConfirmed ? 'Confirmed' : 'Confirm Trade'}</button>` : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready Offer'}</button>`}
         <button data-action="CANCEL_TRADE">Cancel</button>
+        ${recoveryButtonHtml()}
       </div>
     </div>
   `, { size: 'large', icon: 'trade' });
@@ -1370,6 +1462,26 @@ function mobileTradeStageHtml(t) {
 
 function mobileReactionStageHtml(reaction) {
   const grammar = phaseGrammar();
+  if (reaction?.type === 'HEX_CANCEL_REACTION') {
+    const card = reaction.card;
+    const title = card ? `${card.publicName} is coming` : 'Hex is coming';
+    return mobileStageShell('reaction hex-cancel-reaction', 'Wish Ring Window', title, `
+      ${card ? `<div class="mobile-opened-door-card mobile-opened-door-action-first card-type-hex reaction-hex-preview">
+        <div class="mobile-card-sigil">${cardTypeSigilHtml(card, 'asset-sigil art-sigil')}</div>
+        <div class="mobile-opened-door-copy">
+          <strong>${escapeHtml(card.publicName)}</strong>
+          <div class="mobile-card-type">Hex · Read before blocking</div>
+          <small>${escapeHtml(card.publicText || 'This Hex is about to hit.')}</small>
+        </div>
+        <button class="mobile-mini-button" data-mobile-inspect-card="${card.instanceId}">View</button>
+      </div>` : ''}
+      <div class="mobile-wait-card wish-ring-question">
+        ${assetIconHtml('special', 'asset-sigil event-sigil')}
+        <span>${reaction.requiresYou ? 'Use Wish Ring to cancel this Hex, or let it hit.' : `Waiting on ${escapeHtml((reaction.eligiblePlayerIds || []).map(playerName).join(', ') || 'the target')}.`}</span>
+      </div>
+      ${mobileActionButtonsHtml(reactionButtons(reaction), 'reaction-actions')}
+    `, { size: 'medium', icon: 'hex', guidance: grammar });
+  }
   return mobileStageShell('reaction', grammar.title || 'Reaction Window', grammar.copy || 'A reaction is available.', `
     <div class="mobile-wait-card">
       ${assetIconHtml('special', 'asset-sigil event-sigil')}
@@ -1792,26 +1904,22 @@ function mobileBodyLootStageHtml() {
   `, { size: 'large', icon: 'death', sub: '' });
 }
 
+function recoveryButtonHtml() {
+  return (state?.legalActions || []).includes('RECOVER_TABLE') ? '<button class="subtle recovery-button" data-action="RECOVER_TABLE">Recover Table</button>' : '';
+}
+
 function mobilePromptStageHtml(prompt) {
-  if (prompt.requiresYou && prompt.type === 'ADD_FOE_FROM_HAND') {
-    return mobileStageShell('prompt', 'Add Foe', 'Choose a Foe from hand', `<p class="mobile-state-hint">Choose the Foe in your decision drawer.</p>`, { size:'small', icon:'strength' });
-  }
-  if (prompt.requiresYou && prompt.type === 'TRADE_OFFER_SELECT') {
-    return mobileStageShell('prompt', 'Trade Offer', 'Choose cards below', `<p class="mobile-state-hint">Pick cards in your decision drawer. Gifts are allowed, but the other player must accept.</p>`, { size:'small', icon:'trade' });
-  }
-  if (prompt.requiresYou && prompt.type === 'TRADE_ACCEPT') {
-    return mobileStageShell('prompt', 'Trade Offered', 'Accept or decline below', `<p class="mobile-state-hint">Review the cards in your decision drawer.</p>`, { size:'small', icon:'trade' });
-  }
-  if (prompt.requiresYou && prompt.type === 'SELL_GEAR') {
-    return mobileStageShell('prompt', 'Sell Gear', 'Choose Gear below', `<p class="mobile-state-hint">Selling is optional. Pick Gear in your decision drawer or tap Done.</p>`, { size:'small', icon:'gear' });
-  }
-  return mobileStageShell('prompt', prompt.requiresYou ? promptTitle(prompt) : `${playerName(prompt.playerId)} has a choice`, prompt.requiresYou ? 'Choose below' : `Waiting on ${playerName(prompt.playerId)}`, `
-    <div class="mobile-wait-card">
-      ${assetIconHtml('special', 'asset-sigil event-sigil')}
-      <span>${escapeHtml(prompt.requiresYou ? (prompt.message || 'Choose in your drawer.') : `${playerName(prompt.playerId)} is choosing.`)}</span>
-    </div>
-    ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if optional</button>' : ''}
-  `, { size: 'small', icon: 'special' });
+  const title = prompt.requiresYou ? promptTitle(prompt) : `${playerName(prompt.playerId)} has a choice`;
+  const sub = prompt.requiresYou ? promptChoiceText(prompt) : `Waiting on ${playerName(prompt.playerId)}.`;
+  const icon = prompt.type === 'SELL_GEAR' ? 'gear'
+    : prompt.type === 'ADD_FOE_FROM_HAND' ? 'strength'
+    : String(prompt.type || '').includes('TRADE') ? 'trade'
+    : String(prompt.type || '').includes('BAD_NEWS') ? 'death'
+    : 'special';
+  return mobileStageShell('prompt flow-clarity-prompt', prompt.requiresYou ? 'Choice Required' : 'Waiting', title, `
+    ${promptFlowHtml(prompt)}
+    ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if optional</button>' : recoveryButtonHtml()}
+  `, { size: 'medium', icon, sub });
 }
 
 function mobileGameOverStageHtml() {
@@ -1840,6 +1948,8 @@ function findVisibleCardByInstance(id) {
   if (state.announcement?.card) all.push(state.announcement.card);
   if (state.combat?.threats) all.push(...state.combat.threats);
   if (state.escape?.threat) all.push(state.escape.threat);
+  if (state.pendingPrompt?.sourceCard) all.push(state.pendingPrompt.sourceCard);
+  if (state.pendingPrompt?.options) all.push(...state.pendingPrompt.options);
   if (state.discardPiles?.chamber) all.push(...state.discardPiles.chamber);
   if (state.discardPiles?.loot) all.push(...state.discardPiles.loot);
   for (const p of state.players || []) {
@@ -2224,9 +2334,10 @@ function handDrawerMode() {
     if (p.type === 'ADD_FOE_FROM_HAND') return { key: 'add-foe', decision: true, forceOpen: true, toggleLabel: 'Choose Foe', eyebrow: 'Decision Drawer', title: 'Add Foe to Combat', hint: 'Choose exactly which Foe joins the current fight.', prompt: p };
     if (p.type === 'DISCARD_HAND_CARDS') return { key: 'discard-hand', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Cards to Discard', hint: `Pick ${p.meta?.count || 1} card${(p.meta?.count || 1) === 1 ? '' : 's'} to discard. Inspect first if needed.`, prompt: p };
     if (p.type === 'DISCARD_GEAR' || p.type === 'DISCARD_GEAR_VALUE') return { key: 'discard-gear', decision: true, forceOpen: true, toggleLabel: 'Discard', eyebrow: 'Decision Drawer', title: 'Choose Gear to Lose', hint: p.message || 'Choose the Gear required by the prompt.', prompt: p };
-    if (p.type === 'CHOOSE_HIRELING_TARGET' || p.type === 'CHOOSE_PLAYER') return { key: 'player-choice', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Choose a player.', prompt: p };
+    if (p.type === 'CHOOSE_HIRELING_TARGET' || p.type === 'CHOOSE_PLAYER') return { key: 'player-choice', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: promptChoiceText(p), prompt: p };
+    if (p.type === 'CHOOSE_BAD_NEWS_OPTION') return { key: 'bad-news-choice', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Bad News', title: promptTitle(p), hint: promptChoiceText(p), prompt: p };
     if (p.type === 'LOOT_BODY') return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Body Loot', title: 'Pick One Card', hint: 'Choose one card from the body pile. It goes to your hand privately.', prompt: p };
-    return { key: 'prompt', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: p.message || 'Resolve the current choice.', prompt: p };
+    return { key: 'prompt', decision: true, forceOpen: true, toggleLabel: 'Choose', eyebrow: 'Decision Drawer', title: promptTitle(p), hint: promptChoiceText(p), prompt: p };
   }
   if (state?.bodyLoot?.requiresYou) return { key: 'body-loot', decision: true, forceOpen: true, toggleLabel: 'Loot', eyebrow: 'Decision Drawer', title: 'Loot the Body', hint: `Choose one card from ${state.bodyLoot.victimName || 'the fallen goblin'}.`, bodyLoot: state.bodyLoot };
   if (state?.reaction?.requiresYou) return { key: 'reaction', decision: true, forceOpen: true, toggleLabel: 'React', eyebrow: 'Reaction Drawer', title: state.reaction.title || 'Reaction Window', hint: state.reaction.message || 'Use a legal reaction or pass.', reaction: state.reaction };
@@ -2262,6 +2373,17 @@ function drawerDecisionContent(mode) {
       ${drawerControls(mode)}
     </div>`;
   }
+  if (mode.key === 'bad-news-choice') {
+    const amount = Number(mode.prompt?.meta?.amount || 2);
+    return `<div class="drawer-decision-panel drawer-bad-news-choice">
+      <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+      ${promptFlowHtml(mode.prompt)}
+      <div class="bad-news-choice-grid">
+        <button class="primary" data-drawer-bad-news-option="LOSE_GLORY">Lose ${amount} Glory</button>
+        <button data-drawer-bad-news-option="DISCARD_HAND">Discard Your Hand</button>
+      </div>
+    </div>`;
+  }
   if (mode.key === 'player-choice') {
     const players = mode.prompt?.options || [];
     return `<div class="drawer-decision-panel drawer-player-choice">
@@ -2282,6 +2404,7 @@ function drawerDecisionContent(mode) {
   const cardHtmlList = cards.map((c) => drawerDecisionCardHtml(c, mode)).join('');
   return `<div class="drawer-decision-panel drawer-${escapeHtml(mode.key)}">
     <div class="drawer-decision-copy"><strong>${escapeHtml(mode.title)}</strong><span>${escapeHtml(mode.hint)}</span></div>
+    ${mode.prompt ? promptFlowHtml(mode.prompt, { includeSource: false }) : ''}
     <div class="hand-tray v075-hand-tray expanded-tray decision-tray"><div class="card-row hand-row expanded-hand-row decision-hand-row">${cardHtmlList}</div></div>
     ${drawerControls(mode)}
   </div>`;
@@ -2382,8 +2505,8 @@ function drawerControls(mode) {
     return `<div class="drawer-decision-actions"><span class="micro">Selected ${selectedTribute.size}/${need}</span><button class="primary" data-drawer-discard-confirm ${selectedTribute.size === need ? '' : 'disabled'}>Confirm Choice</button></div>`;
   }
   if (mode.key === 'add-foe') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel</button></div>`;
-  if (mode.key === 'player-choice') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Cancel if optional</button></div>`;
-  if (mode.key === 'prompt') return `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass / Cancel if optional</button></div>`;
+  if (mode.key === 'player-choice') return mode.prompt?.canPass ? `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass</button></div>` : '';
+  if (mode.key === 'prompt') return mode.prompt?.canPass ? `<div class="drawer-decision-actions"><button data-drawer-prompt-cancel>Pass</button></div>` : '';
   return '';
 }
 
@@ -2432,6 +2555,7 @@ function attachDrawerHandlers(root, mode) {
     if (card) inspectCard(card);
   }));
   root.querySelectorAll('[data-drawer-player-choice]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { targetPlayerId: btn.dataset.drawerPlayerChoice })));
+  root.querySelectorAll('[data-drawer-bad-news-option]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { option: btn.dataset.drawerBadNewsOption })));
   root.querySelectorAll('[data-drawer-prompt-card]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardId: btn.dataset.drawerPromptCard })));
   root.querySelectorAll('[data-drawer-sell-card]').forEach((btn) => btn.addEventListener('click', (event) => {
     event.preventDefault();
@@ -2859,7 +2983,7 @@ function serverCardActionButton(action, index) {
   if (!action) return '';
   const cls = action.style || '';
   const reason = action.reason ? ` title="${escapeHtml(action.reason)}"` : '';
-  return `<button class="${escapeHtml(cls)}" data-server-card-action="${index}"${reason}>${escapeHtml(action.label || action.type || 'Use')}</button>`;
+  return `<button class="${escapeHtml(cls)}" data-server-card-action="${index}"${reason}><span>${escapeHtml(action.label || action.type || 'Use')}</span>${action.reason ? `<small>${escapeHtml(action.reason)}</small>` : ''}</button>`;
 }
 
 function serverActionsHtml(card) {
@@ -2886,9 +3010,29 @@ function reactionCardActions(card) {
   return `<p>No legal reaction right now.</p>`;
 }
 
+
+function unavailableCardReason(card) {
+  if (!ownsVisibleCard(card)) return 'You are viewing this card publicly. Only its owner can use it.';
+  if (state?.tradeOffer) return 'Finish or cancel the trade first.';
+  if (state?.pendingPrompt) return state.pendingPrompt.requiresYou ? 'Finish the current choice first.' : `Waiting on ${playerName(state.pendingPrompt.playerId)}.`;
+  if (state?.pendingHex) return 'Finish the Hex first.';
+  if (state?.reaction) return 'Only reaction cards can be used right now.';
+  if (me()?.dead) return 'You are down. You return on your next turn.';
+  const mine = isMyTurn();
+  if (card.type === 'THREAT' && state?.phase === 'NO_THREAT_CHOICE' && mine) return 'Tap Start Trouble or choose a glowing Foe from hand.';
+  if (card.type === 'THREAT' && state?.phase === 'COMBAT') return addFoeEnablerCard() ? 'Use the card that adds a Foe, then pick this Foe.' : 'Foes need a card like Unexpected Company before they can join combat.';
+  if (card.type === 'GEAR' && state?.phase === 'COMBAT') return 'Gear is played before/after combat, not during combat.';
+  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && !mine) return 'Callings and Kin are played on your turn.';
+  if ((card.type === 'ROLE' || card.type === 'ORIGIN') && !canActOutsideCombat(state)) return 'Play this during your setup/loot window.';
+  if (state?.phase === 'COMBAT') return 'This card is not usable in the current combat window.';
+  if (!mine) return 'Wait for your turn.';
+  return 'No legal use in the current moment.';
+}
+
+
 function cardActions(card) {
   if (!ownsVisibleCard(card)) {
-    return `<p>No legal actions right now.</p><p class="micro">You are viewing this card publicly. Only the player who owns the card can use it.</p>`;
+    return `<p>No legal actions right now.</p><p class="micro">${escapeHtml(unavailableCardReason(card))}</p>`;
   }
   const actionsHtml = serverActionsHtml(card);
   if (actionsHtml) return actionsHtml;

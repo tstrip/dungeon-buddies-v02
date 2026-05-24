@@ -17,7 +17,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.4.1-render-port-bind-v07941' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.7-game-flow-clarity-v0797' }));
 app.get('/healthz', (_, res) => res.status(200).send('ok'));
 app.get('/ready', (_, res) => res.status(200).json({ ok: true }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
@@ -234,7 +234,7 @@ function createPlayer(name, socket) {
   return {
     id: playerId(),
     socketId: socket.id,
-    name: String(name || 'Player').trim().slice(0, 24) || 'Player',
+    name: displayPlayerName(name),
     connected: true,
     renown: 1,
     hand: [],
@@ -399,7 +399,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.9.4-hand-tray-combat-polish-v0794',
+    version: '0.11.9.7-game-flow-clarity-v0797',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -676,8 +676,12 @@ function serializeTradeOffer(room, viewerId) {
   if (isParticipant) {
     out.yourPlayerId = yourId;
     out.theirPlayerId = theirId;
-    out.yourName = getPlayer(room, yourId)?.name || 'You';
-    out.theirName = getPlayer(room, theirId)?.name || 'Other goblin';
+    const yourPlayer = getPlayer(room, yourId);
+    const theirPlayer = getPlayer(room, theirId);
+    out.yourName = yourPlayer?.name || 'You';
+    out.theirName = theirPlayer?.name || 'Other goblin';
+    out.yourConnected = Boolean(yourPlayer?.connected);
+    out.theirConnected = Boolean(theirPlayer?.connected);
     out.yourOffer = cardsFor(yourId);
     out.theirOffer = cardsFor(theirId);
     out.yourReady = Boolean(t.ready?.[yourId]);
@@ -775,6 +779,21 @@ function currentEscapeEntry(room) {
   return room.escape.currentPlayerId ? { playerId: room.escape.currentPlayerId, threat: room.escape.threat } : null;
 }
 
+function promptSourceCard(prompt) {
+  return prompt?.sourceCard || prompt?.meta?.sourceCard || prompt?.meta?.card || prompt?.meta?.threat || null;
+}
+
+function sanitizePromptMeta(meta = {}) {
+  const out = { ...meta };
+  for (const key of ['sourceCard', 'card', 'threat']) {
+    if (out[key]) out[key] = publicCard(out[key]);
+  }
+  if (out.effect && typeof out.effect === 'object') {
+    out.effect = { type: out.effect.type, count: out.effect.count, amount: out.effect.amount, target: out.effect.target, threshold: out.effect.threshold, targetValue: out.effect.targetValue, option: out.effect.option };
+  }
+  return out;
+}
+
 function serializePrompt(prompt, viewerId) {
   if (!prompt) return null;
   const requiresYou = prompt.playerId === viewerId;
@@ -791,6 +810,7 @@ function serializePrompt(prompt, viewerId) {
       }));
     } else options = (prompt.options || []).map(publicCard);
   }
+  const sourceCard = publicCard(promptSourceCard(prompt));
   return {
     id: prompt.id,
     type: prompt.type,
@@ -798,7 +818,10 @@ function serializePrompt(prompt, viewerId) {
     message: prompt.message,
     options,
     requiresYou,
-    meta: prompt.meta || {}
+    sourceCard,
+    canPass: Boolean(prompt.meta?.optional),
+    optionCount: Array.isArray(prompt.options) ? prompt.options.length : 0,
+    meta: sanitizePromptMeta(prompt.meta || {})
   };
 }
 
@@ -1284,7 +1307,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
           playerId: player.id,
           message: `${player.name} must discard ${count} card${count === 1 ? '' : 's'} from hand.`,
           options: player.hand.slice(),
-          meta: { count, after: context.after || 'CONTINUE' }
+          meta: { count, sourceCard, after: context.after || 'CONTINUE' }
         });
         return false;
       }
@@ -1309,7 +1332,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       if (candidates.length === 0) { announce(room, 'effect', 'No Matching Gear', `${player.name} had no matching Gear, so the Hex had no effect.`, sourceCard, { importance: 'normal' }); log(room, `${player.name} had no matching Gear to lose.`); return true; }
       if (effect.choice === 'PLAYER' || candidates.length > 1) {
         announce(room, 'prompt', 'Choose Gear to Discard', `${player.name} must choose Gear for ${sourceCard?.publicName || 'the effect'}.`, sourceCard, { importance: 'major' });
-        createPrompt(room, { type: 'DISCARD_GEAR', playerId: player.id, message: `${player.name} must discard Gear.`, options: candidates, meta: { effect, after: context.after || 'CONTINUE' } });
+        createPrompt(room, { type: 'DISCARD_GEAR', playerId: player.id, message: `${player.name} must discard Gear.`, options: candidates, meta: { effect, sourceCard, after: context.after || 'CONTINUE' } });
         return false;
       }
       discardSpecificGear(room, player, candidates[0].instanceId);
@@ -1390,7 +1413,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       if (!room.combat) return true;
       const options = player.hand.filter((c) => c.type === 'THREAT');
       if (!options.length) { announce(room, 'effect', 'No Foe in Hand', `${player.name} had no Foe to add.`, sourceCard, { importance: 'normal' }); return true; }
-      createPrompt(room, { type: 'ADD_FOE_FROM_HAND', playerId: player.id, message: `Choose a Foe from hand to add to combat.`, options, meta: { after: context.after || 'CONTINUE' } });
+      createPrompt(room, { type: 'ADD_FOE_FROM_HAND', playerId: player.id, message: `Choose a Foe from hand to add to combat.`, options, meta: { sourceCard, after: context.after || 'CONTINUE' } });
       return false;
     }
     case 'ADD_MATCHING_FOE': {
@@ -1448,7 +1471,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
     case 'WAND_DOWSING': {
       const options = [...room.chamberDiscard, ...room.lootDiscard];
       if (!options.length) { announce(room, 'effect', 'No Discards', `There were no discard cards to recover.`, sourceCard, { importance: 'normal' }); return true; }
-      createPrompt(room, { type: 'CHOOSE_DISCARD_CARD', playerId: player.id, message: `Choose any card from discard to take into hand.`, options, meta: { after: context.after || 'TO_TRIBUTE_OR_END' } });
+      createPrompt(room, { type: 'CHOOSE_DISCARD_CARD', playerId: player.id, message: `Choose any card from discard to take into hand.`, options, meta: { sourceCard, after: context.after || 'TO_TRIBUTE_OR_END' } });
       return false;
     }
     case 'DIVINE_INTERVENTION': {
@@ -1582,14 +1605,14 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       return true;
     }
     case 'CHOOSE_DISCARD_HAND_OR_LOSE_GLORY': {
-      createPrompt(room, { type: 'CHOOSE_BAD_NEWS_OPTION', playerId: player.id, message: `Choose Bad News: discard your hand or lose ${effect.amount || 2} Glory.`, options: [], meta: { option: 'HAND_OR_GLORY', amount: effect.amount || 2, after: context.after || 'CONTINUE' } });
+      createPrompt(room, { type: 'CHOOSE_BAD_NEWS_OPTION', playerId: player.id, message: `Choose Bad News: discard your hand or lose ${effect.amount || 2} Glory.`, options: [], meta: { option: 'HAND_OR_GLORY', amount: effect.amount || 2, sourceCard, after: context.after || 'CONTINUE' } });
       return false;
     }
     case 'ROLL_DISCARD_OWNED': {
       const raw = rollD6();
       const count = Math.min(raw, allOwnedCards(player).length);
       if (!count) { announce(room, 'roll', 'Bad News Roll', `${player.name} rolled ${raw}, but had nothing to lose.`, sourceCard, { importance: 'major' }); return true; }
-      createPrompt(room, { type: 'DISCARD_OWNED_CARDS', playerId: player.id, message: `${player.name} rolled ${raw}. Choose ${count} card${count === 1 ? '' : 's'} from hand/Gear to discard.`, options: allOwnedCards(player), meta: { count, after: context.after || 'CONTINUE' } });
+      createPrompt(room, { type: 'DISCARD_OWNED_CARDS', playerId: player.id, message: `${player.name} rolled ${raw}. Choose ${count} card${count === 1 ? '' : 's'} from hand/Gear to discard.`, options: allOwnedCards(player), meta: { count, sourceCard, after: context.after || 'CONTINUE' } });
       announce(room, 'roll', 'Bad News Roll', `${player.name} rolled ${raw} and must discard ${count} card${count === 1 ? '' : 's'}.`, sourceCard, { importance: 'major' });
       return false;
     }
@@ -1678,7 +1701,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
         playerId: player.id,
         message: `${player.name} must discard Gear totaling at least ${targetValue} Junk.`,
         options: gear,
-        meta: { targetValue, after: context.after || 'CONTINUE' }
+        meta: { targetValue, sourceCard, after: context.after || 'CONTINUE' }
       });
       announce(room, 'prompt', 'Gear Payment Due', `${player.name} must choose Gear totaling at least ${targetValue} Junk.`, sourceCard, { importance: 'major' });
       return false;
@@ -1738,7 +1761,7 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
       return true;
     }
     case 'MANUAL_PROMPT': {
-      createPrompt(room, { type: 'MANUAL', playerId: context.playerId || player.id, message: `${sourceCard?.publicName || 'This card'} needs table resolution.`, options: [], meta: { after: context.after || 'CONTINUE' } });
+      createPrompt(room, { type: 'MANUAL', playerId: context.playerId || player.id, message: `${sourceCard?.publicName || 'This card'} needs table resolution.`, options: [], meta: { sourceCard, after: context.after || 'CONTINUE' } });
       return false;
     }
     default: {
@@ -1826,7 +1849,7 @@ function promptNextBodyLooter(room) {
         playerId: looter.id,
         message: `${looter.name}, choose one card to loot from ${victim?.name || 'the fallen goblin'}.`,
         options: loot.cards || [],
-        meta: { bodyLootId: loot.id }
+        meta: { bodyLootId: loot.id, sourceCard: loot.sourceCard || null }
       });
       return;
     }
@@ -1927,8 +1950,31 @@ function discardSpecificGear(room, player, gearId) {
   return false;
 }
 
+function promptTypeNeedsOptions(type) {
+  return !['MANUAL', 'CHOOSE_BAD_NEWS_OPTION', 'TRADE_ACCEPT'].includes(String(type || ''));
+}
+
+function promptTypeLabel(type) {
+  return String(type || 'choice').toLowerCase().replaceAll('_', ' ');
+}
+
+function safeCreatePromptSkip(room, prompt) {
+  const actor = getPlayer(room, prompt.playerId);
+  const after = prompt.meta?.after || 'CONTINUE';
+  const label = promptTypeLabel(prompt.type);
+  const source = promptSourceCard(prompt);
+  const cause = source ? `${source.publicName}: ` : '';
+  announce(room, 'prompt', 'No Valid Choice', `${cause}${actor?.name || 'Player'} had no valid option. The table continues.`, source || null, { importance: 'minor', requiresAck: false });
+  log(room, `${actor?.name || 'Player'} had no valid option for ${label}; skipped prompt.`);
+  continueAfterPrompt(room, after);
+  return false;
+}
+
 function createPrompt(room, prompt) {
-  room.pendingPrompt = { ...prompt, id: instanceId() };
+  const options = Array.isArray(prompt.options) ? prompt.options : [];
+  if (promptTypeNeedsOptions(prompt.type) && !options.length) return safeCreatePromptSkip(room, prompt);
+  room.pendingPrompt = { ...prompt, id: instanceId(), createdAt: Date.now() };
+  return true;
 }
 
 
@@ -2056,9 +2102,11 @@ function legalActions(room, player) {
   }
   if (room.tradeOffer) {
     if ([room.tradeOffer.fromPlayerId, room.tradeOffer.toPlayerId].includes(player.id)) actions.push('TRADE_ACTIONS', 'CANCEL_TRADE');
+    if (room.players[0]?.id === player.id || activeId(room) === player.id) actions.push('RECOVER_TABLE');
     return actions;
   }
   if (room.pendingPrompt?.playerId === player.id) actions.push('RESOLVE_PROMPT');
+  if (room.pendingPrompt && (room.players[0]?.id === player.id || activeId(room) === player.id)) actions.push('RECOVER_TABLE');
   if (room.phase === 'HEX_REVEAL' && room.pendingHex?.targetPlayerId === player.id) actions.push('RESOLVE_HEX');
   if (room.phase === 'ROLL_FOR_FIRST' && room.firstRoll?.eligible?.includes(player.id) && !room.firstRoll.rolls?.[player.id]) actions.push('ROLL_FIRST');
   if (room.phase === 'START_TURN' && activeId(room) === player.id) actions.push('OPEN_CHAMBER');
@@ -2457,47 +2505,6 @@ function attachSocketToPlayer(room, player, socket) {
   socket.emit('session', { roomCode: room.code, playerId: player.id, playerName: player.name });
 }
 
-io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.9.4-hand-tray-combat-polish-v0794' });
-
-  socket.on('createRoom', ({ name }) => {
-    const room = makeRoom(name, socket);
-    socket.join(room.code);
-  });
-
-  socket.on('joinRoom', ({ name, code }) => {
-    const room = rooms.get(String(code || '').trim().toUpperCase());
-    if (!room) return emitError(socket, 'Room not found.');
-    if (room.players.length >= 3) return emitError(socket, 'This table is limited to 3 players.');
-    const player = createPlayer(name, socket);
-    room.players.push(player);
-    attachSocketToPlayer(room, player, socket);
-    log(room, `${player.name} joined the room.`);
-    broadcast(room);
-  });
-
-  socket.on('resumeRoom', ({ roomCode, playerId }) => {
-    const room = rooms.get(String(roomCode || '').trim().toUpperCase());
-    if (!room) return emitError(socket, 'Room expired or not found. Create a new room.');
-    const player = getPlayer(room, playerId);
-    if (!player) return emitError(socket, 'Saved player was not found in this room.');
-    attachSocketToPlayer(room, player, socket);
-    log(room, `${player.name} rejoined.`);
-    broadcast(room);
-  });
-
-  socket.on('chat', ({ message }) => {
-    const room = rooms.get(socket.data.roomCode);
-    const player = room && getPlayer(room, socket.data.playerId);
-    if (!room || !player) return;
-    const text = String(message || '').trim().slice(0, 240);
-    if (!text) return;
-    room.chat.push({ at: Date.now(), name: player.name, message: text });
-    if (room.chat.length > 100) room.chat.shift();
-    broadcast(room);
-  });
-
-  
 function tradeParticipantIds(trade) {
   return trade ? [trade.fromPlayerId, trade.toPlayerId] : [];
 }
@@ -2521,7 +2528,10 @@ function resetTradeCommitment(trade, changedByPlayerId = null) {
 function completeTrade(room, trade) {
   const from = getPlayer(room, trade.fromPlayerId);
   const to = getPlayer(room, trade.toPlayerId);
-  if (!from || !to) return { error: 'A trading player is gone.' };
+  if (!from || !to) {
+    room.tradeOffer = null;
+    return { error: 'A trading player is gone. The trade was canceled safely.' };
+  }
 
   const fromIds = [...new Set(trade.offers?.[from.id] || [])];
   const toIds = [...new Set(trade.offers?.[to.id] || [])];
@@ -2559,6 +2569,76 @@ function completeTrade(room, trade) {
 }
 
 
+function normalizePlayerName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function displayPlayerName(name) {
+  return String(name || 'Player').trim().replace(/\s+/g, ' ').slice(0, 24) || 'Player';
+}
+
+function findPlayerByName(room, name) {
+  const normalized = normalizePlayerName(name);
+  if (!room || !normalized) return null;
+  return room.players.find((p) => normalizePlayerName(p.name) === normalized) || null;
+}
+
+function reattachExistingPlayer(room, player, socket, reason = 'rejoined') {
+  attachSocketToPlayer(room, player, socket);
+  emitOk(socket, `Reconnected as ${player.name}.`);
+  log(room, `${player.name} ${reason}.`);
+  if (room.tradeOffer && [room.tradeOffer.fromPlayerId, room.tradeOffer.toPlayerId].includes(player.id)) {
+    room.tradeOffer.updatedAt = Date.now();
+  }
+  broadcast(room);
+}
+
+io.on('connection', (socket) => {
+  socket.emit('ready', { version: '0.11.9.7-game-flow-clarity-v0797' });
+
+  socket.on('createRoom', ({ name }) => {
+    const room = makeRoom(displayPlayerName(name), socket);
+    socket.join(room.code);
+    emitOk(socket, `Table ${room.code} created.`);
+  });
+
+  socket.on('joinRoom', ({ name, code }) => {
+    const room = rooms.get(String(code || '').trim().toUpperCase());
+    if (!room) return emitError(socket, 'Room not found.');
+    const requestedName = displayPlayerName(name);
+    const existing = findPlayerByName(room, requestedName);
+    if (existing) {
+      return reattachExistingPlayer(room, existing, socket, 'rejoined by name');
+    }
+    if (room.players.length >= 3) return emitError(socket, 'This table is limited to 3 players. Use the same goblin name to rejoin your existing seat.');
+    const player = createPlayer(requestedName, socket);
+    room.players.push(player);
+    attachSocketToPlayer(room, player, socket);
+    log(room, `${player.name} joined the room.`);
+    broadcast(room);
+  });
+
+  socket.on('resumeRoom', ({ roomCode, playerId, playerName, name }) => {
+    const room = rooms.get(String(roomCode || '').trim().toUpperCase());
+    if (!room) return emitError(socket, 'Room expired or not found. Create a new room.');
+    const player = getPlayer(room, playerId) || findPlayerByName(room, playerName || name);
+    if (!player) return emitError(socket, 'Saved player was not found in this room. Try joining with the same goblin name.');
+    return reattachExistingPlayer(room, player, socket, 'rejoined');
+  });
+
+  socket.on('chat', ({ message }) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && getPlayer(room, socket.data.playerId);
+    if (!room || !player) return;
+    const text = String(message || '').trim().slice(0, 240);
+    if (!text) return;
+    room.chat.push({ at: Date.now(), name: player.name, message: text });
+    if (room.chat.length > 100) room.chat.shift();
+    broadcast(room);
+  });
+
+  
+
 socket.on('action', (payload = {}) => {
     const room = rooms.get(socket.data.roomCode);
     const player = room && getPlayer(room, socket.data.playerId);
@@ -2578,6 +2658,8 @@ socket.on('action', (payload = {}) => {
     if (!room) return;
     const player = getPlayer(room, socket.data.playerId);
     if (!player) return;
+    // If this is an older tab/socket after a reattach, do not knock the active socket offline.
+    if (player.socketId !== socket.id) return;
     player.connected = false;
     player.socketId = null;
     log(room, `${player.name} went offline.`);
@@ -2587,7 +2669,28 @@ socket.on('action', (payload = {}) => {
 
 function handleAction(socket, room, player, payload) {
   const type = payload.type;
-  if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION', 'RESOLVE_HEX', 'MARK_CARD_SEEN'].includes(type)) return emitError(socket, 'You are down. You return on your next turn.');
+  if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION', 'RESOLVE_HEX', 'MARK_CARD_SEEN', 'CANCEL_TRADE', 'TRADE_SET_OFFER', 'TRADE_READY', 'TRADE_CONFIRM', 'TRADE_CLEAR_OFFER'].includes(type)) return emitError(socket, 'You are down. You return on your next turn.');
+
+  if (type === 'RECOVER_TABLE') {
+    const isHost = room.players[0]?.id === player.id;
+    const isActive = activeId(room) === player.id;
+    if (!isHost && !isActive) return emitError(socket, 'Only the host or active goblin can recover the table.');
+    if (room.tradeOffer) {
+      room.tradeOffer = null;
+      announce(room, 'trade', 'Trade Canceled', `${player.name} cleared a stuck trade.`, null, { importance: 'minor', requiresAck: false });
+      return;
+    }
+    if (room.pendingPrompt) {
+      const after = room.pendingPrompt.meta?.after || 'CONTINUE';
+      const oldType = room.pendingPrompt.type;
+      room.pendingPrompt = null;
+      announce(room, 'prompt', 'Choice Cleared', `${player.name} cleared a stuck ${promptTypeLabel(oldType)} choice.`, null, { importance: 'minor', requiresAck: false });
+      continueAfterPrompt(room, after);
+      return;
+    }
+    return emitOk(socket, 'No stuck trade or choice to recover.');
+  }
+
   if (type === 'MARK_CARD_SEEN') {
     const card = player.hand.find((c) => c.instanceId === payload.cardId);
     if (card) { card.fresh = false; card.freshAt = null; }
@@ -3000,7 +3103,7 @@ function handleAction(socket, room, player, payload) {
     if (uses >= 3) return emitError(socket, 'Bruiser Berserk can only be used three times per combat.');
     const options = allOwnedCards(player).filter((c) => c.instanceId !== player.role?.instanceId);
     if (!options.length) return emitError(socket, 'You need a card to discard for Berserk.');
-    createPrompt(room, { type: 'DISCARD_FOR_BERSERK', playerId: player.id, message: `Choose a card to discard for Bruiser +3.`, options, meta: { after: 'CONTINUE' } });
+    createPrompt(room, { type: 'DISCARD_FOR_BERSERK', playerId: player.id, message: `Choose a card to discard for Bruiser +3.`, options, meta: { sourceCard: player.role, after: 'CONTINUE' } });
     return;
   }
 
@@ -3010,7 +3113,7 @@ function handleAction(socket, room, player, payload) {
     if (room.combat.activePlayerId === player.id) return emitError(socket, 'You cannot Backstab yourself.');
     const options = allOwnedCards(player).filter((c) => c.instanceId !== player.role?.instanceId);
     if (!options.length) return emitError(socket, 'You need a card to discard for Backstab.');
-    createPrompt(room, { type: 'DISCARD_FOR_BACKSTAB', playerId: player.id, message: `Choose a card to discard. Player side gets -2.`, options, meta: { after: 'CONTINUE' } });
+    createPrompt(room, { type: 'DISCARD_FOR_BACKSTAB', playerId: player.id, message: `Choose a card to discard. Player side gets -2.`, options, meta: { sourceCard: player.role, after: 'CONTINUE' } });
     return;
   }
 
@@ -3451,11 +3554,15 @@ function removeAndDiscardOwnedCard(room, player, cardId) {
 function resolvePrompt(socket, room, player, payload) {
   const prompt = room.pendingPrompt;
   if (!prompt) return emitError(socket, 'No choice is waiting.');
-  if (prompt.playerId !== player.id) return emitError(socket, 'This prompt is not for you.');
+  if (prompt.playerId !== player.id) return emitError(socket, 'This choice is not for you.');
   const after = prompt.meta?.after || 'CONTINUE';
+  if (promptTypeNeedsOptions(prompt.type) && !(prompt.options || []).length) {
+    safeCreatePromptSkip(room, prompt);
+    return;
+  }
   if ((payload.cancel || payload.pass) && prompt.meta?.optional) {
     room.pendingPrompt = null;
-    announce(room, 'prompt', 'Optional Choice Passed', `${player.name} passed on ${prompt.type.replaceAll('_', ' ').toLowerCase()}.`, null, { importance: 'normal' });
+    announce(room, 'prompt', 'Optional Choice Passed', `${player.name} passed.`, null, { importance: 'minor', requiresAck: false });
     continueAfterPrompt(room, after);
     return;
   }
@@ -3483,7 +3590,7 @@ function resolvePrompt(socket, room, player, payload) {
   if (prompt.type === 'DISCARD_GEAR') {
     const chosenId = payload.cardId || (Array.isArray(payload.cardIds) ? payload.cardIds[0] : null);
     const valid = (prompt.options || []).some((c) => c.instanceId === chosenId);
-    if (!valid) return emitError(socket, 'Choose Gear from the available choices.');
+    if (!valid) return emitError(socket, 'Choose one of the shown Gear cards.');
     const chosen = (prompt.options || []).find((c) => c.instanceId === chosenId);
     discardSpecificGear(room, player, chosenId);
     announce(room, 'effect', 'Gear Discarded', `${player.name} discarded ${chosen?.publicName || 'Gear'}.`, chosen, { importance: 'major' });
@@ -3495,7 +3602,7 @@ function resolvePrompt(socket, room, player, payload) {
     const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : (payload.cardId ? [payload.cardId] : []);
     if (!ids.length) return emitError(socket, `Choose Gear totaling at least ${targetValue} Junk.`);
     const validById = new Map((prompt.options || []).map((c) => [c.instanceId, c]));
-    if (!ids.every((id) => validById.has(id))) return emitError(socket, 'Choose Gear from the available choices.');
+    if (!ids.every((id) => validById.has(id))) return emitError(socket, 'Choose one of the shown Gear cards.');
     const total = ids.reduce((sum, id) => sum + gearJunkValue(validById.get(id)), 0);
     if (total < targetValue) return emitError(socket, `Choose Gear totaling at least ${targetValue} Junk.`);
     const discarded = [];
@@ -3514,7 +3621,7 @@ function resolvePrompt(socket, room, player, payload) {
     const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
     if (ids.length !== need) return emitError(socket, `Choose exactly ${need} card${need === 1 ? '' : 's'} to discard.`);
     const valid = new Set((prompt.options || []).map((c) => c.instanceId));
-    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid cards from your hand.');
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose cards shown in your decision drawer.');
     for (const id of ids) {
       const card = findAndRemoveFromHand(player, id);
       if (card) discardCard(room, card);
@@ -3611,7 +3718,7 @@ function resolvePrompt(socket, room, player, payload) {
 
   if (prompt.type === 'DISCARD_FOR_BERSERK') {
     const valid = (prompt.options || []).some((c) => c.instanceId === payload.cardId);
-    if (!valid) return emitError(socket, 'Choose a valid card to discard.');
+    if (!valid) return emitError(socket, 'Choose a shown card to discard.');
     removeAndDiscardOwnedCard(room, player, payload.cardId);
     room.combat.roleUses[player.id] = room.combat.roleUses[player.id] || {};
     room.combat.roleUses[player.id].berserk = (room.combat.roleUses[player.id].berserk || 0) + 1;
@@ -3624,7 +3731,7 @@ function resolvePrompt(socket, room, player, payload) {
 
   if (prompt.type === 'DISCARD_FOR_BACKSTAB') {
     const valid = (prompt.options || []).some((c) => c.instanceId === payload.cardId);
-    if (!valid) return emitError(socket, 'Choose a valid card to discard.');
+    if (!valid) return emitError(socket, 'Choose a shown card to discard.');
     removeAndDiscardOwnedCard(room, player, payload.cardId);
     room.combat.playerDelta -= 2;
     resetCombatPasses(room);
@@ -3655,7 +3762,7 @@ function resolvePrompt(socket, room, player, payload) {
     const ids = Array.isArray(payload.cardIds) ? [...new Set(payload.cardIds)] : [];
     if (ids.length !== need) return emitError(socket, `Choose exactly ${need} card${need === 1 ? '' : 's'} to discard.`);
     const valid = new Set((prompt.options || []).map((c) => c.instanceId));
-    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose valid owned cards.');
+    if (!ids.every((id) => valid.has(id))) return emitError(socket, 'Choose shown hand/Gear cards.');
     for (const id of ids) removeAndDiscardOwnedCard(room, player, id);
     announce(room, 'effect', 'Cards Discarded', `${player.name} discarded ${ids.length} card${ids.length === 1 ? '' : 's'}.`, null, { importance: 'major' });
     continueAfterPrompt(room, after);
@@ -3666,12 +3773,12 @@ function resolvePrompt(socket, room, player, payload) {
     const option = payload.option || 'LOSE_GLORY';
     if (prompt.meta?.option === 'HAND_OR_GLORY' && option === 'DISCARD_HAND') {
       while (player.hand.length) discardCard(room, player.hand.pop());
-      announce(room, 'effect', 'Hand Discarded', `${player.name} discarded their hand.`, null, { importance: 'major' });
+      announce(room, 'effect', 'Hand Discarded', `${player.name} discarded their hand.`, promptSourceCard(prompt), { importance: 'major' });
     } else {
       const amount = prompt.meta?.amount || 2;
       const before = player.renown;
       player.renown = Math.max(1, player.renown - amount);
-      announce(room, 'effect', 'Glory Lost', `${player.name}'s Glory changed ${before} → ${player.renown}.`, null, { importance: 'major' });
+      announce(room, 'effect', 'Glory Lost', `${player.name}'s Glory changed ${before} → ${player.renown}.`, promptSourceCard(prompt), { importance: 'major' });
     }
     continueAfterPrompt(room, after);
     return;
@@ -3749,5 +3856,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Loot Goblins v0.7.9.4.1 listening on http://${HOST}:${PORT}`);
+  console.log(`Loot Goblins v0.7.9.7 listening on http://${HOST}:${PORT}`);
 });

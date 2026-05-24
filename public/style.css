@@ -10644,3 +10644,216 @@ body .global-soft-card {
     display: none !important;
   }
 }
+
+
+/* Loot Goblins v0.7.9.5 — Rejoin + Trade Stability + Wish Ring Preview */
+
+.mobile-state-hex-cancel-reaction .reaction-hex-preview {
+  border-color: rgba(177, 91, 229, .52);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(177,91,229,.24), transparent 44%),
+    rgba(0,0,0,.24);
+}
+
+.mobile-state-hex-cancel-reaction .wish-ring-question {
+  border-color: rgba(255, 222, 133, .28);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255,222,133,.16), transparent 42%),
+    rgba(0,0,0,.20);
+}
+
+.mobile-state-hex-cancel-reaction .reaction-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.mobile-state-hex-cancel-reaction .reaction-actions button {
+  min-height: 52px;
+}
+
+@media (max-width: 420px) {
+  .mobile-state-hex-cancel-reaction .reaction-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* Loot Goblins v0.7.9.6 — Mobile Rejoin + Prompt Safety Audit */
+
+.recovery-button {
+  border-color: rgba(255, 126, 134, .35) !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,126,134,.12), transparent 55%),
+    rgba(0,0,0,.16) !important;
+  color: #ffd6db !important;
+}
+
+.trade-table-actions .recovery-button {
+  grid-column: 1 / -1;
+  min-height: 38px;
+  font-size: .72rem;
+}
+
+.mobile-state-prompt .recovery-button {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.trade-table-status {
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+}
+
+/* Make system recovery toasts feel distinct but not scary. */
+.toast.ok {
+  border-color: rgba(123,236,178,.38);
+}
+
+.toast.error {
+  border-color: rgba(255,126,134,.58);
+}
+
+
+/* Loot Goblins v0.7.9.7 — Game Flow Clarity */
+
+.mobile-state-flow-clarity-prompt {
+  gap: 12px;
+}
+
+.prompt-flow-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.prompt-source-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  border-radius: 22px;
+  border: 1px solid rgba(255,222,133,.24);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(177,91,229,.16), transparent 44%),
+    rgba(0,0,0,.22);
+  color: var(--ink);
+  padding: 10px;
+}
+
+.prompt-source-mini {
+  width: 78px;
+  display: grid;
+  place-items: center;
+}
+
+.prompt-source-mini .hand-card {
+  pointer-events: none;
+}
+
+.prompt-source-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.prompt-source-copy span,
+.prompt-flow-steps b {
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-size: .55rem;
+  font-weight: 1000;
+}
+
+.prompt-source-copy strong {
+  font-size: .88rem;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-source-copy small {
+  color: rgba(255,246,214,.68);
+  font-size: .64rem;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.prompt-flow-steps {
+  display: grid;
+  gap: 7px;
+}
+
+.prompt-flow-steps div {
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.16);
+  padding: 8px 9px;
+  display: grid;
+  gap: 2px;
+}
+
+.prompt-flow-steps span {
+  color: rgba(255,246,214,.82);
+  font-size: .68rem;
+  line-height: 1.16;
+}
+
+.drawer-decision-panel .prompt-flow-panel {
+  border-radius: 18px;
+  border: 1px solid rgba(255,222,133,.12);
+  background: rgba(0,0,0,.12);
+  padding: 8px;
+}
+
+.drawer-decision-panel .prompt-source-card {
+  grid-template-columns: 62px minmax(0, 1fr);
+  padding: 8px;
+}
+
+.drawer-decision-panel .prompt-source-mini {
+  width: 58px;
+}
+
+.bad-news-choice-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.bad-news-choice-grid button {
+  min-height: 62px;
+  font-size: .92rem;
+}
+
+.action-list.inspect-actions button small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(35, 20, 9, .70);
+  font-size: .58rem;
+  line-height: 1.05;
+  font-weight: 800;
+}
+
+.action-list.inspect-actions button:not(.primary) small {
+  color: rgba(255,246,214,.62);
+}
+
+@media (max-width: 420px) {
+  .prompt-source-card {
+    grid-template-columns: 70px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .prompt-source-mini {
+    width: 66px;
+  }
+
+  .prompt-source-copy small {
+    -webkit-line-clamp: 2;
+  }
+}

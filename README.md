@@ -1991,3 +1991,157 @@ That explicitly binds the web service to `0.0.0.0` and the Render-provided `PORT
 ## No gameplay/UI changes
 
 This is only a deploy/runtime hotfix on top of v0.7.9.4.
+
+
+---
+
+# Loot Goblins v0.7.9.5 — Rejoin + Trade Stability + Wish Ring Preview
+
+## Fixes
+
+### Wish Ring
+- Wish Ring reaction now shows the incoming Hex first.
+- The target can read/view the Hex before deciding:
+  - Cancel with Wish Ring
+  - Let It Hit
+
+### Trade runtime fix
+- Fixed `isTradeParticipant is not defined`.
+- Trade helper functions were accidentally scoped inside the Socket.IO connection callback while trade action handling lived outside that scope.
+- Helpers are now module-scope.
+
+### Rejoin stability
+- App now auto-resumes from saved session on reconnect.
+- Resume sends both playerId and playerName.
+- Join Room now reclaims an existing seat when the same goblin name is used in the same room.
+- This works even if the room is already full.
+- If the room is full and no matching name exists, the error now tells the player to rejoin with the same goblin name.
+
+### Trade + rejoin safety
+- Rejoining during an active trade now preserves the trade table.
+- If a trade references a missing player, it cancels safely instead of crashing.
+
+## Gameplay/UX thoughts from this pass
+
+- Rejoin must be forgiving because phone calls, tab eviction, and mobile browser memory pressure are normal during playtests.
+- Trade should stay as a focused modal state, but it needs emergency recovery: rejoin, cancel, and stale-player safety.
+- Wish Ring should always show the danger before asking for the cancel, otherwise the choice is blind and feels unfair.
+
+
+---
+
+# Loot Goblins v0.7.9.6 — Mobile Rejoin + Prompt Safety Audit
+
+## Rejoin / mobile recovery
+
+- Fixed duplicate-tab/mobile reconnect race:
+  - an old socket disconnect can no longer mark a newly reattached player offline.
+- Rejoin emits a visible toast:
+  - `Reconnected as [name].`
+- Join by same goblin name still reclaims the existing seat, even if the room is full.
+- Stale saved sessions are cleared client-side when the server says the saved player/room was not found.
+- Create room now gives a small table-created toast.
+- Names are normalized and trimmed consistently.
+
+## Trade recovery
+
+- Trade participants can still cancel/recover while reconnecting.
+- Trade screen tells you when the other player is reconnecting.
+- Added emergency `RECOVER_TABLE` action for the host/active player when a trade or choice is stuck.
+- `RECOVER_TABLE` can:
+  - clear a stuck trade
+  - clear a stuck prompt and continue the table
+
+## Prompt safety
+
+- `createPrompt` now checks for impossible prompts with no valid options.
+- If a prompt needs options but has none, the game now:
+  - shows a soft `No Valid Choice` event
+  - logs the skip
+  - continues based on the prompt's `after` rule
+- Defensive prompt validation also checks this during `RESOLVE_PROMPT`.
+
+## Version cleanup
+
+- Landing page now says `Loot Goblins v0.7.9.6`.
+- Server `/health`, socket ready version, serialized room version, and startup log are updated.
+
+## UX principle from this pass
+
+Mobile rejoin and no-valid-choice safety are core game mechanics now. The app should not punish players for phone calls, tab reloads, or weird card states.
+
+
+---
+
+# Loot Goblins v0.7.9.7 — Game Flow Clarity Pass
+
+## Core principle
+
+Cause → Choice → Consequence.
+
+Whenever the game asks a player to choose, the screen now tries to answer:
+
+1. What caused this?
+2. What do I choose?
+3. What happens after?
+
+## Changes
+
+### Prompt source cards
+- Prompt serialization now includes a sanitized `sourceCard` when available.
+- Common effect prompts now attach their source card.
+- Prompt screens show the source card before the choice.
+- The source card can be tapped/viewed.
+
+### Prompt UI
+- Generic prompt screen rebuilt around Cause / Choice / After.
+- Decision drawer also shows the Cause / Choice / After summary.
+- Prompt titles are clearer:
+  - Lose Gear
+  - Pay Gear
+  - Lose a Calling
+  - Lose a Kin
+  - Choose Bad News
+  - Add a Foe
+  - Choose from Discard
+
+### Bad News choice support
+- Added real UI for `CHOOSE_BAD_NEWS_OPTION`.
+- Player can choose:
+  - Lose Glory
+  - Discard Your Hand
+
+### No-blind-choice direction
+- Wishing Ring was already fixed in v0.7.9.5.
+- This pass extends the same philosophy to forced discard/gear/player prompts.
+
+### Better unavailable-card feedback
+- Inspecting a card with no legal action now explains why:
+  - waiting on another player
+  - finish the current choice
+  - finish/cancel trade
+  - Gear not playable during combat
+  - Foes need a card like Unexpected Company
+  - wait for your turn
+  - down/dead state
+
+### Prompt safety retained
+- v0.7.9.6 no-valid-choice safety remains in place.
+- No-valid-choice announcements now prefer showing the source card/cause.
+
+## Public / private info rule locked for future builds
+
+Public:
+- Foe revealed
+- Hex hits someone
+- combat cards played
+- Bad News
+- death/body-loot state
+- victory
+
+Private:
+- hidden Loot draws
+- Loot the Room card identities
+- body-looted card identity
+- cards received into hand unless publicly revealed first
+- trade contents until accepted by the two traders
