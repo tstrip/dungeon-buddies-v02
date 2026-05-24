@@ -1469,23 +1469,22 @@ function mobilePlayerHudHtml() {
 function mobileCombatActionDockHtml() {
   const c = state?.combat;
   if (!c || state?.phase !== 'COMBAT') return '';
-  const requiresYou = (c.waitingPlayerIds || []).includes(me()?.id);
-  const outcome = combatOutcome(c);
-  const passed = c.passes?.[me()?.id];
-  const actions = [];
-  if (requiresYou && !passed) {
-    actions.push(`<button class="combat-dock-btn primary" data-combat-action="PASS_COMBAT">${escapeHtml(outcome.playerWinning ? 'Pass' : 'Pass / Flee')}</button>`);
-  } else if (passed) {
-    actions.push(`<span class="combat-dock-pill ready">Ready</span>`);
-  } else {
-    actions.push(`<span class="combat-dock-pill">Waiting</span>`);
-  }
-  const backups = (state.players || []).filter((p) => p.id !== c.activePlayerId && !p.dead && p.id !== me()?.id);
-  if (requiresYou && !passed) {
-    for (const p of backups.slice(0, 2)) actions.push(`<button class="combat-dock-btn" data-combat-action="ASK_BACKUP" data-target="${p.id}">Ask ${escapeHtml(p.name)}</button>`);
-  }
-  return `<div class="combat-action-dock" role="group" aria-label="Combat quick actions">
-    <div class="combat-dock-status"><b>${escapeHtml(outcome.shortLabel)}</b><span>${escapeHtml((c.waitingPlayerIds || []).map(playerName).join(', ') || 'Everyone ready')}</span></div>
+  const you = me();
+  const requiresYou = (c.waitingPlayerIds || []).includes(you?.id);
+  const passed = Boolean(c.passes?.[you?.id]);
+
+  // v0.7.10.1: the previous dock created a fake-feeling banner like
+  // “Tied — Foe wins / Everyone ready.” The fight outcome already lives
+  // in the combat board, so this dock only appears when YOU have a quick
+  // action available, and it never repeats the outcome/status text.
+  if (!requiresYou || passed) return '';
+
+  const outcome = combatOutcome(c.totals || c);
+  const actions = [`<button class="combat-dock-btn primary" data-combat-action="PASS_COMBAT">${escapeHtml(outcome.playerWinning ? 'Pass' : 'Pass / Flee')}</button>`];
+  const backups = (state.players || []).filter((p) => p.id !== c.activePlayerId && !p.dead && p.id !== you?.id);
+  for (const p of backups.slice(0, 2)) actions.push(`<button class="combat-dock-btn" data-combat-action="ASK_BACKUP" data-target="${p.id}">Ask ${escapeHtml(p.name)}</button>`);
+
+  return `<div class="combat-action-dock compact-only-actions" role="group" aria-label="Combat quick actions">
     <div class="combat-dock-actions">${actions.join('')}</div>
   </div>`;
 }
@@ -1888,16 +1887,7 @@ function combatBoardModifierBadges(combat) {
 }
 
 function combatStatusChipHtml(combat, totals) {
-  const outcome = combatOutcome(totals);
-  const waiting = state.players.filter((p) => !combat?.passes?.[p.id]);
-  const need = combatNeedToWin(totals);
-  const you = me();
-  const youDone = Boolean(combat?.passes?.[you?.id]);
-  let copy = '';
-  if (youDone) copy = 'You passed · waiting for the table.';
-  else if (outcome.resultClass === 'winning') copy = waiting.length ? `Winning · waiting on ${waiting.map((p) => p.name).join(', ')}` : 'Winning · ending now.';
-  else copy = need > 0 ? `Need +${need} · play, bargain, or pass to Flee` : 'Table needs to finish responses.';
-  return `<div class="combat-status-chip ${escapeHtml(outcome.resultClass)}">${escapeHtml(copy)}</div>`;
+  return '';
 }
 
 function combatNeedToWin(totals) {

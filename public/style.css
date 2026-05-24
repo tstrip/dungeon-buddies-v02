@@ -11625,3 +11625,30 @@ button.disabled,
 .rules-audit-badge {
   border-color: rgba(123,236,178,.36);
 }
+
+
+/* Loot Goblins v0.7.10.1 — Remove combat status banner */
+.combat-action-dock.compact-only-actions {
+  grid-template-columns: 1fr !important;
+  margin: -54px 14px 10px !important;
+  padding: 7px !important;
+  border-radius: 18px !important;
+  background: rgba(14,9,15,.72) !important;
+}
+
+.combat-action-dock.compact-only-actions .combat-dock-status {
+  display: none !important;
+}
+
+.combat-action-dock.compact-only-actions .combat-dock-actions {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.combat-action-dock.compact-only-actions .combat-dock-btn {
+  flex: 1;
+}
+
+.combat-status-chip {
+  display: none !important;
+}
