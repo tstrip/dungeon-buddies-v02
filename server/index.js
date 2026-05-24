@@ -17,7 +17,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.7-game-flow-clarity-v0797' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.8-screen-visual-tightening-v0798' }));
 app.get('/healthz', (_, res) => res.status(200).send('ok'));
 app.get('/ready', (_, res) => res.status(200).json({ ok: true }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
@@ -399,7 +399,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.9.7-game-flow-clarity-v0797',
+    version: '0.11.9.8-screen-visual-tightening-v0798',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -2594,7 +2594,7 @@ function reattachExistingPlayer(room, player, socket, reason = 'rejoined') {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.9.7-game-flow-clarity-v0797' });
+  socket.emit('ready', { version: '0.11.9.8-screen-visual-tightening-v0798' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(displayPlayerName(name), socket);
@@ -3856,5 +3856,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Loot Goblins v0.7.9.7 listening on http://${HOST}:${PORT}`);
+  console.log(`Loot Goblins v0.7.9.8 listening on http://${HOST}:${PORT}`);
 });

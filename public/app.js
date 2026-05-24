@@ -729,18 +729,18 @@ function centerZoneLabel() {
   if (state.phase === 'ESCAPE') return 'Flee Zone';
   if (state.revealCard) return 'Reveal Zone';
   if (state.bodyLoot) return 'Goblin Down';
-  if (state.pendingPrompt) return 'Prompt Zone';
+  if (state.pendingPrompt) return 'Choice';
   return 'Table Center';
 }
 
 function centerZoneSub() {
   if (state.phase === 'ROLL_FOR_FIRST') return 'Every goblin rolls a d6. Highest starts. Ties reroll.';
   if (state.phase === 'HEX_REVEAL') return state.pendingHex?.card ? `${state.pendingHex.card.publicName} is waiting.` : 'A Hex is waiting.';
-  if (state.phase === 'COMBAT') return 'Foes, modifiers, and played Tricks live here.';
-  if (state.phase === 'ESCAPE') return 'Dice rolls and Bad News happen here.';
+  if (state.phase === 'COMBAT') return 'Cards and totals settle the fight.';
+  if (state.phase === 'ESCAPE') return 'Roll to escape.';
   if (state.revealCard) return `${state.revealCard.publicName} is on the table.`;
   if (state.bodyLoot) return state.bodyLoot.requiresYou ? 'Choose one card from the fallen goblin.' : `Body looting: waiting for ${state.bodyLoot.currentLooterName || 'a player'}.`;
-  if (state.pendingPrompt) return state.pendingPrompt.message || 'Waiting for a player choice.';
+  if (state.pendingPrompt) return state.pendingPrompt.message || 'Waiting for a goblin to choose.';
   return 'Revealed cards will appear here.';
 }
 
@@ -896,7 +896,7 @@ function phaseGrammar() {
     out.next = state.escape?.awaitingContinue ? 'Continue to apply or avoid Bad News.' : 'A failed roll triggers Bad News.';
     if (runner?.isYou) {
       if (!state.escape?.awaitingContinue && hasLittleHelper(me())) out.buttons.push(buttonHtml('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
-      out.buttons.push(buttonHtml(state.escape?.awaitingContinue ? 'Continue' : (state.escape?.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee'), state.escape?.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+      out.buttons.push(buttonHtml(state.escape?.awaitingContinue ? 'Continue' : (state.escape?.autoFlee ? 'Auto Flee' : 'Roll to Flee'), state.escape?.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
     }
     return out;
   }
@@ -1562,10 +1562,10 @@ function mobileStartTurnStageHtml() {
       </div>
       <div class="open-chamber-door-copy">
         <strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong>
-        <span>${mine ? 'Reveal top Chamber' : `${Number(state.decks?.chamber || 0)} cards remain`}</span>
+        <span>${mine ? 'Reveal what’s behind the door' : `${Number(state.decks?.chamber || 0)} cards remain`}</span>
       </div>
     </button>
-    ${mine ? `<p class="mobile-state-hint setup-glow-hint">Setup cards glow in your hand.</p>` : `<p class="mobile-state-hint">${escapeHtml(active()?.name || 'The active goblin')} can play setup or open the door.</p>`}
+    ${mine ? `<p class="mobile-state-hint setup-glow-hint">Setup cards glow below.</p>` : `<p class="mobile-state-hint">${escapeHtml(active()?.name || 'The active goblin')} can play setup or open the door.</p>`}
     ${actions}
   `, { size: 'small', icon: null, sub: '' });
 }
@@ -1617,11 +1617,11 @@ function mobileNoFoeStageHtml() {
   const startTroubleAttrs = !mine ? 'disabled' : (legalFoes.length === 1 ? `data-action="START_TROUBLE" data-card-id="${legalFoes[0].instanceId}"` : `data-nofoe-start-trouble="1"`);
   const startTroubleSub = !mine
     ? 'They may play a Foe from hand.'
-    : (legalFoes.length === 1 ? `Play ${legalFoes[0].publicName}` : legalFoes.length > 1 ? 'Choose a glowing Foe from hand' : 'No playable Foe in hand');
+    : (legalFoes.length === 1 ? `Play ${legalFoes[0].publicName}` : legalFoes.length > 1 ? 'Pick a glowing Foe' : 'Need a Foe in hand');
   const actions = mine ? mobileActionButtonsHtml([
     mobileLegalActionButton('Sell Gear', 'SELL_GEAR')
   ], 'no-foe-actions tertiary-actions') : '';
-  return mobileStageShell('no-foe no-foe-action-first', mine ? 'Choose Move' : `${actor} chooses`, openedDoor ? 'Choose your move' : (mine ? 'Choose Next Move' : `Waiting on ${actor}`), `
+  return mobileStageShell('no-foe no-foe-action-first', mine ? 'No Foe' : `${actor} chooses`, openedDoor ? 'Pick your next move' : (mine ? 'Pick your next move' : `Waiting on ${actor}`), `
     ${openedDoor}
     <div class="move-choice-pair">
       <button class="move-choice-tile start-trouble ${startTroubleState}" ${startTroubleAttrs}>
@@ -1630,7 +1630,7 @@ function mobileNoFoeStageHtml() {
       </button>
       <button class="move-choice-tile loot-room ${mine ? '' : 'disabled is-observer'}" ${mine ? 'data-action="SEARCH_ROOM"' : 'disabled'}>
         ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw hidden Chamber' : 'May draw hidden Chamber'}</span></div>
+        <div><strong>${mine ? 'Loot the Room' : `${actor} may Loot the Room`}</strong><span>${mine ? 'Draw a hidden Chamber' : 'May draw hidden Chamber'}</span></div>
       </button>
     </div>
     ${actions}
@@ -1646,7 +1646,7 @@ function mobilePostCombatStageHtml() {
   return mobileStageShell('post-combat last-chance-flow', mine ? 'Last Chance' : 'Loot Phase', mine ? 'Last Chance Before Tribute' : `${active()?.name || 'A goblin'} is using Loot`, `
     <div class="mobile-choice-card">
       ${assetIconHtml('loot', 'asset-sigil event-sigil')}
-      <div><strong>${mine ? 'Use Loot or Gear' : 'Loot is being managed'}</strong><span>${mine ? 'Play Loot, equip Gear, trade, or sell Gear.' : 'Waiting for the active goblin to finish.'}</span></div>
+      <div><strong>${mine ? 'Use Loot / Gear' : 'Using Loot'}</strong><span>${mine ? 'Play Loot, equip Gear, trade, or sell Gear.' : 'Waiting for the active goblin.'}</span></div>
     </div>
     ${actions}
   `, { size: 'small', icon: 'loot', sub: mine ? 'Then check your hand limit.' : 'No action needed.' });
@@ -1711,7 +1711,7 @@ function mobileCombatStageHtml(combat) {
   const modifiers = combatBoardModifierBadges(combat);
   const foeCards = combatBoardFoeCards(combat);
   const badNews = combatBoardBadNews(combat);
-  return mobileStageShell('combat compact-combat', 'Combat', `${actorName} vs ${foeText}`, `
+  return mobileStageShell('combat compact-combat battlefield-combat', 'Fight', `${actorName} vs ${foeText}`, `
     <section class="combat-board-card ${escapeHtml(outcome.resultClass)}">
       <div class="combat-board-result">
         <strong>${escapeHtml(outcome.shortLabel)}</strong>
@@ -1726,8 +1726,8 @@ function mobileCombatStageHtml(combat) {
       ${badNews}
     </section>
     ${actions}
-    <div class="mobile-pass-row combat-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Can play'}</span>`).join('')}</div>
-    <details class="mobile-math-details compact-math-details"><summary>Full combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
+    <div class="mobile-pass-row combat-pass-row">${state.players.map((p)=>`<span class="mobile-pass-pill ${combat.passes?.[p.id] ? 'passed':'can-play'}">${escapeHtml(p.name)} · ${combat.passes?.[p.id] ? 'Passed':'Ready'}</span>`).join('')}</div>
+    <details class="mobile-math-details compact-math-details"><summary>Combat math</summary>${combatBreakdownHtml(combat, totals)}</details>
   `, { size: 'large', icon: null, sub: '' });
 }
 
@@ -1831,7 +1831,7 @@ function mobileFleeStageHtml(esc) {
   const buttons = [];
   if (runner?.isYou) {
     if (!esc.awaitingContinue && hasLittleHelper(me())) buttons.push(mobileLegalActionButton('Sacrifice Little Helper', 'SACRIFICE_HIRELING_FLEE'));
-    buttons.push(mobileLegalActionButton(isRollFx('flee') ? 'Rolling...' : (esc.awaitingContinue ? (last?.total >= 5 ? 'Continue' : 'Take Bad News') : (esc.autoFlee ? 'Use Automatic Flee' : 'Roll to Flee')), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
+    buttons.push(mobileLegalActionButton(isRollFx('flee') ? 'Rolling...' : (esc.awaitingContinue ? (last?.total >= 5 ? 'Continue' : 'Take Bad News') : (esc.autoFlee ? 'Auto Flee' : 'Roll to Flee')), esc.awaitingContinue ? 'CONTINUE_FLEE' : 'ROLL_ESCAPE', 'primary'));
   }
   const math = last ? `${last.raw} ${signed(last.bonus || 0)} = ${last.total}` : `Target 5+ · Flee ${signed(esc.fleeBonus || 0)}`;
   const outcome = last ? (last.total >= 5 ? 'Escaped!' : 'Failed to Flee') : (isRollFx('flee') ? 'Rolling...' : 'Ready to roll');
@@ -1848,7 +1848,7 @@ function mobileFleeStageHtml(esc) {
       <span>${escapeHtml(badNews)}</span>
     </div>
   </div>${mobileActionButtonsHtml(buttons, 'flee-actions')}`;
-  return mobileStageShell('flee flee-clean', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape the Bad News.' : `Waiting for ${runner?.name || 'the runner'}.` });
+  return mobileStageShell('flee flee-clean', 'Flee', title, body, { size: 'large', icon: 'flee', sub: runner?.isYou ? 'Roll to escape.' : `Waiting for ${runner?.name || 'the runner'}.` });
 }
 
 function mobileOpeningRollStageHtml() {
@@ -1918,7 +1918,7 @@ function mobilePromptStageHtml(prompt) {
     : 'special';
   return mobileStageShell('prompt flow-clarity-prompt', prompt.requiresYou ? 'Choice Required' : 'Waiting', title, `
     ${promptFlowHtml(prompt)}
-    ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if optional</button>' : recoveryButtonHtml()}
+    ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if allowed</button>' : recoveryButtonHtml()}
   `, { size: 'medium', icon, sub });
 }
 
@@ -2834,6 +2834,7 @@ function compactCardHtml(card, opts = {}) {
       <div class="hand-card-topline"><span class="mini-type">${escapeHtml(shortTypeLabel(card))}</span></div>
       <div class="hand-card-name">${escapeHtml(card.publicName)}</div>
       <div class="hand-card-main">${escapeHtml(cardGlance(card))}</div>
+      <div class="hand-card-subline">${escapeHtml(cardGlanceSub(card))}</div>
     </div>
     ${(card.attachmentNames || []).length ? `<div class="hand-card-attach-dot" title="Has attached cards">+</div>` : ''}
   </article>`;
@@ -2846,15 +2847,38 @@ function isOneUseConsumableCard(card) {
 }
 
 function cardGlance(card) {
-  if (card.type === 'THREAT') return `STR ${card.strength}`;
+  if (card.type === 'THREAT') return `STR ${card.finalStrength || card.strength}`;
   if (card.type === 'GEAR') return `+${card.combatBonus || 0}${card.escapeBonus ? ` · Flee +${card.escapeBonus}` : ''}`;
   if (card.type === 'THREAT_MODIFIER') return `Modifier ${signed(card.strengthDelta)}`;
   if (card.type === 'TRICK') return `One-use · ${trickGlance(card)}`;
   if (card.type === 'HEX') return hexGlance(card);
-  if (card.type === 'ROLE') return 'Calling';
-  if (card.type === 'ORIGIN') return 'Kin';
-  if (card.type === 'SPECIAL') return 'Special';
+  if (card.type === 'ROLE') return roleGlance(card);
+  if (card.type === 'ORIGIN') return kinGlance(card);
+  if (card.type === 'SPECIAL') return specialGlance(card);
   return card.type || 'Card';
+}
+
+function specialGlance(card) {
+  const text = `${card.publicName || ''} ${card.publicText || ''}`.toLowerCase();
+  const e = card.effect || {};
+  if (/glory|studliness|renown/.test(text) || e.type === 'GAIN_RENOWN') return `Gain ${e.amount || 1} Glory`;
+  if (/calling/.test(text) && /slot|permit|extra/.test(text)) return 'Extra Calling slot';
+  if (/kin/.test(text) && /slot|permit|extra/.test(text)) return 'Extra Kin slot';
+  if (/discard/.test(text) && /recover|take/.test(text)) return 'Take from discard';
+  if (/wishing ring|cancel.*hex|hex/.test(text)) return 'Cancel a Hex';
+  if (/trade|swap/.test(text)) return 'Trade trick';
+  if (/gear/.test(text) && /sell/.test(text)) return 'Sell Gear';
+  return (card.publicText || 'Special effect').replace(/^Special:?\s*/i, '').slice(0, 32);
+}
+
+function roleGlance(card) {
+  const text = String(card.publicText || '').replace(/^Calling:?\s*/i, '').trim();
+  return text ? text.slice(0, 30) : 'Calling';
+}
+
+function kinGlance(card) {
+  const text = String(card.publicText || '').replace(/^Kin:?\s*/i, '').trim();
+  return text ? text.slice(0, 30) : 'Kin';
 }
 
 function cardGlanceSub(card) {

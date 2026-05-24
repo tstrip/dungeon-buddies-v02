@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-game-flow-clarity-v0797",
-  "version": "0.11.9-7",
+  "name": "loot-goblins-screen-visual-tightening-v0798",
+  "version": "0.11.9-8",
   "private": true,
-  "description": "Loot Goblins v0.7.9.7: cause-choice-consequence prompts, source-card visibility, bad news option UX, and clearer unavailable-action feedback.",
+  "description": "Loot Goblins v0.7.9.8: screen-by-screen visual tightening, door-like Chamber button, battlefield combat, button hierarchy, and compact-card readability.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
