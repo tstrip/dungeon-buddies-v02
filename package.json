@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-screen-visual-tightening-v0798",
-  "version": "0.11.9-8",
+  "name": "loot-goblins-rejoin-banner-qol-v0799",
+  "version": "0.11.9-9",
   "private": true,
-  "description": "Loot Goblins v0.7.9.8: screen-by-screen visual tightening, door-like Chamber button, battlefield combat, button hierarchy, and compact-card readability.",
+  "description": "Loot Goblins v0.7.9.9: rejoin render recovery, concise longer soft banners, and no-effect card action filtering.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

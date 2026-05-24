@@ -11209,3 +11209,44 @@ button.subtle,
     text-align: left !important;
   }
 }
+
+
+/* Loot Goblins v0.7.9.9 — Rejoin Recovery + Concise Banners + No-Waste Plays */
+
+.render-recovery-shell {
+  min-height: 52vh;
+  display: grid;
+  place-items: center;
+}
+
+.mobile-state-render-recovery {
+  border-color: rgba(123,236,178,.30) !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(123,236,178,.12), transparent 45%),
+    rgba(0,0,0,.22) !important;
+}
+
+.global-soft-popup.concise-soft-event .global-soft-card {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-block: 9px;
+}
+
+.global-soft-popup.concise-soft-event .soft-event-copy {
+  gap: 1px;
+}
+
+.global-soft-popup.concise-soft-event .soft-event-copy span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.global-soft-popup.concise-soft-event .soft-event-effect {
+  display: none !important;
+}
+
+@media (max-width: 420px) {
+  .global-soft-popup.concise-soft-event .soft-event-copy span {
+    max-width: 52vw;
+  }
+}

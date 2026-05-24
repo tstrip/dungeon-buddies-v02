@@ -49,7 +49,7 @@ socket.on('state', (next) => {
   }
   state = next;
   updateRollFxFromState(next);
-  render();
+  requestAnimationFrame(() => render());
 });
 
 function savedSession() {
@@ -94,7 +94,7 @@ function showToast(message, type = 'ok') {
   const el = $('toast');
   el.textContent = message;
   el.className = `toast ${type === 'error' ? 'error' : 'ok'}`;
-  setTimeout(() => { if (el.textContent === message) el.classList.add('hidden'); }, 4500);
+  setTimeout(() => { if (el.textContent === message) el.classList.add('hidden'); }, type === 'error' ? 5200 : 4200);
 }
 
 
@@ -242,17 +242,41 @@ function renderLobby() {
   }
 }
 
+function renderFailurePanel(name, error) {
+  const root = $('activeTable');
+  if (!root) return;
+  const msg = String(error?.message || error || 'Unknown render issue');
+  root.innerHTML = `<div class="mobile-app-shell render-recovery-shell">
+    <section class="mobile-state-panel mobile-state-render-recovery mobile-state-size-medium">
+      <div class="mobile-state-header"><div class="mobile-state-kicker">Table Recovery</div></div>
+      <h2>Reconnected, but this view hiccuped</h2>
+      <p class="mobile-state-sub">The table state is safe. Refresh the view or use Recover Table if a choice is stuck.</p>
+      <div class="mobile-wait-card">${assetIconHtml('backup', 'asset-sigil event-sigil')}<span>${escapeHtml(name)} view failed: ${escapeHtml(msg)}</span></div>
+      <div class="mobile-center-actions"><button class="primary" onclick="location.reload()">Reload View</button>${recoveryButtonHtml()}</div>
+    </section>
+  </div>`;
+}
+
+function safeRenderPart(name, fn) {
+  try { fn(); }
+  catch (err) {
+    console.error(`[Loot Goblins render:${name}]`, err);
+    if (name === 'table') renderFailurePanel(name, err);
+    showToast(`View recovered after ${name} hiccup.`, 'error');
+  }
+}
+
 function renderGame() {
   showScreen('gameScreen');
-  renderDeckDock();
-  renderPhaseBanner();
-  renderPlayers();
-  renderActiveTable();
-  renderPrompt();
-  renderHand();
-  renderEventHistory();
-  renderGlobalModal();
-  attachGlobalEventHandlers();
+  safeRenderPart('decks', renderDeckDock);
+  safeRenderPart('phase', renderPhaseBanner);
+  safeRenderPart('players', renderPlayers);
+  safeRenderPart('table', renderActiveTable);
+  safeRenderPart('prompt', renderPrompt);
+  safeRenderPart('hand', renderHand);
+  safeRenderPart('history', renderEventHistory);
+  safeRenderPart('modal', renderGlobalModal);
+  safeRenderPart('handlers', attachGlobalEventHandlers);
 }
 
 function attachGlobalEventHandlers() {
@@ -309,7 +333,7 @@ function scheduleSoftAnnouncementDismiss() {
     if (lastSoftAnnouncementId === a.id) lastSoftAnnouncementId = '';
     softAnnouncementTimer = null;
     render();
-  }, 3000);
+  }, 4500);
 }
 
 
@@ -427,6 +451,25 @@ function privateCardGainHtml() {
 }
 
 
+
+function trimEventText(text, max = 78) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  return clean.length > max ? `${clean.slice(0, max - 1).trim()}…` : clean;
+}
+
+function softAnnouncementLine(a, cardLine = '', effectLine = '') {
+  const title = String(a?.title || '');
+  const detail = String(a?.detail || '');
+  const kind = String(a?.kind || '').toLowerCase();
+  if (/reconnected as/i.test(detail)) return detail;
+  if (detail) return trimEventText(detail, 82);
+  if (cardLine) return trimEventText(cardLine, 82);
+  if (effectLine && ['card','gear','hex','effect','reveal'].includes(kind)) return trimEventText(effectLine, 82);
+  return 'Table updated.';
+}
+
+
 function globalAnnouncementHtml() {
   const a = state?.announcement;
   if (!a || acknowledgedAnnouncements.has(a.id)) return '';
@@ -436,13 +479,13 @@ function globalAnnouncementHtml() {
     const icon = announcementIcon(a.kind);
     const cardLine = a.card ? announcementCardLabel(a.card) : '';
     const effectLine = a.card ? announcementEffectSummary(a.card) : '';
-    return `<section class="global-soft-popup ${escapeHtml(a.kind || '')}" data-priority="${escapeHtml(a.priority || tier)}" data-category="${escapeHtml(a.category || a.kind || '')}" role="status" aria-live="polite">
+    const line = softAnnouncementLine(a, cardLine, effectLine);
+    return `<section class="global-soft-popup concise-soft-event ${escapeHtml(a.kind || '')}" data-priority="${escapeHtml(a.priority || tier)}" data-category="${escapeHtml(a.category || a.kind || '')}" role="status" aria-live="polite">
       <div class="global-soft-card">
         <div class="soft-event-icon">${icon}</div>
         <div class="soft-event-copy">
           <strong>${escapeHtml(a.title || 'Table Event')}</strong>
-          <span>${escapeHtml(a.detail || cardLine || '')}</span>
-          ${effectLine ? `<em class="soft-event-effect">${escapeHtml(effectLine)}</em>` : (cardLine && a.detail ? `<em>${escapeHtml(cardLine)}</em>` : '')}
+          <span>${escapeHtml(line)}</span>
         </div>
         ${a.card ? `<button class="soft-event-view" data-mobile-inspect-card="${a.card.instanceId}">View</button>` : ''}
         <i class="soft-event-timer" aria-hidden="true"></i>
@@ -1255,9 +1298,24 @@ function renderActiveTable() {
   attachTableSeatHandlers(root);
 }
 
+function mobileStageFallbackHtml(error) {
+  const msg = String(error?.message || error || 'Unknown view issue');
+  return mobileStageShell('render-recovery', 'Table Recovery', 'View hiccuped', `
+    <div class="mobile-wait-card">${assetIconHtml('backup', 'asset-sigil event-sigil')}<span>The game state is still connected. ${escapeHtml(msg)}</span></div>
+    <div class="mobile-center-actions"><button class="primary" onclick="location.reload()">Reload View</button>${recoveryButtonHtml()}</div>
+  `, { size: 'medium', icon: 'backup', sub: 'Refresh the view if the center table looks empty.' });
+}
+
 function renderMobilePlayShell(root) {
   const move = deriveMovement();
-  const stage = mobileStageHtml();
+  let stage = '';
+  try {
+    stage = mobileStageHtml();
+  } catch (err) {
+    console.error('[Loot Goblins mobile stage]', err);
+    stage = mobileStageFallbackHtml(err);
+  }
+  if (!stage || !String(stage).trim()) stage = mobileStageFallbackHtml('No table stage rendered.');
   const phaseClass = `phase-${String(state.phase || 'state').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   root.innerHTML = `<div class="mobile-app-shell ${phaseClass}">
     ${mobilePlayerHudHtml()}

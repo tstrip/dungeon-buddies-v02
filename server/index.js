@@ -17,7 +17,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.8-screen-visual-tightening-v0798' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.9-rejoin-banner-qol-v0799' }));
 app.get('/healthz', (_, res) => res.status(200).send('ok'));
 app.get('/ready', (_, res) => res.status(200).json({ ok: true }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
@@ -399,7 +399,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.9.8-screen-visual-tightening-v0798',
+    version: '0.11.9.9-rejoin-banner-qol-v0799',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -482,6 +482,55 @@ function actionBlockedByTableState(room, player) {
   if (room.tradeOffer) return true;
   return false;
 }
+
+
+function canGainGloryWithoutWasting(player, effect = {}) {
+  const amount = Number(effect.amount || 1);
+  if (amount <= 0) return false;
+  if (Number(player.renown || 0) >= 10) return false;
+  if (effect.canWin === false && Number(player.renown || 0) + amount >= 10) return false;
+  return true;
+}
+
+function specialEffectWouldDoSomething(room, player, card) {
+  const effect = card?.effect || {};
+  if (!effect.type) return { ok: true, reason: 'Play this Special.' };
+  if (effect.type === 'GAIN_RENOWN') {
+    return canGainGloryWithoutWasting(player, effect)
+      ? { ok: true, reason: `Gain ${Number(effect.amount || 1)} Glory.` }
+      : { ok: false, reason: 'This would not change your Glory right now.' };
+  }
+  if (effect.type === 'GAIN_IF_HIGHEST_OR_TIED') {
+    const living = room.players.filter((p) => !p.dead);
+    const high = Math.max(...living.map((p) => Number(p.renown || 0)));
+    if (Number(player.renown || 0) < high) return { ok: false, reason: 'You are not tied for/highest Glory.' };
+    return Number(player.renown || 0) < 10 ? { ok: true, reason: 'Gain 1 Glory while tied/highest.' } : { ok: false, reason: 'You are already at 10 Glory.' };
+  }
+  if (effect.type === 'TRANSFER_RENOWN') {
+    const canGain = effect.canWin === false ? Number(player.renown || 0) + Number(effect.amount || 1) < 10 : Number(player.renown || 0) < 10;
+    const hasTarget = room.players.some((p) => p.id !== player.id && !p.dead && Number(p.renown || 0) > Number(effect.minimum ?? 1));
+    return (canGain && hasTarget) ? { ok: true, reason: 'Steal Glory from another goblin.' } : { ok: false, reason: 'No valid Glory swing right now.' };
+  }
+  if (effect.type === 'DRAW_LOOT') {
+    return (room.lootDeck.length + room.lootDiscard.length) > 0 ? { ok: true, reason: `Draw ${Number(effect.count || 1)} Loot.` } : { ok: false, reason: 'No Loot cards are available.' };
+  }
+  if (effect.type === 'WAND_DOWSING') {
+    return (room.chamberDiscard.length + room.lootDiscard.length) > 0 ? { ok: true, reason: 'Choose from a discard pile.' } : { ok: false, reason: 'No discard cards are available.' };
+  }
+  if (effect.type === 'KILL_HIRELING_GAIN_GLORY') {
+    const hasHelper = room.players.some((p) => !p.dead && littleHelpers(p).length);
+    const canGain = Number(player.renown || 0) < 10;
+    return (hasHelper && canGain) ? { ok: true, reason: 'Dismiss a Little Helper and gain Glory.' } : { ok: false, reason: 'No Little Helper/Glory gain available.' };
+  }
+  if (effect.type === 'ADD_EXTRA_CALLING_SLOT') {
+    return player.role ? { ok: true, reason: 'Attach to your Calling.' } : { ok: false, reason: 'You need a Calling first.' };
+  }
+  if (effect.type === 'ADD_EXTRA_KIN_SLOT') {
+    return player.origin ? { ok: true, reason: 'Attach to your Kin.' } : { ok: false, reason: 'You need a Kin first.' };
+  }
+  return { ok: true, reason: 'Play this Special.' };
+}
+
 
 function legalReactionActionsForCard(room, player, card) {
   const actions = [];
@@ -589,6 +638,20 @@ function legalCardActionsForCard(room, player, card) {
     const canPlayPostCombatWin = timing.includes('POST_COMBAT_WIN') && room.phase === 'POST_COMBAT' && isActive && room.lastCombatWonThisTurn;
     if (!canPlayAny && !canPlayCombat && !canPlayOwnTurn && !canPlayPostCombatWin) return actions;
 
+    const impact = specialEffectWouldDoSomething(room, player, card);
+    if (!impact.ok) return actions;
+
+    if (['GAIN_RENOWN','GAIN_IF_HIGHEST_OR_TIED','DRAW_LOOT','WAND_DOWSING','KILL_HIRELING_GAIN_GLORY','TRANSFER_RENOWN'].includes(card.effect?.type)) {
+      if (card.effect?.type === 'TRANSFER_RENOWN') {
+        for (const p of room.players.filter((p) => p.id !== player.id && !p.dead && Number(p.renown || 0) > Number(card.effect.minimum ?? 1))) {
+          actions.push(legalCardAction(`Steal from ${p.name}`, 'PLAY_CARD', { cardId: card.instanceId, targetPlayerId: p.id }, 'primary', impact.reason));
+        }
+      } else {
+        actions.push(legalCardAction(`Play ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', impact.reason));
+      }
+      return actions;
+    }
+
     if (card.effect?.type === 'ADD_FOE_FROM_HAND') {
       const hasFoe = player.hand.some((c) => c.type === 'THREAT');
       if (room.phase === 'COMBAT' && hasFoe) actions.push(legalCardAction('Use Unexpected Company', 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Choose a Foe from hand to add to combat.'));
@@ -602,10 +665,6 @@ function legalCardActionsForCard(room, player, card) {
       if (player.origin) actions.push(legalCardAction(`Attach ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Attach to your Kin.'));
       return actions;
     }
-    if (card.id === 'SPECIAL_STEAL_LEVEL') {
-      for (const p of room.players.filter((p) => p.id !== player.id && !p.dead)) actions.push(legalCardAction(`Steal from ${p.name}`, 'PLAY_CARD', { cardId: card.instanceId, targetPlayerId: p.id }, 'primary', 'Target this player.'));
-      return actions;
-    }
     if (card.id === 'SPECIAL_TRANSFERRAL' && room.phase === 'COMBAT') {
       for (const p of room.players.filter((p) => p.id !== player.id && p.id !== room.combat?.activePlayerId && !p.dead)) actions.push(legalCardAction(`Transfer to ${p.name}`, 'PLAY_CARD', { cardId: card.instanceId, targetPlayerId: p.id }, 'primary', 'Transfer this combat.'));
       return actions;
@@ -615,7 +674,7 @@ function legalCardActionsForCard(room, player, card) {
       for (const foe of room.combat.threats) actions.push(legalCardAction(`${verb} ${foe.publicName}`, 'PLAY_CARD', { cardId: card.instanceId, targetFoeInstanceId: foe.instanceId }, 'primary', `${verb} this Foe.`));
       return actions;
     }
-    actions.push(legalCardAction(`Play ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', 'Play this Special.'));
+    actions.push(legalCardAction(`Play ${card.publicName}`, 'PLAY_CARD', { cardId: card.instanceId }, 'primary', impact.reason || 'Play this Special.'));
     return actions;
   }
 
@@ -2594,7 +2653,7 @@ function reattachExistingPlayer(room, player, socket, reason = 'rejoined') {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.9.8-screen-visual-tightening-v0798' });
+  socket.emit('ready', { version: '0.11.9.9-rejoin-banner-qol-v0799' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(displayPlayerName(name), socket);
@@ -3856,5 +3915,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Loot Goblins v0.7.9.8 listening on http://${HOST}:${PORT}`);
+  console.log(`Loot Goblins v0.7.9.9 listening on http://${HOST}:${PORT}`);
 });
