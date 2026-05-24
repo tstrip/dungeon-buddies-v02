@@ -17,7 +17,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.12.0.1-remove-combat-status-banner-v07101' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.12.1-reliability-gauntlet-v0711' }));
 app.get('/healthz', (_, res) => res.status(200).send('ok'));
 app.get('/ready', (_, res) => res.status(200).json({ ok: true }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
@@ -399,7 +399,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.12.0.1-remove-combat-status-banner-v07101',
+    version: '0.12.1-reliability-gauntlet-v0711',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -1043,7 +1043,213 @@ function serializeBodyLoot(room, viewerId) {
   };
 }
 
+
+
+function repairTradeState(room) {
+  const trade = room.tradeOffer;
+  if (!trade) return false;
+  const from = getPlayer(room, trade.fromPlayerId);
+  const to = getPlayer(room, trade.toPlayerId);
+  if (!from || !to || from.dead || to.dead) {
+    const names = [from?.name, to?.name].filter(Boolean).join(' and ') || 'The traders';
+    room.tradeOffer = null;
+    announce(room, 'trade', 'Trade Closed', `${names} could not finish the trade, so the table cleared it safely.`, null, { importance: 'minor', requiresAck: false });
+    return true;
+  }
+
+  trade.offers = trade.offers || { [from.id]: [], [to.id]: [] };
+  let changed = false;
+  for (const p of [from, to]) {
+    const valid = availableTradeCardMap(p);
+    const before = trade.offers[p.id] || [];
+    const after = before.filter((id) => valid.has(id));
+    if (after.length !== before.length) {
+      trade.offers[p.id] = after;
+      changed = true;
+    }
+  }
+  if (changed) {
+    resetTradeCommitment(trade, null);
+    announce(room, 'trade', 'Trade Offer Updated', 'A traded card was no longer available, so the offer was cleaned up.', null, { importance: 'minor', requiresAck: false });
+  }
+  return changed;
+}
+
+function repairPromptState(room) {
+  const prompt = room.pendingPrompt;
+  if (!prompt) return false;
+  const actor = getPlayer(room, prompt.playerId);
+  const after = prompt.meta?.after || 'CONTINUE';
+
+  if (!actor) {
+    room.pendingPrompt = null;
+    announce(room, 'prompt', 'Choice Cleared', 'A missing player had a choice, so the table moved on.', null, { importance: 'minor', requiresAck: false });
+    continueAfterPrompt(room, after);
+    return true;
+  }
+
+  if (actor.dead && prompt.type !== 'LOOT_BODY') {
+    room.pendingPrompt = null;
+    announce(room, 'death', 'Choice Cleared', `${actor.name} is down, so their old choice was cleared.`, null, { importance: 'minor', requiresAck: false });
+    continueAfterPrompt(room, after);
+    return true;
+  }
+
+  if (prompt.type === 'LOOT_BODY') {
+    const loot = room.bodyLoot;
+    if (!loot || prompt.meta?.bodyLootId !== loot.id || !(loot.cards || []).length) {
+      room.pendingPrompt = null;
+      finishBodyLooting(room);
+      return true;
+    }
+    if (loot.currentLooterId && loot.currentLooterId !== prompt.playerId) {
+      prompt.playerId = loot.currentLooterId;
+      return true;
+    }
+  }
+
+  if (promptTypeNeedsOptions(prompt.type) && !(prompt.options || []).length) {
+    safeCreatePromptSkip(room, prompt);
+    return true;
+  }
+
+  if (prompt.type === 'SELL_GEAR') {
+    const options = ownedGearOptions(actor);
+    const oldLen = (prompt.options || []).length;
+    prompt.options = options;
+    if (!options.length) {
+      room.pendingPrompt = null;
+      continueAfterPrompt(room, after);
+      return true;
+    }
+    return options.length !== oldLen;
+  }
+
+  return false;
+}
+
+function repairPendingHexState(room) {
+  if (!room.pendingHex) return false;
+  const pending = room.pendingHex;
+  const target = getPlayer(room, pending.targetPlayerId);
+  if (!target || target.dead) {
+    const card = pending.card;
+    room.pendingHex = null;
+    if (card) discardCard(room, card);
+    announce(room, 'hex', 'Hex Skipped', 'The Hex target was no longer available, so the table moved on.', card || null, { importance: 'minor', requiresAck: false });
+    continueAfterPrompt(room, pending.after || 'TO_NO_THREAT_CHOICE');
+    return true;
+  }
+  return false;
+}
+
+function repairCombatState(room) {
+  if (room.phase !== 'COMBAT' || !room.combat) return false;
+  const combat = room.combat;
+  const active = getPlayer(room, combat.activePlayerId);
+  if (!active || active.dead) {
+    announce(room, 'combat', 'Fight Cleared', 'The fighter was no longer available, so the fight was cleared safely.', null, { importance: 'minor', requiresAck: false });
+    cleanupCombatToDiscard(room);
+    moveToTributeOrEnd(room);
+    return true;
+  }
+
+  if (!(combat.threats || []).length) {
+    announce(room, 'combat', 'No Foe Left', 'There was no Foe left in the fight, so combat ended safely.', null, { importance: 'minor', requiresAck: false });
+    cleanupCombatToDiscard(room);
+    moveToPostCombat(room);
+    return true;
+  }
+
+  combat.passes = combat.passes || {};
+  let changed = false;
+  for (const p of room.players) {
+    if (combat.passes[p.id] === undefined) {
+      combat.passes[p.id] = Boolean(p.dead);
+      changed = true;
+    }
+  }
+  if (allCombatPlayersPassed(room) && !combat.resolving) {
+    resolveCombat(room);
+    return true;
+  }
+  return changed;
+}
+
+function repairEscapeState(room) {
+  if (room.phase !== 'ESCAPE') return false;
+  if (!room.escape) {
+    cleanupCombatToDiscard(room);
+    moveToPostCombat(room);
+    return true;
+  }
+  const queue = (room.escape.queue || []).filter((q) => {
+    const p = getPlayer(room, q.playerId);
+    return p && q.threat;
+  });
+  if (!queue.length) {
+    cleanupCombatToDiscard(room);
+    moveToPostCombat(room);
+    return true;
+  }
+  if (queue.length !== room.escape.queue.length) {
+    room.escape.queue = queue;
+    room.escape.index = Math.min(Number(room.escape.index || 0), queue.length - 1);
+  }
+  if (room.escape.index >= queue.length) {
+    continueFlee(room);
+    return true;
+  }
+  const current = queue[room.escape.index];
+  if (room.escape.currentPlayerId !== current.playerId || room.escape.threat?.instanceId !== current.threat?.instanceId) {
+    room.escape.currentPlayerId = current.playerId;
+    room.escape.threat = current.threat;
+    room.escape.awaitingContinue = false;
+    return true;
+  }
+  return false;
+}
+
+function repairTurnState(room) {
+  if (!['START_TURN', 'NO_THREAT_CHOICE', 'POST_COMBAT', 'TRIBUTE', 'END_TURN'].includes(room.phase)) return false;
+  const active = getActive(room);
+  if (!active) return false;
+  if (active.dead && room.phase !== 'START_TURN') {
+    room.phase = 'END_TURN';
+    return true;
+  }
+  if (active.dead && room.phase === 'START_TURN') {
+    reviveDeadPlayer(room, active);
+    return true;
+  }
+  if (room.phase === 'TRIBUTE' && active.hand.length <= handLimit(active)) {
+    room.phase = 'END_TURN';
+    return true;
+  }
+  return false;
+}
+
+function repairRoomState(room, reason = 'tick') {
+  if (!room || room.status === 'GAME_OVER' || room._repairing) return false;
+  room._repairing = true;
+  let changed = false;
+  try {
+    changed = repairTradeState(room) || changed;
+    changed = repairPendingHexState(room) || changed;
+    changed = repairPromptState(room) || changed;
+    changed = repairCombatState(room) || changed;
+    changed = repairEscapeState(room) || changed;
+    changed = repairTurnState(room) || changed;
+    if (changed) log(room, `Table auto-repaired during ${reason}.`);
+  } finally {
+    room._repairing = false;
+  }
+  return changed;
+}
+
+
 function broadcast(room) {
+  repairRoomState(room, 'broadcast');
   for (const p of room.players) {
     if (!p.socketId) continue;
     const socket = io.sockets.sockets.get(p.socketId);
@@ -1993,6 +2199,7 @@ function startDeathLooting(room, victim, sourceCard, context = {}) {
     looterIds: ordered.map((p) => p.id),
     looterNames: ordered.map((p) => p.name),
     index: 0,
+    currentLooterId: ordered[0]?.id || null,
     after: context.after || 'CONTINUE_ESCAPE',
     sourceCard: sourceCard ? publicCard(sourceCard) : null
   };
@@ -2031,6 +2238,7 @@ function promptNextBodyLooter(room) {
   while (attempts < ids.length) {
     const looter = getPlayer(room, ids[loot.index]);
     if (looter && !looter.dead) {
+      loot.currentLooterId = looter.id;
       const victim = getPlayer(room, loot.victimId);
       createPrompt(room, {
         type: 'LOOT_BODY',
@@ -2527,6 +2735,8 @@ function drawLootWithBackupDeal(room, active, helper, lootCount) {
 }
 
 function resolveCombat(room) {
+  if (!room.combat || room.combat.resolving) return;
+  room.combat.resolving = true;
   const totals = combatTotals(room);
   const active = getPlayer(room, room.combat.activePlayerId);
   const helper = room.combat.helperPlayerId ? getPlayer(room, room.combat.helperPlayerId) : null;
@@ -2650,7 +2860,8 @@ function rollFlee(room, player) {
 }
 
 function allCombatPlayersPassed(room) {
-  return room.players.every((p) => room.combat.passes[p.id]);
+  if (!room.combat) return false;
+  return room.players.every((p) => p.dead || room.combat.passes?.[p.id]);
 }
 
 function makeRoom(hostName, socket) {
@@ -2785,7 +2996,7 @@ function reattachExistingPlayer(room, player, socket, reason = 'rejoined') {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.12.0.1-remove-combat-status-banner-v07101' });
+  socket.emit('ready', { version: '0.12.1-reliability-gauntlet-v0711' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(displayPlayerName(name), socket);
@@ -2835,7 +3046,9 @@ socket.on('action', (payload = {}) => {
     const player = room && getPlayer(room, socket.data.playerId);
     if (!room || !player) return emitError(socket, 'You are not in a room.');
     try {
+      repairRoomState(room, 'before action');
       handleAction(socket, room, player, payload);
+      repairRoomState(room, 'after action');
       broadcast(room);
     } catch (err) {
       console.error(err);
@@ -2863,6 +3076,7 @@ function handleAction(socket, room, player, payload) {
   if (player.dead && !['RESOLVE_PROMPT', 'PASS_REACTION', 'RESOLVE_HEX', 'MARK_CARD_SEEN', 'CANCEL_TRADE', 'TRADE_SET_OFFER', 'TRADE_READY', 'TRADE_CONFIRM', 'TRADE_CLEAR_OFFER'].includes(type)) return emitError(socket, 'You are down. You return on your next turn.');
 
   if (type === 'RECOVER_TABLE') {
+    if (repairRoomState(room, 'manual recover')) return;
     const isHost = room.players[0]?.id === player.id;
     const isActive = activeId(room) === player.id;
     if (!isHost && !isActive) return emitError(socket, 'Only the host or active goblin can recover the table.');
@@ -3104,6 +3318,7 @@ function handleAction(socket, room, player, payload) {
     trade.offers = trade.offers || {};
     trade.offers[player.id] = ids;
     resetTradeCommitment(trade, player.id);
+    trade.updatedAt = Date.now();
     return;
   }
 
@@ -3113,6 +3328,7 @@ function handleAction(socket, room, player, payload) {
     trade.offers = trade.offers || {};
     trade.offers[player.id] = [];
     resetTradeCommitment(trade, player.id);
+    trade.updatedAt = Date.now();
     return;
   }
 
@@ -4054,5 +4270,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Loot Goblins v0.7.10.1 listening on http://${HOST}:${PORT}`);
+  console.log(`Loot Goblins v0.7.11 listening on http://${HOST}:${PORT}`);
 });

@@ -1473,7 +1473,7 @@ function mobileCombatActionDockHtml() {
   const requiresYou = (c.waitingPlayerIds || []).includes(you?.id);
   const passed = Boolean(c.passes?.[you?.id]);
 
-  // v0.7.10.1: the previous dock created a fake-feeling banner like
+  // v0.7.11: the previous dock created a fake-feeling banner like
   // “Tied — Foe wins / Everyone ready.” The fight outcome already lives
   // in the combat board, so this dock only appears when YOU have a quick
   // action available, and it never repeats the outcome/status text.
