@@ -11606,3 +11606,22 @@ textarea {
 .trade-table-actions .recovery-button {
   display: none !important;
 }
+
+
+/* Loot Goblins v0.7.10 — Rules + Card Legality Audit */
+.no-effect-reason,
+.action-list .micro {
+  color: rgba(255,246,214,.68);
+}
+
+button[disabled],
+button.disabled,
+.drawer-decision-actions button[disabled] {
+  opacity: .45 !important;
+  filter: grayscale(.18);
+  pointer-events: none;
+}
+
+.rules-audit-badge {
+  border-color: rgba(123,236,178,.36);
+}

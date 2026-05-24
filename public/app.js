@@ -1403,12 +1403,25 @@ function renderMobilePlayShell(root) {
   root.querySelectorAll('[data-mobile-trade-accept]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { accept: true })));
   root.querySelectorAll('[data-mobile-trade-decline]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { decline: true })));
   const mobileSellSelected = new Set();
+  function updateMobileSellConfirm() {
+    const cards = state?.pendingPrompt?.options || [];
+    const byId = new Map(cards.map((c) => [c.instanceId, c]));
+    const values = [...mobileSellSelected].map((id) => Number(byId.get(id)?.junkValue ?? byId.get(id)?.scrapValue ?? 0)).filter((v) => Number.isFinite(v));
+    let total = values.reduce((sum, v) => sum + v, 0);
+    const you = me();
+    if (you?.origin?.mechanicalSlot === 'HALFLING_EQUIV' && !you.usedHalfstepSale && values.length) total += Math.max(...values);
+    const threshold = Number(state?.pendingPrompt?.meta?.effect?.threshold || 1000);
+    const confirm = root.querySelector('[data-mobile-sell-confirm]');
+    const label = root.querySelector('[data-mobile-sell-total]');
+    if (label) label.textContent = `Selected ${total}/${threshold} Junk`;
+    if (confirm) confirm.disabled = total < threshold;
+  }
   root.querySelectorAll('[data-mobile-sell-card]').forEach((btn) => btn.addEventListener('click', () => {
     if (mobileSellSelected.has(btn.dataset.mobileSellCard)) { mobileSellSelected.delete(btn.dataset.mobileSellCard); btn.classList.remove('selected'); }
     else { mobileSellSelected.add(btn.dataset.mobileSellCard); btn.classList.add('selected'); }
-    const confirm = root.querySelector('[data-mobile-sell-confirm]');
-    if (confirm) confirm.disabled = mobileSellSelected.size === 0;
+    updateMobileSellConfirm();
   }));
+  updateMobileSellConfirm();
   root.querySelectorAll('[data-mobile-sell-confirm]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cardIds: [...mobileSellSelected] })));
   root.querySelectorAll('[data-mobile-prompt-cancel]').forEach((btn) => btn.addEventListener('click', () => emitAction('RESOLVE_PROMPT', { cancel: true })));
 
@@ -2015,7 +2028,7 @@ function promptObserverSummary(prompt) {
     icon: 'trade',
     kicker: 'Trade',
     title: `${actor} is making an offer`,
-    text: 'They are choosing cards for a trade offer.',
+    text: 'They are choosing cards for a private trade offer.',
     status: 'Waiting on the offer.'
   };
   if (type === 'TRADE_ACCEPT') return {
@@ -2023,7 +2036,7 @@ function promptObserverSummary(prompt) {
     icon: 'trade',
     kicker: 'Trade',
     title: `${actor} is reviewing a trade`,
-    text: 'They can accept or decline the offer.',
+    text: 'They can accept or decline the private offer.',
     status: 'Waiting on their answer.'
   };
   if (type === 'LOOT_BODY') return {
@@ -3243,13 +3256,13 @@ function cardActions(card) {
 
 function whyNotPlayable(card) {
   if (!ownsVisibleCard(card)) return 'You are viewing this card publicly.';
-  if (state.pendingPrompt) return 'Resolve the current prompt first.';
-  if (state.pendingHex) return 'Resolve the revealed Hex first.';
+  if (state.pendingPrompt) return 'Finish the current choice first.';
+  if (state.pendingHex) return 'Take the revealed Hex hit first.';
   if (state.reaction) return 'Only matching reaction cards can be used right now.';
   if (card.type === 'THREAT') return 'Foes need the correct window: Start Trouble after no Foe appears, Restless combat, or Unexpected Company.';
   if (card.type === 'TRICK') return 'This Trick is waiting for its timing window.';
   if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only be played during combat.';
-  return 'The server says this card has no legal action right now.';
+  return 'This card has no useful action right now.';
 }
 
 function closeInspect() { $('inspectOverlay').classList.add('hidden'); }

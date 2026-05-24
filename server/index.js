@@ -17,7 +17,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.11.9.11-observer-choice-hotfix-v07911' }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, version: '0.12.0-rules-card-legality-v0710' }));
 app.get('/healthz', (_, res) => res.status(200).send('ok'));
 app.get('/ready', (_, res) => res.status(200).json({ ok: true }));
 app.get('/parity', (_, res) => res.json(buildParityReport(chamberCards, lootCards)));
@@ -180,7 +180,7 @@ function describeBadNews(threat) {
   if (e.type === 'LAWYERS_BAD_NEWS') return 'Legal trouble hits. Follow the card’s Bad News exactly.';
   if (e.type === 'DISCARD_OWNED_CARDS') return `Discard ${e.count || 1} owned card${(e.count || 1) === 1 ? '' : 's'}.`;
   if (e.type === 'DEATH') return 'Death. Loot the body.';
-  if (e.type === 'BAD_NEWS_CHOICE' || e.type === 'CHOOSE_BAD_NEWS_OPTION') return 'Choose how the Bad News hits you.';
+  if (e.type === 'BAD_NEWS_CHOICE' || e.type === 'CHOOSE_BAD_NEWS_OPTION') return `Choose: discard your hand or lose ${e.amount || 2} Glory.`;
   return String(e.type).replaceAll('_', ' ').toLowerCase();
 }
 
@@ -399,7 +399,7 @@ function serializeRoom(room, viewerId) {
   const active = getActive(room);
   const viewer = getPlayer(room, viewerId);
   return {
-    version: '0.11.9.11-observer-choice-hotfix-v07911',
+    version: '0.12.0-rules-card-legality-v0710',
     code: room.code,
     status: room.status,
     phase: room.phase,
@@ -456,6 +456,47 @@ function legalCardAction(label, type, payload = {}, style = '', reason = '') {
   };
 }
 
+function legalPayloadMatches(requested = {}, legal = {}) {
+  const legalPayload = legal.payload || {};
+  const checkKeys = ['cardId', 'mode', 'side', 'targetPlayerId', 'targetFoeInstanceId'];
+  for (const key of checkKeys) {
+    if (legalPayload[key] !== undefined && String(requested[key] ?? '') !== String(legalPayload[key])) return false;
+  }
+  for (const key of checkKeys.filter((k) => k !== 'cardId')) {
+    if (requested[key] !== undefined && legalPayload[key] === undefined) return false;
+  }
+  return true;
+}
+
+function cardActionUnavailableReason(room, player, card) {
+  if (!card) return 'Card not found.';
+  if (room.pendingPrompt) return 'Finish the current choice first.';
+  if (room.pendingHex) return 'Take the revealed Hex hit first.';
+  if (room.reaction) return 'A reaction window is open.';
+  if (player.dead) return 'You are down until your next turn.';
+  if (card.type === 'SPECIAL') {
+    const impact = specialEffectWouldDoSomething(room, player, card);
+    if (!impact.ok) return impact.reason;
+  }
+  if (card.type === 'GEAR' && room.phase === 'COMBAT') return 'Gear is played before or after combat, not during combat.';
+  if (card.type === 'THREAT' && room.phase === 'COMBAT') return 'Foes need a card effect before they can join combat.';
+  if (card.type === 'TRICK') return 'This Trick is not in its timing window.';
+  if (card.type === 'THREAT_MODIFIER') return 'Foe Modifiers can only attach during combat.';
+  if (!canActOutsideCombat(room) && ['ROLE','ORIGIN','GEAR'].includes(card.type)) return 'Use this on your turn outside combat.';
+  return 'That card is not playable right now.';
+}
+
+function assertLegalPlayCardAction(room, player, card, payload = {}) {
+  // In-hand cards must match the server-published legal action list.
+  // Carried/equipped Gear movement is still guarded inside playCard because those actions are not hand-card buttons.
+  const inHand = player.hand?.some((c) => c.instanceId === card.instanceId);
+  if (!inHand) return { ok: true };
+  const legal = legalCardActionsForCard(room, player, card).filter((a) => a.type === 'PLAY_CARD');
+  if (legal.some((a) => legalPayloadMatches(payload, a))) return { ok: true };
+  return { ok: false, reason: cardActionUnavailableReason(room, player, card) };
+}
+
+
 function publicCardForViewer(room, player, card) {
   const c = publicCard(card);
   if (!c) return c;
@@ -492,45 +533,126 @@ function canGainGloryWithoutWasting(player, effect = {}) {
   return true;
 }
 
+function canSellGearForUsefulGlory(player, effect = {}) {
+  const available = ownedGearOptions(player);
+  if (!available.length) return { ok: false, reason: 'No Gear to sell.' };
+  const threshold = Number(effect.threshold || 1000);
+  const total = available.reduce((sum, c) => sum + gearJunkValue(c), 0);
+  const halfstepBonus = player.origin?.mechanicalSlot === 'HALFLING_EQUIV' && !player.usedHalfstepSale
+    ? Math.max(0, ...available.map(gearJunkValue))
+    : 0;
+  const possible = total + halfstepBonus;
+  const rawGlory = Math.floor(possible / threshold);
+  const cap = effect.canWin ? 10 : 9;
+  const usefulGlory = Math.max(0, Math.min(cap, Number(player.renown || 0) + rawGlory) - Number(player.renown || 0));
+  if (rawGlory <= 0) return { ok: false, reason: `Need ${threshold} Junk Value before selling.` };
+  if (usefulGlory <= 0) return { ok: false, reason: 'Selling cannot change your Glory right now.' };
+  return { ok: true, reason: `Sell Gear for up to +${usefulGlory} Glory.` };
+}
+
+function canModifyCombatWithEffect(room, effect = {}) {
+  if (!room.combat || room.phase !== 'COMBAT') return { ok: false, reason: 'Use during combat.' };
+  const amount = Number(effect.amount || effect.strengthDelta || 0);
+  if (!amount && effect.type === 'MODIFY_COMBAT_TOTAL') return { ok: false, reason: 'This would not change combat.' };
+  return { ok: true, reason: 'Changes combat math.' };
+}
+
 function specialEffectWouldDoSomething(room, player, card) {
   const effect = card?.effect || {};
   if (!effect.type) return { ok: true, reason: 'Play this Special.' };
+
   if (effect.type === 'GAIN_RENOWN') {
     return canGainGloryWithoutWasting(player, effect)
       ? { ok: true, reason: `Gain ${Number(effect.amount || 1)} Glory.` }
       : { ok: false, reason: 'This would not change your Glory right now.' };
   }
+
   if (effect.type === 'GAIN_IF_HIGHEST_OR_TIED') {
     const living = room.players.filter((p) => !p.dead);
     const high = Math.max(...living.map((p) => Number(p.renown || 0)));
     if (Number(player.renown || 0) < high) return { ok: false, reason: 'You are not tied for/highest Glory.' };
     return Number(player.renown || 0) < 10 ? { ok: true, reason: 'Gain 1 Glory while tied/highest.' } : { ok: false, reason: 'You are already at 10 Glory.' };
   }
+
   if (effect.type === 'TRANSFER_RENOWN') {
     const canGain = effect.canWin === false ? Number(player.renown || 0) + Number(effect.amount || 1) < 10 : Number(player.renown || 0) < 10;
     const hasTarget = room.players.some((p) => p.id !== player.id && !p.dead && Number(p.renown || 0) > Number(effect.minimum ?? 1));
     return (canGain && hasTarget) ? { ok: true, reason: 'Steal Glory from another goblin.' } : { ok: false, reason: 'No valid Glory swing right now.' };
   }
+
   if (effect.type === 'DRAW_LOOT') {
     return (room.lootDeck.length + room.lootDiscard.length) > 0 ? { ok: true, reason: `Draw ${Number(effect.count || 1)} Loot.` } : { ok: false, reason: 'No Loot cards are available.' };
   }
+
+  if (effect.type === 'DRAW_CHAMBER') {
+    return (room.chamberDeck.length + room.chamberDiscard.length) > 0 ? { ok: true, reason: `Draw ${Number(effect.count || 1)} Chamber.` } : { ok: false, reason: 'No Chamber cards are available.' };
+  }
+
+  if (effect.type === 'SELL_GEAR_FOR_RENOWN') return canSellGearForUsefulGlory(player, effect);
+
   if (effect.type === 'WAND_DOWSING') {
     return (room.chamberDiscard.length + room.lootDiscard.length) > 0 ? { ok: true, reason: 'Choose from a discard pile.' } : { ok: false, reason: 'No discard cards are available.' };
   }
+
   if (effect.type === 'KILL_HIRELING_GAIN_GLORY') {
     const hasHelper = room.players.some((p) => !p.dead && littleHelpers(p).length);
     const canGain = Number(player.renown || 0) < 10;
     return (hasHelper && canGain) ? { ok: true, reason: 'Dismiss a Little Helper and gain Glory.' } : { ok: false, reason: 'No Little Helper/Glory gain available.' };
   }
+
   if (effect.type === 'ADD_EXTRA_CALLING_SLOT') {
     return player.role ? { ok: true, reason: 'Attach to your Calling.' } : { ok: false, reason: 'You need a Calling first.' };
   }
+
   if (effect.type === 'ADD_EXTRA_KIN_SLOT') {
     return player.origin ? { ok: true, reason: 'Attach to your Kin.' } : { ok: false, reason: 'You need a Kin first.' };
   }
+
+  if (effect.type === 'CHEAT_GEAR') {
+    return allOwnedCards(player).some((c) => c.type === 'GEAR') ? { ok: true, reason: 'Legalize one Gear.' } : { ok: false, reason: 'You need Gear first.' };
+  }
+
+  if (effect.type === 'ADD_FOE_FROM_HAND') {
+    return (room.phase === 'COMBAT' && room.combat && player.hand.some((c) => c.type === 'THREAT'))
+      ? { ok: true, reason: 'Choose a Foe from hand to add to combat.' }
+      : { ok: false, reason: 'You need combat and a Foe in hand.' };
+  }
+
+  if (effect.type === 'ADD_MATCHING_FOE') {
+    return (room.phase === 'COMBAT' && room.combat?.threats?.length)
+      ? { ok: true, reason: 'Copy a Foe in combat.' }
+      : { ok: false, reason: 'There is no Foe to copy.' };
+  }
+
+  if (['REMOVE_FOE_LOOT_ONLY','OUT_TO_LUNCH','FRIENDSHIP_END','DOPPELGANGER'].includes(effect.type)) {
+    if (room.phase !== 'COMBAT' || !room.combat?.threats?.length) return { ok: false, reason: 'Use during combat with a Foe.' };
+    if (effect.type === 'DOPPELGANGER' && room.combat.helperPlayerId) return { ok: false, reason: 'Doppelgoblin only works with no Backup.' };
+    return { ok: true, reason: 'Changes the current combat.' };
+  }
+
+  if (effect.type === 'ILLUSION_SWAP') {
+    return (room.phase === 'COMBAT' && room.combat?.threats?.length && player.hand.some((c) => c.type === 'THREAT'))
+      ? { ok: true, reason: 'Swap the current Foe with one from hand.' }
+      : { ok: false, reason: 'You need combat and a Foe in hand.' };
+  }
+
+  if (effect.type === 'MODIFY_COMBAT_TOTAL') return canModifyCombatWithEffect(room, effect);
+
+  if (effect.type === 'AUTO_ESCAPE' || effect.type === 'MODIFY_ESCAPE_ROLL') {
+    if (room.phase === 'ESCAPE' && room.escape?.currentPlayerId === player.id && !room.escape.awaitingContinue) return { ok: true, reason: 'Use before the Flee roll.' };
+    // Some cards intentionally store a future Flee effect outside the roll screen.
+    if ((card.timing || []).includes('OWN_TURN_OUTSIDE_COMBAT') && canActOutsideCombat(room) && activeId(room) === player.id) return { ok: true, reason: 'Prepare for your next Flee.' };
+    return { ok: false, reason: 'Use before a Flee roll.' };
+  }
+
+  if (effect.type === 'TRANSFER_COMBAT') {
+    return (room.phase === 'COMBAT' && room.combat && room.players.some((p) => p.id !== player.id && p.id !== room.combat.activePlayerId && !p.dead))
+      ? { ok: true, reason: 'Transfer this combat to another goblin.' }
+      : { ok: false, reason: 'No valid combat transfer target.' };
+  }
+
   return { ok: true, reason: 'Play this Special.' };
 }
-
 
 function legalReactionActionsForCard(room, player, card) {
   const actions = [];
@@ -561,6 +683,7 @@ function legalCardActionsForCard(room, player, card) {
 
   const isActive = activeId(room) === player.id;
   const outsideCombatOwnTurn = canActOutsideCombat(room) && isActive;
+  if (room.phase === 'COMBAT' && room.combat?.passes?.[player.id]) return actions;
 
   if (card.type === 'ROLE') {
     if (outsideCombatOwnTurn && !callingCards(player).some((r) => r.id === card.id)) {
@@ -581,7 +704,8 @@ function legalCardActionsForCard(room, player, card) {
     if (!validateGearEquip(player, card)) actions.push(legalCardAction('Equip', 'PLAY_CARD', { cardId: card.instanceId, mode: 'EQUIP' }, 'primary', 'Equip this Gear.'));
     const combinedHeavy = heavyCount(player) + (card.isHeavy ? 1 : 0);
     if (combinedHeavy <= heavyLimit(player)) actions.push(legalCardAction('Carry', 'PLAY_CARD', { cardId: card.instanceId, mode: 'CARRY' }, '', 'Carry this Gear without equipping it.'));
-    actions.push(legalCardAction('Open Sell Drawer', 'SELL_GEAR', {}, '', 'Choose enough Gear to total at least 1000 Junk.'));
+    const sellImpact = canSellGearForUsefulGlory(player, { threshold: 1000, canWin: false });
+    if (sellImpact.ok) actions.push(legalCardAction('Open Sell Drawer', 'SELL_GEAR', {}, '', sellImpact.reason));
     if (card.id !== 'GEAR_HIRELING' && hasLittleHelperWithCapacity(player)) actions.push(legalCardAction('Give to Little Helper', 'ASSIGN_HIRELING_GEAR', { cardId: card.instanceId }, '', 'Assign this Gear to your Little Helper.'));
     return actions;
   }
@@ -604,6 +728,7 @@ function legalCardActionsForCard(room, player, card) {
     if (room.phase !== 'COMBAT' || !room.combat || !(card.timing || []).includes('DURING_COMBAT')) return actions;
     if (card.effect?.type === 'MODIFY_COMBAT_TOTAL') {
       const amt = Number(card.effect.amount || 0);
+      if (!amt) return actions;
       actions.push(legalCardAction(`${amt >= 0 ? 'Buff' : 'Nerf'} Player Side ${amt >= 0 ? '+' : ''}${amt}`, 'PLAY_CARD', { cardId: card.instanceId, side: 'PLAYER' }, 'primary', 'Apply this Trick to the player side.'));
       actions.push(legalCardAction(`${amt >= 0 ? 'Buff' : 'Nerf'} Foe Side ${amt >= 0 ? '+' : ''}${amt}`, 'PLAY_CARD', { cardId: card.instanceId, side: 'THREAT' }, '', 'Apply this Trick to the Foe side.'));
     } else {
@@ -614,6 +739,7 @@ function legalCardActionsForCard(room, player, card) {
 
   if (card.type === 'THREAT_MODIFIER') {
     if (room.phase !== 'COMBAT' || !room.combat?.threats?.length) return actions;
+    if (!Number(card.strengthDelta || 0) && !Number(card.lootDelta || 0)) return actions;
     if (room.combat.threats.length > 1) {
       for (const foe of room.combat.threats) actions.push(legalCardAction(`Attach to ${foe.publicName}`, 'PLAY_CARD', { cardId: card.instanceId, targetFoeInstanceId: foe.instanceId }, 'primary', 'Modify this Foe.'));
     } else {
@@ -752,6 +878,7 @@ function serializeTradeOffer(room, viewerId) {
     out.changedByName = t.changedByPlayerId ? (getPlayer(room, t.changedByPlayerId)?.name || 'A player') : null;
   } else {
     out.summary = `${from?.name || 'Player'} and ${to?.name || 'Player'} are trading.`;
+    out.privateToParticipants = true;
   }
 
   return out;
@@ -1434,7 +1561,9 @@ function applyEffect(room, player, effect, sourceCard, context = {}) {
     case 'TRANSFER_RENOWN': {
       const target = getPlayer(room, context.targetPlayerId);
       if (!target || target.id === player.id) {
-        createPrompt(room, { type: 'CHOOSE_PLAYER', playerId: player.id, message: `${sourceCard?.publicName || 'This card'}: choose a player to steal Glory from.`, options: room.players.filter((p) => p.id !== player.id), meta: { effect, sourceCard, after: context.after || 'TO_TRIBUTE_OR_END' } });
+        const options = room.players.filter((p) => p.id !== player.id && !p.dead && Number(p.renown || 0) > Number(effect.minimum ?? 1));
+        if (!options.length) { announce(room, 'effect', 'No Stealable Glory', `No goblin had stealable Glory.`, sourceCard, { importance: 'normal' }); return true; }
+        createPrompt(room, { type: 'CHOOSE_PLAYER', playerId: player.id, message: `${sourceCard?.publicName || 'This card'}: choose a player to steal Glory from.`, options, meta: { effect, sourceCard, after: context.after || 'TO_TRIBUTE_OR_END' } });
         return false;
       }
       if (target.renown <= (effect.minimum ?? 1)) {
@@ -2169,7 +2298,10 @@ function legalActions(room, player) {
   if (room.phase === 'HEX_REVEAL' && room.pendingHex?.targetPlayerId === player.id) actions.push('RESOLVE_HEX');
   if (room.phase === 'ROLL_FOR_FIRST' && room.firstRoll?.eligible?.includes(player.id) && !room.firstRoll.rolls?.[player.id]) actions.push('ROLL_FIRST');
   if (room.phase === 'START_TURN' && activeId(room) === player.id) actions.push('OPEN_CHAMBER');
-  if (canActOutsideCombat(room) && activeId(room) === player.id) actions.push('PLAY_TABLE_CARDS', 'SELL_GEAR', 'START_TRADE');
+  if (canActOutsideCombat(room) && activeId(room) === player.id) {
+    actions.push('PLAY_TABLE_CARDS', 'START_TRADE');
+    if (canSellGearForUsefulGlory(player, { threshold: 1000, canWin: false }).ok) actions.push('SELL_GEAR');
+  }
   if (room.phase === 'NO_THREAT_CHOICE' && activeId(room) === player.id) actions.push('SEARCH_ROOM', 'START_TROUBLE');
   if (room.phase === 'POST_COMBAT' && activeId(room) === player.id) actions.push('DONE_POST_COMBAT');
   if (room.phase === 'END_TURN' && activeId(room) === player.id) actions.push('END_TURN');
@@ -2653,7 +2785,7 @@ function reattachExistingPlayer(room, player, socket, reason = 'rejoined') {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('ready', { version: '0.11.9.11-observer-choice-hotfix-v07911' });
+  socket.emit('ready', { version: '0.12.0-rules-card-legality-v0710' });
 
   socket.on('createRoom', ({ name }) => {
     const room = makeRoom(displayPlayerName(name), socket);
@@ -3041,6 +3173,8 @@ function handleAction(socket, room, player, payload) {
   if (type === 'PLAY_CARD') {
     const card = findCardInPlayerZones(player, payload.cardId);
     if (!card) return emitError(socket, 'Card not found.');
+    const gate = assertLegalPlayCardAction(room, player, card, payload);
+    if (!gate.ok) return emitError(socket, gate.reason || 'That card is not playable right now.');
     playCard(socket, room, player, card, payload);
     return;
   }
@@ -3312,6 +3446,8 @@ function playCard(socket, room, player, card, payload) {
       if (timing.includes('POST_COMBAT_WIN')) return emitError(socket, `${card.publicName} can only be played after you win combat.`);
       return emitError(socket, 'That Special is not playable in this timing window.');
     }
+    const impact = specialEffectWouldDoSomething(room, player, card);
+    if (!impact.ok) return emitError(socket, impact.reason || 'That Special would not affect the game right now.');
     if (card.effect?.type === 'ADD_EXTRA_CALLING_SLOT') {
       if (!player.role) return emitError(socket, 'Play a Calling first, then attach Overqualified to it.');
       const realPermit = findAndRemoveFromHand(player, card.instanceId);
@@ -3554,8 +3690,11 @@ function sellSpecificGear(room, player, ids, effect = {}) {
   }
 
   const threshold = effect.threshold || 1000;
-  const glory = Math.floor(total / threshold);
-  if (glory <= 0) return { error: `Select at least ${threshold} Junk Value before selling.` };
+  const rawGlory = Math.floor(total / threshold);
+  if (rawGlory <= 0) return { error: `Select at least ${threshold} Junk Value before selling.` };
+  const cap = effect.canWin ? 10 : 9;
+  const usefulGlory = Math.max(0, Math.min(cap, Number(player.renown || 0) + rawGlory) - Number(player.renown || 0));
+  if (usefulGlory <= 0) return { error: 'Selling would not change your Glory right now.' };
 
   const sold = [];
   for (const id of unique) {
@@ -3568,8 +3707,8 @@ function sellSpecificGear(room, player, ids, effect = {}) {
     if (card.slot === 'HEAD') clearHeadLinkedEffects(room, player, `${card.publicName} was sold`);
     discardCard(room, card);
   }
-  gainGlory(room, player, glory, Boolean(effect.canWin), false);
-  return { sold, total, doubled, glory };
+  gainGlory(room, player, usefulGlory, Boolean(effect.canWin), false);
+  return { sold, total, doubled, glory: usefulGlory, rawGlory };
 }
 
 function revalidateIdentityGear(room, player) {
@@ -3915,5 +4054,5 @@ function resolvePrompt(socket, room, player, payload) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Loot Goblins v0.7.9.11 listening on http://${HOST}:${PORT}`);
+  console.log(`Loot Goblins v0.7.10 listening on http://${HOST}:${PORT}`);
 });
