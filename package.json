@@ -1,8 +1,8 @@
 {
-  "name": "loot-goblins-touch-combat-polish-v07910",
-  "version": "0.11.9-10",
+  "name": "loot-goblins-observer-choice-hotfix-v07911",
+  "version": "0.11.9-11",
   "private": true,
-  "description": "Loot Goblins v0.7.9.10: iOS touch-selection prevention, combat action dock, hand viewport tuning, and door/phase-strip polish.",
+  "description": "Loot Goblins v0.7.9.11: observer choice/sell-gear waiting states, Recover Table visibility cleanup, and cardClass render crash fix.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

@@ -252,7 +252,7 @@ function renderFailurePanel(name, error) {
       <h2>Reconnected, but this view hiccuped</h2>
       <p class="mobile-state-sub">The table state is safe. Refresh the view or use Recover Table if a choice is stuck.</p>
       <div class="mobile-wait-card">${assetIconHtml('backup', 'asset-sigil event-sigil')}<span>${escapeHtml(name)} view failed: ${escapeHtml(msg)}</span></div>
-      <div class="mobile-center-actions"><button class="primary" onclick="location.reload()">Reload View</button>${recoveryButtonHtml()}</div>
+      <div class="mobile-center-actions"><button class="primary" onclick="location.reload()">Reload View</button>${recoveryButtonHtml(true)}</div>
     </section>
   </div>`;
 }
@@ -991,8 +991,8 @@ function promptAfterText(prompt) {
   if (after === 'TO_TRIBUTE_OR_END') return 'Then the table checks hand limit and end turn.';
   if (after === 'TO_POST_COMBAT') return 'Then you return to the post-combat loot window.';
   if (after === 'CONTINUE_ESCAPE') return 'Then Flee/Bad News continues.';
-  if (after === 'CONTINUE' || after === 'STAY') return 'Then the table continues.';
-  return 'Then the table continues.';
+  if (after === 'CONTINUE' || after === 'STAY') return 'Then the turn continues.';
+  return 'Then the turn continues.';
 }
 
 function promptChoiceText(prompt) {
@@ -1054,7 +1054,7 @@ function promptCauseText(prompt) {
 function promptSourceCardHtml(prompt) {
   const card = prompt?.sourceCard;
   if (!card) return '';
-  return `<button class="prompt-source-card card-type-${cardClass(card)}" data-mobile-inspect-card="${card.instanceId}">
+  return `<button class="prompt-source-card ${cardTypeClass(card)}" data-mobile-inspect-card="${card.instanceId}">
     <div class="prompt-source-mini">${cardHtml(card, { compact: true })}</div>
     <div class="prompt-source-copy">
       <span>Cause</span>
@@ -1136,7 +1136,14 @@ function phaseStripTitle(grammar) {
   if (state.tradeOffer) return state.tradeOffer.isParticipant ? `Trade · ${state.tradeOffer.theirName}` : 'Trade';
   if (state.bodyLoot) return state.bodyLoot.requiresYou ? 'Body Loot · Your Pick' : 'Body Loot';
   if (state.reaction) return state.reaction.requiresYou ? 'Reaction · You' : 'Reaction';
-  if (state.pendingPrompt) return state.pendingPrompt.requiresYou ? 'Choice · You' : `Choice · ${playerName(state.pendingPrompt.playerId)}`;
+  if (state.pendingPrompt) {
+    const p = state.pendingPrompt;
+    if (p.type === 'SELL_GEAR') return p.requiresYou ? 'Sell Gear' : `${playerName(p.playerId)} is selling Gear`;
+    if (p.type === 'TRADE_OFFER_SELECT' || p.type === 'TRADE_ACCEPT') return p.requiresYou ? 'Trade' : `${playerName(p.playerId)} is trading`;
+    if (p.type === 'LOOT_BODY') return p.requiresYou ? 'Loot the Body' : `${playerName(p.playerId)} is looting`;
+    if (String(p.type || '').includes('DISCARD')) return p.requiresYou ? 'Discard' : `${playerName(p.playerId)} is discarding`;
+    return p.requiresYou ? 'Choice · You' : `${playerName(p.playerId)} is choosing`;
+  }
   const act = active();
   if (state.phase === 'START_TURN') return isMyTurn() ? 'Your Turn' : `${act?.name || 'Goblin'}’s Turn`;
   if (state.phase === 'NO_THREAT_CHOICE') return isMyTurn() ? 'Choose Move' : `${act?.name || 'Goblin'} Chooses`;
@@ -1302,7 +1309,7 @@ function mobileStageFallbackHtml(error) {
   const msg = String(error?.message || error || 'Unknown view issue');
   return mobileStageShell('render-recovery', 'Table Recovery', 'View hiccuped', `
     <div class="mobile-wait-card">${assetIconHtml('backup', 'asset-sigil event-sigil')}<span>The game state is still connected. ${escapeHtml(msg)}</span></div>
-    <div class="mobile-center-actions"><button class="primary" onclick="location.reload()">Reload View</button>${recoveryButtonHtml()}</div>
+    <div class="mobile-center-actions"><button class="primary" onclick="location.reload()">Reload View</button>${recoveryButtonHtml(true)}</div>
   `, { size: 'medium', icon: 'backup', sub: 'Refresh the view if the center table looks empty.' });
 }
 
@@ -1537,7 +1544,6 @@ function mobileTradeStageHtml(t) {
       <div class="trade-table-actions">
         ${confirmMode ? `<button class="primary" data-trade-confirm ${t.yourConfirmed ? 'disabled' : ''}>${t.yourConfirmed ? 'Confirmed' : 'Confirm Trade'}</button>` : `<button class="primary" data-trade-ready ${t.yourReady ? 'disabled' : ''}>${t.yourReady ? 'Ready' : 'Ready Offer'}</button>`}
         <button data-action="CANCEL_TRADE">Cancel</button>
-        ${recoveryButtonHtml()}
       </div>
     </div>
   `, { size: 'large', icon: 'trade' });
@@ -1988,21 +1994,109 @@ function mobileBodyLootStageHtml() {
   `, { size: 'large', icon: 'death', sub: '' });
 }
 
-function recoveryButtonHtml() {
-  return (state?.legalActions || []).includes('RECOVER_TABLE') ? '<button class="subtle recovery-button" data-action="RECOVER_TABLE">Recover Table</button>' : '';
+function recoveryButtonHtml(force = false) {
+  return (force && (state?.legalActions || []).includes('RECOVER_TABLE')) ? '<button class="subtle recovery-button" data-action="RECOVER_TABLE">Recover Table</button>' : '';
 }
 
+
+function promptObserverSummary(prompt) {
+  const actor = playerName(prompt?.playerId);
+  const type = String(prompt?.type || '');
+  if (type === 'SELL_GEAR') return {
+    kind: 'observer-selling-gear',
+    icon: 'junk',
+    kicker: 'Waiting',
+    title: `${actor} is selling Gear`,
+    text: 'Selling is optional. The turn continues when they finish.',
+    status: 'Waiting on their Gear choice.'
+  };
+  if (type === 'TRADE_OFFER_SELECT') return {
+    kind: 'observer-trade-choice',
+    icon: 'trade',
+    kicker: 'Trade',
+    title: `${actor} is making an offer`,
+    text: 'They are choosing cards for a trade offer.',
+    status: 'Waiting on the offer.'
+  };
+  if (type === 'TRADE_ACCEPT') return {
+    kind: 'observer-trade-choice',
+    icon: 'trade',
+    kicker: 'Trade',
+    title: `${actor} is reviewing a trade`,
+    text: 'They can accept or decline the offer.',
+    status: 'Waiting on their answer.'
+  };
+  if (type === 'LOOT_BODY') return {
+    kind: 'observer-body-loot-choice',
+    icon: 'death',
+    kicker: 'Body Loot',
+    title: `${actor} is looting the body`,
+    text: 'They are choosing one card from the body pile.',
+    status: 'Waiting on their pick.'
+  };
+  if (String(type).includes('DISCARD')) return {
+    kind: 'observer-discard-choice',
+    icon: 'discard',
+    kicker: 'Waiting',
+    title: `${actor} is discarding`,
+    text: prompt?.sourceCard?.publicName ? `${prompt.sourceCard.publicName} caused this choice.` : 'They are choosing cards to discard.',
+    status: 'Waiting on their discard.'
+  };
+  if (type === 'CHOOSE_BAD_NEWS_OPTION') return {
+    kind: 'observer-bad-news-choice',
+    icon: 'death',
+    kicker: 'Bad News',
+    title: `${actor} is choosing Bad News`,
+    text: 'They are choosing how the hit lands.',
+    status: 'Waiting on their choice.'
+  };
+  if (type === 'ADD_FOE_FROM_HAND') return {
+    kind: 'observer-add-foe-choice',
+    icon: 'strength',
+    kicker: 'Combat',
+    title: `${actor} is adding a Foe`,
+    text: 'They are choosing which Foe joins the fight.',
+    status: 'Waiting on their pick.'
+  };
+  return {
+    kind: 'observer-choice',
+    icon: 'special',
+    kicker: 'Waiting',
+    title: `${actor} is choosing`,
+    text: prompt?.message || 'They have a table choice.',
+    status: 'Waiting on them.'
+  };
+}
+
+function mobilePromptObserverStageHtml(prompt) {
+  const s = promptObserverSummary(prompt);
+  const source = prompt?.sourceCard ? `<button class="observer-source-card" data-mobile-inspect-card="${prompt.sourceCard.instanceId}">
+    ${cardTypeSigilHtml(prompt.sourceCard, 'asset-sigil event-sigil')}
+    <span>${escapeHtml(prompt.sourceCard.publicName)}</span>
+    <small>View</small>
+  </button>` : '';
+  return mobileStageShell(`prompt-observer ${s.kind}`, s.kicker, s.title, `
+    <div class="observer-wait-panel">
+      ${assetIconHtml(s.icon, 'asset-sigil event-sigil')}
+      <div><strong>${escapeHtml(s.text)}</strong><span>${escapeHtml(s.status)}</span></div>
+    </div>
+    ${source}
+  `, { size: 'small', icon: s.icon, sub: '' });
+}
+
+
 function mobilePromptStageHtml(prompt) {
-  const title = prompt.requiresYou ? promptTitle(prompt) : `${playerName(prompt.playerId)} has a choice`;
-  const sub = prompt.requiresYou ? promptChoiceText(prompt) : `Waiting on ${playerName(prompt.playerId)}.`;
+  if (!prompt.requiresYou) return mobilePromptObserverStageHtml(prompt);
+  const title = promptTitle(prompt);
+  const sub = promptChoiceText(prompt);
   const icon = prompt.type === 'SELL_GEAR' ? 'gear'
     : prompt.type === 'ADD_FOE_FROM_HAND' ? 'strength'
     : String(prompt.type || '').includes('TRADE') ? 'trade'
     : String(prompt.type || '').includes('BAD_NEWS') ? 'death'
     : 'special';
-  return mobileStageShell('prompt flow-clarity-prompt', prompt.requiresYou ? 'Choice Required' : 'Waiting', title, `
+  return mobileStageShell('prompt flow-clarity-prompt', 'Choice Required', title, `
     ${promptFlowHtml(prompt)}
-    ${prompt.requiresYou ? '<button data-mobile-prompt-cancel>Pass / Cancel if allowed</button>' : recoveryButtonHtml()}
+    ${prompt.canPass ? '<button data-mobile-prompt-cancel>Pass</button>' : ''}
   `, { size: 'medium', icon, sub });
 }
 

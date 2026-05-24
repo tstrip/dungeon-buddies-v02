@@ -11518,3 +11518,91 @@ textarea {
     flex: 1;
   }
 }
+
+
+/* Loot Goblins v0.7.9.11 — Observer Choice Hotfix */
+
+.mobile-state-prompt-observer {
+  border-color: rgba(255,222,133,.18) !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,222,133,.08), transparent 42%),
+    rgba(0,0,0,.20) !important;
+}
+
+.mobile-state-prompt-observer h2 {
+  font-size: clamp(1.15rem, 5vw, 1.65rem) !important;
+}
+
+.observer-wait-panel {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.18);
+  padding: 13px;
+  text-align: left;
+}
+
+.observer-wait-panel .asset-sigil {
+  width: 48px;
+  height: 48px;
+}
+
+.observer-wait-panel strong {
+  display: block;
+  color: var(--ink);
+  font-size: .86rem;
+  line-height: 1.12;
+}
+
+.observer-wait-panel span {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255,246,214,.62);
+  font-size: .68rem;
+  line-height: 1.15;
+}
+
+.observer-source-card {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-radius: 18px;
+  border: 1px solid rgba(255,222,133,.16);
+  background: rgba(0,0,0,.12);
+  color: var(--ink);
+  text-align: left;
+  padding: 9px 11px;
+}
+
+.observer-source-card .asset-sigil {
+  width: 34px;
+  height: 34px;
+}
+
+.observer-source-card span {
+  min-width: 0;
+  font-weight: 1000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.observer-source-card small {
+  color: var(--gold);
+  font-weight: 1000;
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+/* Emergency recover button is no longer part of normal waiting panels. */
+.mobile-state-prompt-observer .recovery-button,
+.trade-table-actions .recovery-button {
+  display: none !important;
+}
