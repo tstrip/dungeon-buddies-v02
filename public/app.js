@@ -1138,10 +1138,10 @@ function phaseStripTitle(grammar) {
   if (state.reaction) return state.reaction.requiresYou ? 'Reaction · You' : 'Reaction';
   if (state.pendingPrompt) return state.pendingPrompt.requiresYou ? 'Choice · You' : `Choice · ${playerName(state.pendingPrompt.playerId)}`;
   const act = active();
-  if (state.phase === 'START_TURN') return isMyTurn() ? 'Your Turn' : `${act?.name || 'Goblin'}'s Turn`;
+  if (state.phase === 'START_TURN') return isMyTurn() ? 'Your Turn' : `${act?.name || 'Goblin'}’s Turn`;
   if (state.phase === 'NO_THREAT_CHOICE') return isMyTurn() ? 'Choose Move' : `${act?.name || 'Goblin'} Chooses`;
   if (state.phase === 'POST_COMBAT') return isMyTurn() ? 'Last Chance' : `${act?.name || 'Goblin'} Uses Loot`;
-  if (state.phase === 'COMBAT') return 'Combat';
+  if (state.phase === 'COMBAT') return 'Fight';
   if (state.phase === 'ESCAPE') return 'Flee';
   if (state.phase === 'TRIBUTE') return isMyTurn() ? 'Tribute Now' : 'Tribute';
   if (state.phase === 'GAME_OVER') return 'Victory';
@@ -1324,6 +1324,7 @@ function renderMobilePlayShell(root) {
     ${mobileDeckStripHtml(move)}
     ${mobileAnnouncementHtml()}
     ${stage}
+    ${mobileCombatActionDockHtml()}
   </div>`;
   attachTableSeatHandlers(root);
   root.querySelectorAll('[data-mobile-inspect-card]').forEach((btn) => {
@@ -1442,6 +1443,31 @@ function mobilePlayerHudHtml() {
       ${statusCount ? `<span class="mobile-status-dot">${statusCount}</span>` : ''}
     </button>`;
   }).join('')}</div>`;
+}
+
+
+function mobileCombatActionDockHtml() {
+  const c = state?.combat;
+  if (!c || state?.phase !== 'COMBAT') return '';
+  const requiresYou = (c.waitingPlayerIds || []).includes(me()?.id);
+  const outcome = combatOutcome(c);
+  const passed = c.passes?.[me()?.id];
+  const actions = [];
+  if (requiresYou && !passed) {
+    actions.push(`<button class="combat-dock-btn primary" data-combat-action="PASS_COMBAT">${escapeHtml(outcome.playerWinning ? 'Pass' : 'Pass / Flee')}</button>`);
+  } else if (passed) {
+    actions.push(`<span class="combat-dock-pill ready">Ready</span>`);
+  } else {
+    actions.push(`<span class="combat-dock-pill">Waiting</span>`);
+  }
+  const backups = (state.players || []).filter((p) => p.id !== c.activePlayerId && !p.dead && p.id !== me()?.id);
+  if (requiresYou && !passed) {
+    for (const p of backups.slice(0, 2)) actions.push(`<button class="combat-dock-btn" data-combat-action="ASK_BACKUP" data-target="${p.id}">Ask ${escapeHtml(p.name)}</button>`);
+  }
+  return `<div class="combat-action-dock" role="group" aria-label="Combat quick actions">
+    <div class="combat-dock-status"><b>${escapeHtml(outcome.shortLabel)}</b><span>${escapeHtml((c.waitingPlayerIds || []).map(playerName).join(', ') || 'Everyone ready')}</span></div>
+    <div class="combat-dock-actions">${actions.join('')}</div>
+  </div>`;
 }
 
 function mobileStageHtml() {
@@ -1620,7 +1646,7 @@ function mobileStartTurnStageHtml() {
       </div>
       <div class="open-chamber-door-copy">
         <strong>${mine ? 'Open Chamber' : 'Chamber Deck'}</strong>
-        <span>${mine ? 'Reveal what’s behind the door' : `${Number(state.decks?.chamber || 0)} cards remain`}</span>
+        <span>${mine ? 'Open the door' : `${Number(state.decks?.chamber || 0)} cards remain`}</span>
       </div>
     </button>
     ${mine ? `<p class="mobile-state-hint setup-glow-hint">Setup cards glow below.</p>` : `<p class="mobile-state-hint">${escapeHtml(active()?.name || 'The active goblin')} can play setup or open the door.</p>`}

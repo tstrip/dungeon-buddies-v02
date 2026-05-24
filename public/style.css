@@ -11250,3 +11250,271 @@ button.subtle,
     max-width: 52vw;
   }
 }
+
+
+/* Loot Goblins v0.7.9.10 — Touch Safety + Combat Viewport Polish */
+
+/* Stop iOS long-press/text-selection handles on buttons and game UI text. */
+button,
+.mobile-app-shell,
+.hand-panel,
+.mobile-state-panel,
+.global-public-modal,
+.global-soft-popup,
+.card-inspect-modal,
+.private-gain-modal {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Phase strip should not feel like another bulky panel. */
+.phase-status-strip {
+  min-height: 34px !important;
+  padding: 5px 14px !important;
+  border-radius: 0 0 18px 18px !important;
+  opacity: .92;
+  backdrop-filter: blur(10px);
+}
+
+.phase-status-strip h2 {
+  font-size: clamp(.88rem, 4vw, 1.05rem) !important;
+  letter-spacing: .01em !important;
+}
+
+/* Soft banners: stay clean but stop dominating the HUD. */
+.global-soft-popup {
+  top: max(8px, env(safe-area-inset-top)) !important;
+  padding-inline: 14px !important;
+}
+
+.global-soft-card {
+  max-width: min(92vw, 520px) !important;
+  min-height: 58px !important;
+  border-radius: 20px !important;
+}
+
+/* Door should read less like a generic orange button and more like a Chamber object. */
+.open-chamber-door-tile {
+  min-height: 228px !important;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(168,77,229,.24), transparent 32%),
+    linear-gradient(90deg, rgba(255,214,116,.20), transparent 9%, transparent 91%, rgba(255,214,116,.20)),
+    linear-gradient(180deg, rgba(97,61,39,.98), rgba(38,23,34,.98)) !important;
+}
+
+.open-chamber-door-tile .asset-sigil:not(.open-chamber-door-art),
+.open-chamber-door-tile > img:not(.open-chamber-door-art) {
+  opacity: 0 !important;
+}
+
+.open-chamber-door-copy strong {
+  color: #ffe6a3 !important;
+  opacity: 1 !important;
+}
+
+.open-chamber-door-copy span {
+  color: rgba(255,246,214,.78) !important;
+}
+
+/* Combat: fit the fight above the hand more reliably. */
+.mobile-state-battlefield-combat {
+  padding-bottom: 18px !important;
+}
+
+.mobile-state-battlefield-combat .combat-board-card {
+  padding: 10px !important;
+}
+
+.mobile-state-battlefield-combat .combat-board-scorebar {
+  padding: 6px !important;
+  margin-block: 6px !important;
+}
+
+.mobile-state-battlefield-combat .score-side {
+  min-height: 92px !important;
+}
+
+.mobile-state-battlefield-combat .score-side b {
+  font-size: clamp(1.85rem, 11vw, 2.8rem) !important;
+}
+
+.mobile-state-battlefield-combat .combat-foe-card-lane {
+  margin-top: 8px !important;
+}
+
+.mobile-state-battlefield-combat .combat-foe-card-lane .hand-card {
+  transform: scale(.92);
+  transform-origin: top center;
+}
+
+.mobile-state-battlefield-combat .combat-bad-news-chip {
+  margin-top: -2px !important;
+}
+
+.mobile-state-battlefield-combat .mobile-center-actions,
+.mobile-state-battlefield-combat .combat-actions {
+  margin-bottom: 78px !important;
+}
+
+/* Hand drawer should not fully devour combat. */
+.phase-combat .hand-panel:not(.hand-expanded) {
+  max-height: 212px !important;
+}
+
+.phase-combat .hand-panel.hand-expanded {
+  max-height: min(58vh, 540px) !important;
+}
+
+.phase-combat .hand-header {
+  min-height: 82px !important;
+}
+
+.phase-combat .my-goblin-badge {
+  transform: scale(.92);
+  transform-origin: left center;
+}
+
+/* A compact action dock keeps the actual game action available when the hand covers lower buttons. */
+.combat-action-dock {
+  position: sticky;
+  bottom: calc(var(--hand-collapsed-height, 190px) + 8px);
+  z-index: 36;
+  margin: -70px 14px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,222,133,.22);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(177,91,229,.18), transparent 52%),
+    rgba(14,9,15,.88);
+  box-shadow: 0 14px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04);
+  backdrop-filter: blur(14px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+}
+
+.combat-dock-status {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.combat-dock-status b {
+  color: var(--ink);
+  font-size: .72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combat-dock-status span {
+  color: rgba(255,246,214,.58);
+  font-size: .58rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combat-dock-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.combat-dock-btn,
+.combat-dock-pill {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,222,133,.26);
+  background: rgba(0,0,0,.22);
+  color: var(--ink);
+  font-weight: 1000;
+  font-size: .68rem;
+  display: inline-grid;
+  place-items: center;
+}
+
+.combat-dock-btn.primary {
+  background: linear-gradient(180deg, #c084f5, #7735b7) !important;
+  color: #fff7ff !important;
+  border-color: rgba(211,159,255,.58) !important;
+}
+
+.combat-dock-pill.ready {
+  color: #bdf7c6;
+  border-color: rgba(123,236,178,.40);
+}
+
+.mobile-app-shell:not(.phase-combat) .combat-action-dock {
+  display: none;
+}
+
+/* Private gain modal: card can be a little bigger and centered. */
+.private-gain-card .private-gain-cards {
+  justify-content: center;
+}
+
+.private-gain-card .private-gain-cards .hand-card {
+  transform: scale(1.06);
+  transform-origin: center;
+}
+
+/* Keep expanded hand readable but reduce accidental overlay opacity issues. */
+.hand-panel.hand-expanded {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255,205,105,.12), transparent 38%),
+    linear-gradient(180deg, rgba(99,53,35,.98), rgba(42,22,27,.98)) !important;
+}
+
+.hand-panel.hand-expanded .hand-card {
+  opacity: 1 !important;
+}
+
+@media (max-height: 760px) {
+  .mobile-state-battlefield-combat .mobile-state-header,
+  .mobile-state-battlefield-combat h2 {
+    margin-bottom: 2px !important;
+  }
+
+  .mobile-state-battlefield-combat .combat-board-result {
+    margin-bottom: 4px !important;
+  }
+
+  .mobile-state-battlefield-combat .score-side {
+    min-height: 78px !important;
+  }
+
+  .phase-combat .hand-panel:not(.hand-expanded) {
+    max-height: 188px !important;
+  }
+
+  .combat-action-dock {
+    bottom: 176px;
+  }
+}
+
+@media (max-width: 390px) {
+  .combat-action-dock {
+    grid-template-columns: 1fr;
+    margin-inline: 10px;
+  }
+
+  .combat-dock-actions {
+    justify-content: stretch;
+  }
+
+  .combat-dock-btn,
+  .combat-dock-pill {
+    flex: 1;
+  }
+}
